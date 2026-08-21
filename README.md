@@ -44,7 +44,7 @@ Initial provider targets include:
 
 ## Status
 
-Agoraform is currently in the early design and development stage.
+Agoraform is currently in early development. The CLI scaffold exists; provider integrations and reconciliation logic are still in progress.
 
 The project is being built from scratch as an open-source initiative, with an emphasis on:
 
@@ -55,5 +55,46 @@ The project is being built from scratch as an open-source initiative, with an em
 - Provider extensibility
 - Git-based review and auditability
 - Strong safeguards around advertising budgets and destructive changes
+
+## Build
+
+Requires Go 1.23 or newer.
+
+```bash
+go build -o agoraform ./cmd/agoraform
+```
+
+On Windows:
+
+```bash
+go build -o agoraform.exe ./cmd/agoraform
+```
+
+## CLI
+
+```bash
+./agoraform --help
+./agoraform --version
+```
+
+Development builds report version `0.0.0-dev` by default. Release builds can override the version with:
+
+```bash
+go build -ldflags "-X github.com/dziblo-music/agoraform/internal/cli.Version=0.1.0" -o agoraform ./cmd/agoraform
+```
+
+Current subcommands (`validate`, `plan`, `apply`, `import`) are registered shells and return a clear not-implemented error until their behavior is added.
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success |
+| `1` | Command failure (including not-implemented commands) |
+| `2` | Invalid usage (unknown command/flag or bad arguments) |
+
+## Development
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local development, testing, and pull request expectations.
 
 Contributions and ideas are welcome.

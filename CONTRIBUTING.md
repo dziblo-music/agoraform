@@ -16,6 +16,11 @@ separate issue.
 
 ## Development
 
+### Prerequisites
+
+- Go 1.23 or newer (`go version`)
+- Git
+
 Fork or clone the repository and create a branch from the latest `main`.
 
 Branch names should follow:
@@ -26,13 +31,25 @@ For example:
 
     issue-12-google-conversion-action
 
-Build and test with:
+### Build and run
 
-    go build ./cmd/agoraform
+From the repository root:
+
+    go build -o agoraform ./cmd/agoraform
+    ./agoraform --help
+    ./agoraform --version
+
+On Windows, the binary is typically `agoraform.exe`.
+
+### Test and lint
+
+    gofmt -w .
     go test ./...
     go vet ./...
 
-All Go code should be formatted with `gofmt`.
+CI also checks that `gofmt` would not change any files. Run `gofmt -l .` locally and ensure it prints nothing before opening a pull request.
+
+Do not commit API tokens, credentials, personal data, or machine-local paths.
 
 ## Pull requests
 

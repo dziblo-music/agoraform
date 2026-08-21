@@ -1,0 +1,105 @@
+package cli
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+
+	"github.com/spf13/cobra"
+)
+
+// IOStreams holds the CLI input/output streams.
+type IOStreams struct {
+	In     io.Reader
+	Out    io.Writer
+	ErrOut io.Writer
+}
+
+// DefaultIOStreams returns streams bound to the process stdio.
+func DefaultIOStreams() IOStreams {
+	return IOStreams{
+		In:     os.Stdin,
+		Out:    os.Stdout,
+		ErrOut: os.Stderr,
+	}
+}
+
+type usageError struct {
+	err error
+}
+
+func (e usageError) Error() string { return e.err.Error() }
+func (e usageError) Unwrap() error { return e.err }
+
+// NewRootCommand builds the root agoraform command and its subcommands.
+func NewRootCommand(streams IOStreams) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:           "agoraform",
+		Short:         "Marketing Infrastructure as Code",
+		Long:          "Agoraform defines, plans, and applies marketing infrastructure from code.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Version:       Version,
+	}
+
+	cmd.SetIn(streams.In)
+	cmd.SetOut(streams.Out)
+	cmd.SetErr(streams.ErrOut)
+	cmd.SetVersionTemplate("{{.Version}}\n")
+	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return usageError{err: err}
+	})
+
+	cmd.AddCommand(newValidateCommand())
+	cmd.AddCommand(newPlanCommand())
+	cmd.AddCommand(newApplyCommand())
+	cmd.AddCommand(newImportCommand())
+
+	return cmd
+}
+
+// Execute runs the Agoraform CLI and returns a process exit code.
+func Execute() int {
+	return ExecuteWith(DefaultIOStreams(), os.Args[1:])
+}
+
+// ExecuteWith runs the CLI using the provided streams and args.
+func ExecuteWith(streams IOStreams, args []string) int {
+	cmd := NewRootCommand(streams)
+	cmd.SetArgs(args)
+
+	if err := cmd.Execute(); err != nil {
+		fmt.Fprintln(streams.ErrOut, "Error:", err)
+		if isUsageError(err) {
+			return ExitUsage
+		}
+		return ExitError
+	}
+
+	return ExitOK
+}
+
+func isUsageError(err error) bool {
+	var u usageError
+	if errors.As(err, &u) {
+		return true
+	}
+
+	msg := err.Error()
+	return strings.Contains(msg, "unknown command") ||
+		strings.Contains(msg, "unknown flag") ||
+		strings.Contains(msg, "accepts no arguments")
+}
+
+func newNotImplementedCommand(use, short string) *cobra.Command {
+	return &cobra.Command{
+		Use:   use,
+		Short: short,
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return fmt.Errorf("%s: not implemented yet", use)
+		},
+	}
+}
