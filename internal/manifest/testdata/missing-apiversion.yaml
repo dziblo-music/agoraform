@@ -1,0 +1,4 @@
+resources:
+  - address: fake.widget.homepage
+    attributes:
+      title: Homepage

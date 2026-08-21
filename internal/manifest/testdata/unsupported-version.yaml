@@ -1,0 +1,5 @@
+apiVersion: agoraform.io/v0
+resources:
+  - address: fake.widget.homepage
+    attributes:
+      title: Homepage

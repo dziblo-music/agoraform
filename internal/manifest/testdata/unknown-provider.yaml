@@ -1,0 +1,6 @@
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: matomo.goal.trial_started
+    attributes:
+      name: Trial Started
+      event: trialStarted

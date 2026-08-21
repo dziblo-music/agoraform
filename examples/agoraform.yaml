@@ -1,0 +1,11 @@
+# Example Agoraform manifest (v0.1)
+#
+# This file is illustrative. It contains no credentials or personal data.
+# Provider authentication is supplied at runtime, not in the manifest.
+
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: matomo.goal.trial_started
+    attributes:
+      name: Trial Started
+      event: trialStarted

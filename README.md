@@ -44,7 +44,7 @@ Initial provider targets include:
 
 ## Status
 
-Agoraform is currently in early development. The CLI scaffold exists; provider integrations and reconciliation logic are still in progress.
+Agoraform is currently in early development. The CLI can validate v0.1 YAML manifests. Provider integrations and reconciliation logic are still in progress.
 
 The project is being built from scratch as an open-source initiative, with an emphasis on:
 
@@ -83,7 +83,16 @@ Development builds report version `0.0.0-dev` by default. Release builds can ove
 go build -ldflags "-X github.com/dziblo-music/agoraform/internal/cli.Version=0.1.0" -o agoraform ./cmd/agoraform
 ```
 
-Current subcommands (`validate`, `plan`, `apply`, `import`) are registered shells and return a clear not-implemented error until their behavior is added.
+### Commands
+
+```bash
+./agoraform validate
+./agoraform validate -f path/to/manifest.yaml
+```
+
+`validate` loads a v0.1 YAML manifest (default `agoraform.yaml`), checks the schema, resource addresses, and duplicate logical names. See [docs/manifest.md](docs/manifest.md) for the document format.
+
+`plan`, `apply`, and `import` are registered and return a clear not-implemented error until their behavior is added.
 
 ### Exit codes
 

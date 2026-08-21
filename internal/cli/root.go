@@ -52,7 +52,8 @@ func NewRootCommand(streams IOStreams) *cobra.Command {
 		return usageError{err: err}
 	})
 
-	cmd.AddCommand(newValidateCommand())
+	registry := newProviderRegistry()
+	cmd.AddCommand(newValidateCommand(registry))
 	cmd.AddCommand(newPlanCommand())
 	cmd.AddCommand(newApplyCommand())
 	cmd.AddCommand(newImportCommand())

@@ -1,0 +1,9 @@
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.homepage
+    attributes:
+      title: Homepage banner
+      color: blue
+  - address: fake.widget.checkout
+    attributes:
+      title: Checkout prompt

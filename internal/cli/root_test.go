@@ -49,7 +49,7 @@ func TestVersion(t *testing.T) {
 func TestUnimplementedCommands(t *testing.T) {
 	t.Parallel()
 
-	commands := []string{"validate", "plan", "apply", "import"}
+	commands := []string{"plan", "apply", "import"}
 	for _, name := range commands {
 		name := name
 		t.Run(name, func(t *testing.T) {
