@@ -1,0 +1,4 @@
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - attributes:
+      title: Homepage

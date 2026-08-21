@@ -1,7 +1,11 @@
 # Documentation
 
 User and contributor documentation beyond the root README and CONTRIBUTING
-guides will live here.
+guides lives here.
+
+## Contents
+
+- [Manifest format (v0.1)](manifest.md)
 
 ## Local development
 

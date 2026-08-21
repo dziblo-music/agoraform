@@ -1,5 +1,16 @@
 # Examples
 
-Example manifests and workflows will live here as providers are added.
+Example manifests live here. They are structurally valid v0.1 documents and
+contain no credentials or personal data.
 
-No examples are included in the initial scaffold.
+- [agoraform.yaml](agoraform.yaml) — minimal manifest using a Matomo-style
+  resource address to illustrate `provider.type.name` addressing.
+
+Validate an example from the repository root:
+
+```bash
+agoraform validate -f examples/agoraform.yaml
+```
+
+Provider implementations are added separately. Until a provider is registered
+with the CLI, `validate` checks document structure, addresses, and duplicates.
