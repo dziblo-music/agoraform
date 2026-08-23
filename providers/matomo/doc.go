@@ -6,6 +6,7 @@
 // implemented in follow-up work and call through the client instead of
 // issuing raw HTTP requests.
 //
-// Core packages under internal/ must not import this package or Matomo
-// API types. The CLI composition root registers the provider.
+// Generic core and reconciliation packages must not import this package or
+// depend on Matomo API types. The CLI composition root may import it in order
+// to register the provider.
 package matomo
