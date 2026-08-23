@@ -34,6 +34,17 @@ type Normalizer interface {
 	NormalizeComparable(desired resource.Resource, live *resource.RemoteResource) (resource.Attributes, resource.Attributes, error)
 }
 
+// ConnectionChecker is an optional provider hook for non-mutating
+// credential and endpoint validation.
+//
+// When a Provider also implements ConnectionChecker, validate and plan
+// call CheckConnection once per provider after the provider and a
+// supported resource type are resolved. Implementations must not mutate
+// remote state or include credentials in returned errors.
+type ConnectionChecker interface {
+	CheckConnection(ctx context.Context) error
+}
+
 // Provider is the v0.1 contract between Agoraform's core and a provider.
 //
 // Implementations must not log credentials. Mutation methods (Create, Update)

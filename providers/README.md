@@ -23,7 +23,14 @@ fields belong on `RemoteResource.Computed`, not in comparable attributes.
 Register implementations with `provider.Registry`. The core never imports
 Matomo or other vendor API types.
 
-No production providers are implemented yet.
+## Matomo
+
+[`matomo/`](matomo/) is the first production provider. It registers as
+`matomo`, loads `MATOMO_URL` and `MATOMO_TOKEN_AUTH` from the environment,
+and exposes a reusable HTTP client for later resource types.
+
+Resource CRUD (goals, Tag Manager objects) is not implemented yet. See
+[matomo/README.md](matomo/README.md).
 
 ## Test provider
 
