@@ -84,3 +84,6 @@ directory.
 Until a real provider is registered with the CLI, `validate` performs
 structural checks only. Provider/type checks run in tests through the fake
 provider, and will apply to the CLI as providers are added.
+
+`agoraform plan` uses the same manifest. See [plan.md](plan.md) for
+reconciliation, output, and exit codes.

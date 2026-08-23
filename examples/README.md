@@ -14,3 +14,4 @@ agoraform validate -f examples/agoraform.yaml
 
 Provider implementations are added separately. Until a provider is registered
 with the CLI, `validate` checks document structure, addresses, and duplicates.
+`agoraform plan` requires a registered provider so it can read live state.

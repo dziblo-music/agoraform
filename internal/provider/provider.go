@@ -14,25 +14,33 @@ import (
 // rather than a fatal failure.
 var ErrNotFound = errors.New("resource not found")
 
+// Reader is the read-only subset of Provider used by the plan engine.
+//
+// Plan accepts Reader rather than Provider so it is structurally unable to
+// call Create, Update, or Import.
+type Reader interface {
+	Name() string
+	ResourceTypes() []string
+	Validate(ctx context.Context, res resource.Resource) error
+	Read(ctx context.Context, res resource.Resource) (resource.RemoteResource, error)
+}
+
+// Normalizer is an optional provider hook for comparable attribute views.
+//
+// When a Reader also implements Normalizer, the plan engine uses it before
+// diffing so provider-specific defaults and omitted values do not produce
+// false changes. Implementations must omit computed/read-only fields.
+type Normalizer interface {
+	NormalizeComparable(desired resource.Resource, live *resource.RemoteResource) (resource.Attributes, resource.Attributes, error)
+}
+
 // Provider is the v0.1 contract between Agoraform's core and a provider.
 //
 // Implementations must not log credentials. Mutation methods (Create, Update)
 // are used by apply/import workflows; plan must only call Name,
 // ResourceTypes, Validate, and Read.
 type Provider interface {
-	// Name returns the provider identifier used in resource addresses.
-	Name() string
-
-	// ResourceTypes returns the resource types this provider manages,
-	// for example "widget" or "goal".
-	ResourceTypes() []string
-
-	// Validate checks a desired resource against provider rules.
-	Validate(ctx context.Context, res resource.Resource) error
-
-	// Read returns the current live representation of a resource.
-	// If the resource does not exist remotely, Read returns ErrNotFound.
-	Read(ctx context.Context, res resource.Resource) (resource.RemoteResource, error)
+	Reader
 
 	// Create provisions a desired resource and returns the live result,
 	// including any provider-native identity and computed attributes.
