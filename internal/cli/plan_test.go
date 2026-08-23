@@ -30,12 +30,26 @@ func TestPlanNoRegisteredProviders(t *testing.T) {
 
 	path := writeManifest(t, "agoraform.yaml", validManifest)
 	streams, _, stderr := testStreams()
-	code := cli.ExecuteWith(streams, []string{"plan", "-f", path})
+	code := cli.ExecuteWithRegistry(streams, []string{"plan", "-f", path}, provider.NewRegistry())
 	if code != cli.ExitError {
 		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "registered provider") {
 		t.Fatalf("stderr = %q, want registered provider error", stderr.String())
+	}
+}
+
+func TestPlanMatomoGoalTypeNotImplemented(t *testing.T) {
+	t.Parallel()
+
+	path := writeManifest(t, "agoraform.yaml", matomoGoalManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWith(streams, []string{"plan", "-f", path})
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "unknown resource type") {
+		t.Fatalf("stderr = %q, want unknown resource type", stderr.String())
 	}
 }
 

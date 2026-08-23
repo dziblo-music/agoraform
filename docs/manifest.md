@@ -81,9 +81,14 @@ directory.
 - unknown providers or resource types, when a provider is registered
 - provider-specific required-field failures, when a provider is registered
 
-Until a real provider is registered with the CLI, `validate` performs
-structural checks only. Provider/type checks run in tests through the fake
-provider, and will apply to the CLI as providers are added.
+The CLI registers the Matomo provider. Addresses that use `matomo` are
+recognized; resource types such as `goal` are not implemented yet and
+fail as an unknown resource type. Provider/type checks for other
+providers (including the test-only `fake` provider) run when those
+providers are registered.
+
+Matomo credentials come from `MATOMO_URL` and `MATOMO_TOKEN_AUTH`. See
+[the Matomo provider README](../providers/matomo/README.md).
 
 `agoraform plan` uses the same manifest. See [plan.md](plan.md) for
 reconciliation, output, and exit codes.

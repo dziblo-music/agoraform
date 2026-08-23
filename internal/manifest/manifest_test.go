@@ -2,6 +2,7 @@ package manifest_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -13,6 +14,19 @@ import (
 	"github.com/dziblo-music/agoraform/internal/provider/fake"
 	"github.com/dziblo-music/agoraform/internal/resource"
 )
+
+var errConnectionFailed = errors.New("connection failed")
+
+type checkingProvider struct {
+	*fake.Provider
+	checks int
+	err    error
+}
+
+func (p *checkingProvider) CheckConnection(context.Context) error {
+	p.checks++
+	return p.err
+}
 
 func TestParseValidManifest(t *testing.T) {
 	t.Parallel()
@@ -159,6 +173,41 @@ func TestCheckProviders(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unknown resource type") {
 		t.Fatalf("error = %q, want unknown resource type", err)
+	}
+}
+
+func TestCheckProvidersConnectionChecker(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	valid := loadTestdata(t, "valid.yaml")
+
+	ok := &checkingProvider{Provider: fake.New()}
+	reg := provider.NewRegistry()
+	if err := reg.Register(ok); err != nil {
+		t.Fatal(err)
+	}
+	if err := manifest.CheckProviders(ctx, valid, reg); err != nil {
+		t.Fatalf("successful connection check: %v", err)
+	}
+	if ok.checks != 1 {
+		t.Fatalf("checks = %d, want 1", ok.checks)
+	}
+
+	failing := &checkingProvider{Provider: fake.New(), err: errConnectionFailed}
+	failReg := provider.NewRegistry()
+	if err := failReg.Register(failing); err != nil {
+		t.Fatal(err)
+	}
+	err := manifest.CheckProviders(ctx, valid, failReg)
+	if err == nil {
+		t.Fatal("failed connection check succeeded")
+	}
+	if !strings.Contains(err.Error(), "connection failed") {
+		t.Fatalf("error = %q, want connection failed", err)
+	}
+	if failing.checks != 1 {
+		t.Fatalf("failing checks = %d, want 1", failing.checks)
 	}
 }
 

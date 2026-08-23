@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/dziblo-music/agoraform/internal/cli"
+	"github.com/dziblo-music/agoraform/internal/provider"
+	"github.com/dziblo-music/agoraform/internal/provider/fake"
 )
 
 const validManifest = `apiVersion: agoraform.io/v1alpha1
@@ -14,6 +16,17 @@ resources:
   - address: fake.widget.homepage
     attributes:
       title: Homepage banner
+`
+
+const emptyResourcesManifest = `apiVersion: agoraform.io/v1alpha1
+resources: []
+`
+
+const matomoGoalManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: matomo.goal.trial_started
+    attributes:
+      name: Trial Started
 `
 
 const invalidManifest = `apiVersion: agoraform.io/v1alpha1
@@ -26,7 +39,7 @@ resources:
 func TestValidateSuccess(t *testing.T) {
 	t.Parallel()
 
-	path := writeManifest(t, "agoraform.yaml", validManifest)
+	path := writeManifest(t, "agoraform.yaml", emptyResourcesManifest)
 	streams, stdout, stderr := testStreams()
 	code := cli.ExecuteWith(streams, []string{"validate", "-f", path})
 	if code != cli.ExitOK {
@@ -38,7 +51,7 @@ func TestValidateSuccess(t *testing.T) {
 	if !strings.Contains(stdout.String(), "Validated") {
 		t.Fatalf("stdout = %q, want Validated message", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "1 resource") {
+	if !strings.Contains(stdout.String(), "0 resources") {
 		t.Fatalf("stdout = %q, want resource count", stdout.String())
 	}
 }
@@ -46,7 +59,7 @@ func TestValidateSuccess(t *testing.T) {
 func TestValidatePositionalFile(t *testing.T) {
 	t.Parallel()
 
-	path := writeManifest(t, "site.yaml", validManifest)
+	path := writeManifest(t, "site.yaml", emptyResourcesManifest)
 	streams, stdout, stderr := testStreams()
 	code := cli.ExecuteWith(streams, []string{"validate", path})
 	if code != cli.ExitOK {
@@ -98,7 +111,7 @@ func TestValidateConflictingFileArgs(t *testing.T) {
 
 func TestValidateDefaultFilename(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "agoraform.yaml"), []byte(validManifest), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "agoraform.yaml"), []byte(emptyResourcesManifest), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -120,6 +133,43 @@ func TestValidateDefaultFilename(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "agoraform.yaml") {
 		t.Fatalf("stdout = %q, want default filename", stdout.String())
+	}
+}
+
+func TestValidateMatomoGoalTypeNotImplemented(t *testing.T) {
+	t.Parallel()
+
+	path := writeManifest(t, "agoraform.yaml", matomoGoalManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWith(streams, []string{"validate", "-f", path})
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	errOut := stderr.String()
+	if !strings.Contains(errOut, "unknown resource type") {
+		t.Fatalf("stderr = %q, want unknown resource type", errOut)
+	}
+	if strings.Contains(errOut, "unknown provider") {
+		t.Fatalf("stderr = %q, matomo should be registered", errOut)
+	}
+}
+
+func TestValidateWithFakeProvider(t *testing.T) {
+	t.Parallel()
+
+	reg := provider.NewRegistry()
+	if err := reg.Register(fake.New()); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", validManifest)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitOK, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "1 resource") {
+		t.Fatalf("stdout = %q, want 1 resource", stdout.String())
 	}
 }
 

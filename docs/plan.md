@@ -35,9 +35,10 @@ directory.
 through the registered provider. A remote miss (`provider.ErrNotFound`) is a
 create, not a failure.
 
-Until a production provider is registered with the CLI, `plan` cannot read
-live state for real vendor resources. Unit tests use the in-memory `fake`
-provider.
+The Matomo provider is registered with the CLI. Resource types such as
+`matomo.goal` are not implemented yet, so planning those addresses fails
+as an unknown resource type. Unit tests that need live state use the
+in-memory `fake` provider.
 
 ## Change model
 
