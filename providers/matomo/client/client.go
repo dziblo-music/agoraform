@@ -60,6 +60,7 @@ func (c Config) Validate() error {
 // Redacted returns a copy safe for diagnostics.
 func (c Config) Redacted() Config {
 	out := c
+	out.BaseURL = redactedBaseURL(out.BaseURL, out.TokenAuth)
 	if out.TokenAuth != "" {
 		out.TokenAuth = redacted
 	}
@@ -119,7 +120,8 @@ func (c *Client) CheckConnection(ctx context.Context) error {
 // Call invokes a Matomo API method using POST form parameters.
 //
 // token_auth is sent in the request body, never on the query string, so
-// transport errors that echo the URL cannot leak the token.
+// transport errors that echo the URL cannot leak the token. Reserved Matomo
+// request fields are owned by the client and cannot be overridden by callers.
 func (c *Client) Call(ctx context.Context, method string, params url.Values) (json.RawMessage, error) {
 	if c == nil {
 		return nil, fmt.Errorf("matomo: client is nil")
@@ -131,16 +133,11 @@ func (c *Client) Call(ctx context.Context, method string, params url.Values) (js
 		return nil, fmt.Errorf("matomo: API method is required")
 	}
 
-	form := url.Values{}
+	form := cloneValues(params)
 	form.Set("module", "API")
 	form.Set("method", method)
 	form.Set("format", "JSON")
 	form.Set("token_auth", c.cfg.TokenAuth)
-	for key, values := range params {
-		for _, value := range values {
-			form.Add(key, value)
-		}
-	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
@@ -240,6 +237,25 @@ func normalizeEndpoint(raw string) (string, error) {
 	}
 	u.Path = path
 	return u.String(), nil
+}
+
+func redactedBaseURL(raw string, secrets ...string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "[redacted-invalid-url]"
+	}
+
+	// User info, query parameters, and fragments are unnecessary for
+	// diagnostics and may contain credentials or other sensitive values.
+	u.User = nil
+	u.RawQuery = ""
+	u.Fragment = ""
+	return Redact(u.String(), secrets...)
 }
 
 func cloneValues(params url.Values) url.Values {
