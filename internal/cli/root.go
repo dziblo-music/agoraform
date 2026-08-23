@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/spf13/cobra"
 )
 
@@ -35,6 +36,16 @@ func (e usageError) Unwrap() error { return e.err }
 
 // NewRootCommand builds the root agoraform command and its subcommands.
 func NewRootCommand(streams IOStreams) *cobra.Command {
+	return NewRootCommandWithRegistry(streams, newProviderRegistry())
+}
+
+// NewRootCommandWithRegistry builds the root command with an explicit
+// provider registry. Tests use this to register the fake provider.
+func NewRootCommandWithRegistry(streams IOStreams, reg *provider.Registry) *cobra.Command {
+	if reg == nil {
+		reg = newProviderRegistry()
+	}
+
 	cmd := &cobra.Command{
 		Use:           "agoraform",
 		Short:         "Marketing Infrastructure as Code",
@@ -52,9 +63,8 @@ func NewRootCommand(streams IOStreams) *cobra.Command {
 		return usageError{err: err}
 	})
 
-	registry := newProviderRegistry()
-	cmd.AddCommand(newValidateCommand(registry))
-	cmd.AddCommand(newPlanCommand())
+	cmd.AddCommand(newValidateCommand(reg))
+	cmd.AddCommand(newPlanCommand(reg))
 	cmd.AddCommand(newApplyCommand())
 	cmd.AddCommand(newImportCommand())
 
@@ -68,10 +78,18 @@ func Execute() int {
 
 // ExecuteWith runs the CLI using the provided streams and args.
 func ExecuteWith(streams IOStreams, args []string) int {
-	cmd := NewRootCommand(streams)
+	return ExecuteWithRegistry(streams, args, newProviderRegistry())
+}
+
+// ExecuteWithRegistry runs the CLI with an explicit provider registry.
+func ExecuteWithRegistry(streams IOStreams, args []string, reg *provider.Registry) int {
+	cmd := NewRootCommandWithRegistry(streams, reg)
 	cmd.SetArgs(args)
 
 	if err := cmd.Execute(); err != nil {
+		if errors.Is(err, errPlanHasChanges) {
+			return ExitChanges
+		}
 		fmt.Fprintln(streams.ErrOut, "Error:", err)
 		if isUsageError(err) {
 			return ExitUsage

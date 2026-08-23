@@ -44,7 +44,7 @@ Initial provider targets include:
 
 ## Status
 
-Agoraform is currently in early development. The CLI can validate v0.1 YAML manifests. Provider integrations and reconciliation logic are still in progress.
+Agoraform is currently in early development. The CLI can validate v0.1 YAML manifests and produce a non-mutating plan against registered providers. Production provider integrations are still in progress.
 
 The project is being built from scratch as an open-source initiative, with an emphasis on:
 
@@ -92,15 +92,25 @@ go build -ldflags "-X github.com/dziblo-music/agoraform/internal/cli.Version=0.1
 
 `validate` loads a v0.1 YAML manifest (default `agoraform.yaml`), checks the schema, resource addresses, and duplicate logical names. See [docs/manifest.md](docs/manifest.md) for the document format.
 
-`plan`, `apply`, and `import` are registered and return a clear not-implemented error until their behavior is added.
+```bash
+./agoraform plan
+./agoraform plan -f path/to/manifest.yaml
+```
+
+`plan` reads live resources through registered providers, diffs them against the manifest, and prints a deterministic execution plan. It never mutates remote resources. See [docs/plan.md](docs/plan.md) for the change model, output, and safety rules.
+
+Until a production provider is registered with the CLI, `plan` reports that no providers are available. Tests use the in-memory `fake` provider.
+
+`apply` and `import` return a clear not-implemented error until their behavior is added.
 
 ### Exit codes
 
 | Code | Meaning |
 |------|---------|
-| `0` | Success |
-| `1` | Command failure (including not-implemented commands) |
-| `2` | Invalid usage (unknown command/flag or bad arguments) |
+| `0` | Success. For `plan`, succeeded and no changes are required |
+| `1` | Command failure (including unimplemented commands and failed planning) |
+| `2` | `plan` succeeded and changes are present |
+| `3` | Invalid usage (unknown command/flag or bad arguments) |
 
 ## Development
 

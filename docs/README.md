@@ -6,6 +6,7 @@ guides lives here.
 ## Contents
 
 - [Manifest format (v0.1)](manifest.md)
+- [Plan engine (v0.1)](plan.md)
 
 ## Local development
 
