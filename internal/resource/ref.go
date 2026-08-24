@@ -8,8 +8,9 @@ import (
 // Ref is an explicit reference to another logical resource address.
 //
 // Refs are configuration. They name a desired Agoraform resource, not a
-// provider-native identity. Providers resolve a Ref to a remote identity
-// at runtime; manifests must not embed those identities.
+// provider-native identity. Runtime provider/resource execution is responsible
+// for resolving any native identity needed from a Ref; manifests must not
+// embed those identities.
 type Ref struct {
 	Address Address
 }
