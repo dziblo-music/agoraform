@@ -103,7 +103,8 @@ Diagnostics include the referring resource, the attribute path, and the
 missing or cyclic addresses. Graph checks run during manifest load, before
 provider reads or mutations.
 
-Plans and generated import YAML keep logical addresses. Provider-native
+Plans keep logical resource addresses. Generated import YAML serializes a
+`resource.Ref` back into the same explicit `$ref` form. Provider-native
 identities will be resolved at runtime by provider/resource execution and
 belong in [local state](state.md), not in the manifest.
 
