@@ -38,6 +38,8 @@ archives:
       - NOTICE
       - README.md
       - CHANGELOG.md
+      - examples/agoraform.yaml
+      - examples/README.md
 
 checksum:
   name_template: checksums.txt
