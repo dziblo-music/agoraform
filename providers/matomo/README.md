@@ -82,9 +82,9 @@ For `patternType: exact`, `url`, `file`, and `external_website` patterns must
 start with `http://` or `https://`, matching Matomo's validation behavior.
 
 A missing unbound remote goal plans as a create. A changed supported field
-plans as an update. Goal deletion is out of scope. `agoraform apply` is not
-implemented yet; create and update exist on the provider contract for that
-follow-up.
+plans as an update. Goal deletion is out of scope. `agoraform apply`
+executes those planned creates and updates and persists Matomo's goal ID
+in local state.
 
 ## HTTP client
 

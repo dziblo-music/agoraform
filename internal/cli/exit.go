@@ -3,7 +3,8 @@ package cli
 // Exit codes used by the Agoraform CLI.
 const (
 	// ExitOK indicates successful completion. For plan, this means the
-	// plan succeeded and no changes are required.
+	// plan succeeded and no changes are required. For apply, this means
+	// planned mutations completed (including a zero-change apply).
 	ExitOK = 0
 
 	// ExitError indicates a general runtime or command failure,
