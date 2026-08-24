@@ -10,7 +10,8 @@ resources:
     attributes:
       title: Child
       meta:
-        primary: fake.widget.left
+        primary:
+          $ref: fake.widget.left
         extras:
           - plain-string
-          - fake.widget.right
+          - $ref: fake.widget.right
