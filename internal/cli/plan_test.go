@@ -132,7 +132,8 @@ resources:
   - address: fake.widget.banner
     attributes:
       title: Banner
-      parent: fake.widget.homepage
+      parent:
+        $ref: fake.widget.homepage
 `
 	reg := provider.NewRegistry()
 	if err := reg.Register(fake.New()); err != nil {
@@ -173,11 +174,13 @@ resources:
   - address: fake.widget.alpha
     attributes:
       title: Alpha
-      parent: fake.widget.beta
+      parent:
+        $ref: fake.widget.beta
   - address: fake.widget.beta
     attributes:
       title: Beta
-      parent: fake.widget.alpha
+      parent:
+        $ref: fake.widget.alpha
 `
 	path := writeManifest(t, "agoraform.yaml", cycle)
 	streams, _, stderr := testStreams()
