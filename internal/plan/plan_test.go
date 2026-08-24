@@ -218,7 +218,7 @@ func TestBuildRejectsMissingReferenceBeforeRead(t *testing.T) {
 	}
 	child := widget(t, "banner", resource.Attributes{
 		fake.AttrTitle:  "Banner",
-		fake.AttrParent: "fake.widget.missing",
+		fake.AttrParent: resource.Ref{Address: mustAddress(t, "fake.widget.missing")},
 	})
 
 	_, err := plan.Build(context.Background(), []resource.Resource{child}, lookup)
@@ -243,11 +243,11 @@ func TestBuildRejectsCycleBeforeRead(t *testing.T) {
 	}
 	a := widget(t, "alpha", resource.Attributes{
 		fake.AttrTitle:  "Alpha",
-		fake.AttrParent: "fake.widget.beta",
+		fake.AttrParent: resource.Ref{Address: mustAddress(t, "fake.widget.beta")},
 	})
 	b := widget(t, "beta", resource.Attributes{
 		fake.AttrTitle:  "Beta",
-		fake.AttrParent: "fake.widget.alpha",
+		fake.AttrParent: resource.Ref{Address: mustAddress(t, "fake.widget.alpha")},
 	})
 
 	_, err := plan.Build(context.Background(), []resource.Resource{a, b}, lookup)
