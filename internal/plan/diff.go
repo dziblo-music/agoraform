@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+
+	"github.com/dziblo-music/agoraform/internal/resource"
 )
 
 func diffAttributes(prefix string, before, after any) []AttributeDiff {
@@ -170,6 +172,12 @@ func valuesEqual(a, b any) bool {
 		return true
 	}
 
+	if ra, ok := resource.AsRef(a); ok {
+		if rb, ok := resource.AsRef(b); ok {
+			return ra.Address == rb.Address
+		}
+	}
+
 	return reflect.DeepEqual(a, b)
 }
 
@@ -262,6 +270,8 @@ func formatValue(v any) string {
 	switch x := v.(type) {
 	case string:
 		return strconv.Quote(x)
+	case resource.Ref:
+		return strconv.Quote(x.String())
 	case bool:
 		return strconv.FormatBool(x)
 	default:

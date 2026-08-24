@@ -123,6 +123,16 @@ func TestFakeProviderValidate(t *testing.T) {
 			},
 		},
 		{
+			name: "parent not a reference",
+			res: resource.Resource{
+				Address: mustAddress(t, "fake.widget.homepage"),
+				Attributes: resource.Attributes{
+					fake.AttrTitle:  "Homepage",
+					fake.AttrParent: "not-an-address",
+				},
+			},
+		},
+		{
 			name: "unknown type",
 			res: resource.Resource{
 				Address:    mustAddress(t, "fake.goal.trial_started"),
@@ -139,6 +149,30 @@ func TestFakeProviderValidate(t *testing.T) {
 				t.Fatal("Validate succeeded, want error")
 			}
 		})
+	}
+}
+
+func TestFakeProviderAcceptsParentReference(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	p := fake.New()
+	parent := resource.Resource{
+		Address:    mustAddress(t, "fake.widget.homepage"),
+		Attributes: resource.Attributes{fake.AttrTitle: "Homepage"},
+	}
+	child := resource.Resource{
+		Address: mustAddress(t, "fake.widget.banner"),
+		Attributes: resource.Attributes{
+			fake.AttrTitle:  "Banner",
+			fake.AttrParent: resource.Ref{Address: parent.Address},
+		},
+	}
+	if err := p.Validate(ctx, parent); err != nil {
+		t.Fatalf("Validate parent: %v", err)
+	}
+	if err := p.Validate(ctx, child); err != nil {
+		t.Fatalf("Validate child: %v", err)
 	}
 }
 

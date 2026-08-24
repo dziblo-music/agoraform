@@ -84,6 +84,30 @@ resources:
 	}
 }
 
+func TestRunYAMLEmitsLogicalReferenceNotIdentity(t *testing.T) {
+	t.Parallel()
+
+	p := fake.New()
+	parent := mustAddress(t, "fake.widget.homepage")
+	addr := mustAddress(t, "fake.widget.banner")
+	seedImported(t, p, addr, resource.Attributes{
+		fake.AttrTitle:  "Banner",
+		fake.AttrParent: resource.Ref{Address: parent},
+	}, nil)
+
+	st := mustStore(t)
+	got, err := importer.Run(context.Background(), addr, "widget-imported", lookupProvider(p), st)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !strings.Contains(got.YAML, "parent:\n        $ref: fake.widget.homepage") {
+		t.Fatalf("YAML missing explicit logical reference:\n%s", got.YAML)
+	}
+	if strings.Contains(got.YAML, "widget-imported") {
+		t.Fatalf("provider identity leaked into YAML:\n%s", got.YAML)
+	}
+}
+
 func TestRunYAMLIsDeterministic(t *testing.T) {
 	t.Parallel()
 

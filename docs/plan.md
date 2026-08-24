@@ -31,12 +31,20 @@ agoraform plan path/to/manifest.yaml
 If no path is given, Agoraform reads `agoraform.yaml` in the current
 directory.
 
-`plan` loads and validates the manifest, reads local identity state from
+`plan` loads and validates the manifest, including resource references and
+the dependency graph, reads local identity state from
 `agoraform.state.json` next to the manifest, then reads each desired
-resource through the registered provider. A remote miss
+resource through the registered provider. Missing references, self-references,
+and cycles fail before any remote read. A remote miss
 (`provider.ErrNotFound`) is a create when the resource is unbound. A
 persisted identity that is missing remotely is a stale-state error, not a
 create.
+
+Referenced resources participate in the same validation and planning as
+independent resources. Plan output uses logical resource addresses; it does
+not require provider-native IDs in configuration. Display order remains
+address order. Repeated plans against unchanged desired and live state stay
+stable.
 
 The Matomo provider is registered with the CLI. `matomo.goal` resources
 are planned against the configured Matomo site: a missing remote goal is

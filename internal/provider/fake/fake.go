@@ -26,6 +26,9 @@ const (
 	// AttrColor is an optional configurable widget color.
 	AttrColor = "color"
 
+	// AttrParent is an optional reference to another fake.widget resource.
+	AttrParent = "parent"
+
 	// AttrSerial is a computed (read-only) widget serial number.
 	AttrSerial = "serial"
 )
@@ -130,9 +133,18 @@ func (p *Provider) Validate(_ context.Context, res resource.Resource) error {
 			return fmt.Errorf("resource %s: attribute %q must be a string", res.Address, AttrColor)
 		}
 	}
+	if parent, exists := res.Attributes[AttrParent]; exists {
+		ref, ok := resource.AsRef(parent)
+		if !ok {
+			return fmt.Errorf("resource %s: attribute %q must be a resource reference", res.Address, AttrParent)
+		}
+		if ref.Address.Provider != Name || ref.Address.Type != TypeWidget {
+			return fmt.Errorf("resource %s: attribute %q must reference a %s.%s resource", res.Address, AttrParent, Name, TypeWidget)
+		}
+	}
 	for key := range res.Attributes {
 		switch key {
-		case AttrTitle, AttrColor:
+		case AttrTitle, AttrColor, AttrParent:
 		default:
 			return fmt.Errorf("resource %s: unknown attribute %q", res.Address, key)
 		}

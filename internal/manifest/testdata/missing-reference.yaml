@@ -1,0 +1,7 @@
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.banner
+    attributes:
+      title: Banner
+      parent:
+        $ref: fake.widget.missing

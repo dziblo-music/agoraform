@@ -1,0 +1,15 @@
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.root
+    attributes:
+      title: Root
+  - address: fake.widget.mid
+    attributes:
+      title: Mid
+      parent:
+        $ref: fake.widget.root
+  - address: fake.widget.leaf
+    attributes:
+      title: Leaf
+      parent:
+        $ref: fake.widget.mid
