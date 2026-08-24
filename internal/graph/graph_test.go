@@ -54,7 +54,7 @@ func TestBuildMultipleDependencies(t *testing.T) {
 	right := widget(t, "right", nil)
 	child := widget(t, "child", resource.Attributes{
 		"left":  resource.Ref{Address: left.Address},
-		"right": "fake.widget.right",
+		"right": resource.Ref{Address: right.Address},
 	})
 
 	g := mustBuild(t, []resource.Resource{child, right, left})
@@ -89,7 +89,7 @@ func TestBuildMissingReference(t *testing.T) {
 	t.Parallel()
 
 	child := widget(t, "banner", resource.Attributes{
-		"parent": "fake.widget.missing",
+		"parent": resource.Ref{Address: mustAddress(t, "fake.widget.missing")},
 	})
 	_, err := graph.Build([]resource.Resource{child})
 	if err == nil {
@@ -107,7 +107,7 @@ func TestBuildSelfReference(t *testing.T) {
 	t.Parallel()
 
 	res := widget(t, "loop", resource.Attributes{
-		"parent": "fake.widget.loop",
+		"parent": resource.Ref{Address: mustAddress(t, "fake.widget.loop")},
 	})
 	_, err := graph.Build([]resource.Resource{res})
 	if err == nil {
@@ -122,8 +122,12 @@ func TestBuildSelfReference(t *testing.T) {
 func TestBuildDependencyCycle(t *testing.T) {
 	t.Parallel()
 
-	a := widget(t, "alpha", resource.Attributes{"parent": "fake.widget.beta"})
-	b := widget(t, "beta", resource.Attributes{"parent": "fake.widget.alpha"})
+	a := widget(t, "alpha", resource.Attributes{
+		"parent": resource.Ref{Address: mustAddress(t, "fake.widget.beta")},
+	})
+	b := widget(t, "beta", resource.Attributes{
+		"parent": resource.Ref{Address: mustAddress(t, "fake.widget.alpha")},
+	})
 
 	_, err := graph.Build([]resource.Resource{a, b})
 	if err == nil {
@@ -163,7 +167,7 @@ func TestBuildDuplicateReferenceCollapsed(t *testing.T) {
 
 	parent := widget(t, "homepage", nil)
 	child := widget(t, "banner", resource.Attributes{
-		"parent": "fake.widget.homepage",
+		"parent": resource.Ref{Address: parent.Address},
 		"also":   resource.Ref{Address: parent.Address},
 	})
 
@@ -180,10 +184,10 @@ func TestBuildNestedReferences(t *testing.T) {
 	b := widget(t, "b", nil)
 	child := widget(t, "child", resource.Attributes{
 		"meta": map[string]any{
-			"primary": "fake.widget.a",
+			"primary": resource.Ref{Address: a.Address},
 			"list": []any{
 				"plain",
-				"fake.widget.b",
+				resource.Ref{Address: b.Address},
 			},
 		},
 	})
@@ -193,6 +197,18 @@ func TestBuildNestedReferences(t *testing.T) {
 	want := []string{"fake.widget.a", "fake.widget.b"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Dependencies = %v, want %v", got, want)
+	}
+}
+
+func TestBuildIgnoresAddressLookingStrings(t *testing.T) {
+	t.Parallel()
+
+	res := widget(t, "homepage", resource.Attributes{
+		"pattern": "checkout.step.complete",
+	})
+	g := mustBuild(t, []resource.Resource{res})
+	if deps := g.Dependencies(res.Address); deps != nil {
+		t.Fatalf("Dependencies(homepage) = %v, want nil", deps)
 	}
 }
 
