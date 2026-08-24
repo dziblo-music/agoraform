@@ -2,6 +2,7 @@
 /agoraform
 /agoraform.exe
 /bin/
+/dist/
 *.exe
 *.test
 *.out

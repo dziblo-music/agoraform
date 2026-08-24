@@ -106,8 +106,19 @@ Never commit API tokens, account secrets, or real customer data.
 
 ## Compatibility
 
-Agoraform currently uses pre-1.0 semantic versioning.
+Agoraform follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
+Git tags are `v` plus the SemVer identifier (`v0.1.0`). `agoraform --version`
+prints the identifier without the prefix (`0.1.0`).
 
-The manifest format and CLI may evolve while the project is in the `0.x`
-release series. Breaking changes should nevertheless be intentional and
-documented.
+Until 1.0.0, a MINOR bump in the `0.x` series may include breaking CLI or
+manifest changes. Those changes must still be intentional and documented in
+[CHANGELOG.md](CHANGELOG.md).
+
+## License
+
+Contributions are accepted under the [Apache License 2.0](LICENSE).
+
+## Releases
+
+See [docs/release.md](docs/release.md) for tagging, GitHub draft releases,
+and the manual install verification required before publishing.

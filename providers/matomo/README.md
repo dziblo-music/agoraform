@@ -16,8 +16,10 @@ environment:
 MATOMO_URL           required   Matomo base URL, for example https://matomo.example.com
 MATOMO_TOKEN_AUTH    required   API token
 MATOMO_SITE_ID       required for goals   analytics site id
-MATOMO_CONTAINER_ID  optional   default Tag Manager container id
 ```
+
+`MATOMO_CONTAINER_ID` exists in the client for future Tag Manager work. It is
+not used by `matomo.goal` and is not part of the 0.1.0 workflow.
 
 ### Precedence
 

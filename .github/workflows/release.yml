@@ -1,16 +1,20 @@
-name: CI
+name: Release
 
 on:
   push:
-    branches: [main]
-  pull_request:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+*"
 
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  test:
-    name: Go checks
+  verify:
+    name: Verify
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -39,21 +43,45 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-  release-config:
-    name: Release config
+      - name: Build and check injected version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          if [ "$version" = "$tag" ] || [ -z "$version" ]; then
+            echo "tag $tag is not a v-prefixed SemVer 2.0 tag"
+            exit 1
+          fi
+          go build -ldflags "-X github.com/dziblo-music/agoraform/internal/cli.Version=${version}" -o agoraform ./cmd/agoraform
+          got="$(./agoraform --version)"
+          if [ "$got" != "$version" ]; then
+            echo "agoraform --version printed '$got', want '$version'"
+            exit 1
+          fi
+          echo "agoraform --version=${got}"
+
+  release:
+    name: Release
+    needs: verify
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
-      - name: Check GoReleaser config
+      - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: check
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

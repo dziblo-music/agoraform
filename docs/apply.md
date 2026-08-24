@@ -1,4 +1,4 @@
-# Apply execution (v0.1)
+# Apply execution (0.1.0)
 
 `agoraform apply` turns a validated execution plan into remote creates and
 updates. It never diffs desired and live state itself: the [plan

@@ -5,12 +5,16 @@ guides lives here.
 
 ## Contents
 
-- [Manifest format (v0.1)](manifest.md)
-- [Plan engine (v0.1)](plan.md)
-- [Apply execution (v0.1)](apply.md)
-- [Import (v0.1)](import.md)
-- [Local state (v0.1)](state.md)
+- [Manifest format (0.1.0)](manifest.md)
+- [Plan engine (0.1.0)](plan.md)
+- [Apply execution (0.1.0)](apply.md)
+- [Import (0.1.0)](import.md)
+- [Local state (0.1.0)](state.md)
+- [Releasing](release.md)
 - [Matomo provider](../providers/matomo/README.md)
+
+The 0.1.0 product release manages `matomo.goal` only. Changelog:
+[CHANGELOG.md](../CHANGELOG.md).
 
 ## Local development
 
