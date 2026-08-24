@@ -100,8 +100,8 @@ func TestRunYAMLEmitsLogicalReferenceNotIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.Contains(got.YAML, "parent: fake.widget.homepage") {
-		t.Fatalf("YAML missing logical reference:\n%s", got.YAML)
+	if !strings.Contains(got.YAML, "parent:\n        $ref: fake.widget.homepage") {
+		t.Fatalf("YAML missing explicit logical reference:\n%s", got.YAML)
 	}
 	if strings.Contains(got.YAML, "widget-imported") {
 		t.Fatalf("provider identity leaked into YAML:\n%s", got.YAML)
