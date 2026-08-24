@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - "v[0-9]+.[0-9]+.[0-9]+*"
+      - "v*"
 
 permissions:
   contents: read
@@ -18,12 +18,37 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version-file: go.mod
+          go-version: "1.26.7"
+
+      - name: Validate release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          semver_regex='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?$'
+          if [[ ! "$tag" =~ $semver_regex ]]; then
+            echo "Tag '$tag' is not a valid v-prefixed SemVer 2.0 release tag."
+            echo "Expected examples: v0.1.0 or v0.2.0-rc.1"
+            exit 1
+          fi
+
+      - name: Verify tagged commit belongs to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
+            echo "Tagged commit $GITHUB_SHA is not reachable from the main branch."
+            echo "Release tags must point to commits that belong to main."
+            exit 1
+          fi
 
       - name: Check formatting
         run: |
@@ -44,14 +69,11 @@ jobs:
         run: go vet ./...
 
       - name: Build and check injected version
+        shell: bash
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
           version="${tag#v}"
-          if [ "$version" = "$tag" ] || [ -z "$version" ]; then
-            echo "tag $tag is not a v-prefixed SemVer 2.0 tag"
-            exit 1
-          fi
           go build -ldflags "-X github.com/dziblo-music/agoraform/internal/cli.Version=${version}" -o agoraform ./cmd/agoraform
           got="$(./agoraform --version)"
           if [ "$got" != "$version" ]; then
@@ -68,20 +90,20 @@ jobs:
       contents: write
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version-file: go.mod
+          go-version: "1.26.7"
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           distribution: goreleaser
-          version: "~> v2"
+          version: "v2.17.1"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
