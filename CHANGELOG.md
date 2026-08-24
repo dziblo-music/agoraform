@@ -15,6 +15,7 @@ prints the SemVer identifier without the prefix (`0.1.0`).
 - Explicit resource references using `$ref: provider.type.name` objects, while ordinary strings remain provider-owned values
 - A provider-neutral directed dependency graph with stable prerequisite-first ordering
 - Manifest load, `validate`, `plan`, and `apply` reject malformed or missing references, self-references, and dependency cycles before remote reads or mutations
+- `apply` executes creates and updates in dependency order and resolves provider-native identities and outputs for dependents at runtime
 - Plans and import YAML keep logical addresses; provider-native identities stay out of configuration
 
 ## [0.1.0] - 2026-08-24

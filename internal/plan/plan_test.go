@@ -30,6 +30,15 @@ func TestBuildUnchangedIdenticalState(t *testing.T) {
 	if len(got.Changes) != 1 || got.Changes[0].Action != plan.ActionUnchanged {
 		t.Fatalf("change = %+v, want unchanged", got.Changes)
 	}
+	if got.Changes[0].Computed[fake.AttrSerial] != 7 {
+		t.Fatalf("Computed = %+v, want serial 7 from live read", got.Changes[0].Computed)
+	}
+	if _, ok := got.Changes[0].Before[fake.AttrSerial]; ok {
+		t.Fatalf("Before leaked computed serial: %+v", got.Changes[0].Before)
+	}
+	if strings.Contains(plan.Format(got), "serial") {
+		t.Fatalf("Format leaked computed serial:\n%s", plan.Format(got))
+	}
 	assertNoMutations(t, p, 1)
 }
 
@@ -110,6 +119,12 @@ func TestBuildIgnoresComputedFieldDrift(t *testing.T) {
 	second := mustBuild(t, []resource.Resource{res}, p)
 	if second.HasChanges() {
 		t.Fatalf("computed serial drift produced a change: %+v", second.Changes)
+	}
+	if second.Changes[0].Computed[fake.AttrSerial] != 99 {
+		t.Fatalf("Computed = %+v, want refreshed serial 99", second.Changes[0].Computed)
+	}
+	if strings.Contains(plan.Format(second), "99") || strings.Contains(plan.Format(second), "serial") {
+		t.Fatalf("Format leaked computed serial:\n%s", plan.Format(second))
 	}
 	assertNoMutations(t, p, 2)
 }

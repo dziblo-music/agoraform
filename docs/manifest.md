@@ -104,9 +104,10 @@ missing or cyclic addresses. Graph checks run during manifest load, before
 provider reads or mutations.
 
 Plans keep logical resource addresses. Generated import YAML serializes a
-`resource.Ref` back into the same explicit `$ref` form. Provider-native
-identities will be resolved at runtime by provider/resource execution and
-belong in [local state](state.md), not in the manifest.
+`resource.Ref` back into the same explicit `$ref` form. Apply resolves
+provider-native identities and computed outputs at execution time and
+passes them to providers as runtime bindings. Those identities belong in
+[local state](state.md), not in the manifest.
 
 Matomo Tag Manager types such as `matomo.trigger` and `matomo.tag` are shown
 here as the intended reference syntax. They are not added as managed resource

@@ -34,6 +34,28 @@ func TestAttributesCloneIndependent(t *testing.T) {
 	}
 }
 
+func TestAttributesCloneResolvedIndependent(t *testing.T) {
+	t.Parallel()
+
+	orig := Attributes{
+		"parent": Resolved{
+			Address:  Address{Provider: "fake", Type: "widget", Name: "homepage"},
+			Identity: Identity{ID: "id-homepage"},
+			Outputs:  Attributes{"serial": 4},
+		},
+	}
+
+	cloned := orig.Clone()
+	resolved := cloned["parent"].(Resolved)
+	resolved.Outputs["serial"] = 9
+	cloned["parent"] = resolved
+
+	got := orig["parent"].(Resolved)
+	if got.Outputs["serial"] != 4 {
+		t.Fatalf("clone mutated original resolved outputs: %v", got.Outputs)
+	}
+}
+
 func TestAttributesCloneNil(t *testing.T) {
 	t.Parallel()
 

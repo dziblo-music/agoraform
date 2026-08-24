@@ -49,6 +49,68 @@ func WalkRefs(v any, fn func(path string, addr Address)) {
 	walkRefs(v, "", fn)
 }
 
+// MapRefs clones v, replacing each Ref with the value returned by fn.
+//
+// Map keys are visited in sorted order. The original value is not mutated.
+// When v is Attributes, the result is Attributes.
+func MapRefs(v any, fn func(path string, ref Ref) (any, error)) (any, error) {
+	if fn == nil {
+		return cloneValue(v), nil
+	}
+	return mapRefs(v, "", fn)
+}
+
+func mapRefs(v any, path string, fn func(path string, ref Ref) (any, error)) (any, error) {
+	if v == nil {
+		return nil, nil
+	}
+	if ref, ok := AsRef(v); ok {
+		return fn(path, ref)
+	}
+	switch x := v.(type) {
+	case Attributes:
+		m, err := mapRefMapValues(map[string]any(x), path, fn)
+		if err != nil {
+			return nil, err
+		}
+		return Attributes(m), nil
+	case map[string]any:
+		return mapRefMapValues(x, path, fn)
+	case []any:
+		out := make([]any, len(x))
+		for i, item := range x {
+			mapped, err := mapRefs(item, path+"["+strconv.Itoa(i)+"]", fn)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = mapped
+		}
+		return out, nil
+	default:
+		return cloneValue(v), nil
+	}
+}
+
+func mapRefMapValues(m map[string]any, prefix string, fn func(path string, ref Ref) (any, error)) (map[string]any, error) {
+	if m == nil {
+		return map[string]any{}, nil
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make(map[string]any, len(m))
+	for _, k := range keys {
+		mapped, err := mapRefs(m[k], joinRefPath(prefix, k), fn)
+		if err != nil {
+			return nil, err
+		}
+		out[k] = mapped
+	}
+	return out, nil
+}
+
 func walkRefs(v any, path string, fn func(path string, addr Address)) {
 	if v == nil {
 		return

@@ -1,7 +1,9 @@
 package resource
 
 import (
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -97,6 +99,116 @@ func TestRefStringAndZero(t *testing.T) {
 	}
 	if ref.String() != "fake.widget.homepage" {
 		t.Fatalf("String() = %q", ref.String())
+	}
+}
+
+func TestAsResolved(t *testing.T) {
+	t.Parallel()
+
+	addr := mustTestAddress(t, "matomo.trigger.trial_started")
+	got, ok := AsResolved(Resolved{
+		Address:  addr,
+		Identity: Identity{ID: "trigger-1"},
+		Outputs:  Attributes{"serial": 3},
+	})
+	if !ok || got.Address != addr || got.Identity.ID != "trigger-1" {
+		t.Fatalf("AsResolved(Resolved) = (%v, %v)", got, ok)
+	}
+	if got.String() != addr.String() {
+		t.Fatalf("Resolved.String() = %q, want logical address", got.String())
+	}
+
+	if _, ok := AsResolved(Ref{Address: addr}); ok {
+		t.Fatal("Ref should not be AsResolved")
+	}
+	if _, ok := AsResolved(Resolved{}); ok {
+		t.Fatal("zero Resolved should not be AsResolved")
+	}
+	if _, ok := AsResolved("widget-1"); ok {
+		t.Fatal("plain identity string should not be AsResolved")
+	}
+}
+
+func TestMapRefsReplacesNestedAndDoesNotMutate(t *testing.T) {
+	t.Parallel()
+
+	parent := mustTestAddress(t, "fake.widget.homepage")
+	other := mustTestAddress(t, "fake.widget.sidebar")
+	orig := Attributes{
+		"title":  "Banner",
+		"parent": Ref{Address: parent},
+		"meta": map[string]any{
+			"also": []any{Ref{Address: other}, "literal"},
+		},
+	}
+
+	mapped, err := MapRefs(orig, func(path string, ref Ref) (any, error) {
+		return Resolved{
+			Address:  ref.Address,
+			Identity: Identity{ID: "id-" + ref.Address.Name},
+			Outputs:  Attributes{"path": path},
+		}, nil
+	})
+	if err != nil {
+		t.Fatalf("MapRefs: %v", err)
+	}
+	attrs, ok := mapped.(Attributes)
+	if !ok {
+		t.Fatalf("MapRefs type = %T, want Attributes", mapped)
+	}
+
+	parentGot, ok := AsResolved(attrs["parent"])
+	if !ok || parentGot.Identity.ID != "id-homepage" {
+		t.Fatalf("parent = (%v, %v), want resolved homepage identity", parentGot, ok)
+	}
+	meta := attrs["meta"].(map[string]any)
+	also := meta["also"].([]any)
+	nested, ok := AsResolved(also[0])
+	if !ok || nested.Identity.ID != "id-sidebar" || nested.Outputs["path"] != "meta.also[0]" {
+		t.Fatalf("nested = (%v, %v)", nested, ok)
+	}
+	if also[1] != "literal" {
+		t.Fatalf("literal = %v, want unchanged", also[1])
+	}
+
+	if _, ok := AsResolved(orig["parent"]); ok {
+		t.Fatal("MapRefs mutated original parent")
+	}
+	origMeta := orig["meta"].(map[string]any)
+	origAlso := origMeta["also"].([]any)
+	if _, ok := AsRef(origAlso[0]); !ok {
+		t.Fatal("MapRefs mutated original nested ref")
+	}
+}
+
+func TestMapRefsErrorIncludesPath(t *testing.T) {
+	t.Parallel()
+
+	_, err := MapRefs(Attributes{
+		"parent": Ref{Address: mustTestAddress(t, "fake.widget.missing")},
+	}, func(path string, ref Ref) (any, error) {
+		return nil, fmt.Errorf("%s: missing %s", path, ref.Address)
+	})
+	if err == nil {
+		t.Fatal("MapRefs succeeded, want error")
+	}
+	if !strings.Contains(err.Error(), "parent") || !strings.Contains(err.Error(), "fake.widget.missing") {
+		t.Fatalf("error = %q, want path and address", err)
+	}
+}
+
+func TestMapRefsNilCallbackClones(t *testing.T) {
+	t.Parallel()
+
+	orig := Attributes{"title": "Homepage"}
+	mapped, err := MapRefs(orig, nil)
+	if err != nil {
+		t.Fatalf("MapRefs: %v", err)
+	}
+	attrs := mapped.(Attributes)
+	attrs["title"] = "Changed"
+	if orig["title"] != "Homepage" {
+		t.Fatal("nil-callback MapRefs mutated original")
 	}
 }
 
