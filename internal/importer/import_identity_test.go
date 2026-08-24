@@ -84,7 +84,7 @@ func (p *mismatchedImportProvider) Import(ctx context.Context, addr resource.Add
 	if p.identityID != "" {
 		live.Identity = resource.Identity{ID: p.identityID}
 	}
-	if p.address.String() != "" {
+	if !p.address.IsZero() {
 		live.Address = p.address
 	}
 	return live, nil
