@@ -3,4 +3,5 @@ resources:
   - address: fake.widget.loop
     attributes:
       title: Loop
-      parent: fake.widget.loop
+      parent:
+        $ref: fake.widget.loop
