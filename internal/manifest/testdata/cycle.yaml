@@ -3,8 +3,10 @@ resources:
   - address: fake.widget.alpha
     attributes:
       title: Alpha
-      parent: fake.widget.beta
+      parent:
+        $ref: fake.widget.beta
   - address: fake.widget.beta
     attributes:
       title: Beta
-      parent: fake.widget.alpha
+      parent:
+        $ref: fake.widget.alpha
