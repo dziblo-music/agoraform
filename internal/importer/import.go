@@ -81,6 +81,12 @@ func Run(ctx context.Context, addr resource.Address, remoteID string, lookup Loo
 	if live.Identity.IsZero() {
 		return Result{}, fmt.Errorf("import %s: provider returned no identity", addr)
 	}
+	if live.Identity.ID != remoteID {
+		return Result{}, fmt.Errorf("import %s: provider returned identity %q for requested remote identity %q; refusing to bind a different remote resource", addr, live.Identity.ID, remoteID)
+	}
+	if live.Address != addr {
+		return Result{}, fmt.Errorf("import %s: provider returned logical address %s for requested address %s; refusing to bind a different resource", addr, live.Address, addr)
+	}
 
 	desired := resource.Resource{
 		Address:    addr,
@@ -95,13 +101,13 @@ func Run(ctx context.Context, addr resource.Address, remoteID string, lookup Loo
 		return Result{}, fmt.Errorf("import %s: cannot encode configuration: %w", addr, err)
 	}
 
-	if err := st.RecordImport(addr, live.Identity.ID); err != nil {
+	if err := st.RecordImport(addr, remoteID); err != nil {
 		return Result{}, fmt.Errorf("import %s: could not persist identity: %w", addr, err)
 	}
 
 	return Result{
 		Address:  addr,
-		Identity: live.Identity,
+		Identity: resource.Identity{ID: remoteID},
 		YAML:     yamlText,
 	}, nil
 }
