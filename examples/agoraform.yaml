@@ -8,4 +8,5 @@ resources:
   - address: matomo.goal.trial_started
     attributes:
       name: Trial Started
-      event: trialStarted
+      matchAttribute: event_action
+      pattern: trialStarted

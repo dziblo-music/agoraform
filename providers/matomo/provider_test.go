@@ -31,16 +31,16 @@ func TestProviderRegisterAndLookup(t *testing.T) {
 	if got.Name() != matomo.Name {
 		t.Fatalf("Name = %q", got.Name())
 	}
-	if len(got.ResourceTypes()) != 0 {
-		t.Fatalf("ResourceTypes = %v, want none until resource issues land", got.ResourceTypes())
+	if !provider.Supports(got, matomo.TypeGoal) {
+		t.Fatal("matomo.goal must be registered")
 	}
 
 	addr, err := resource.ParseAddress("matomo.goal.trial_started")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := reg.LookupFor(addr); err == nil {
-		t.Fatal("LookupFor goal succeeded; goal is not implemented")
+	if _, err := reg.LookupFor(addr); err != nil {
+		t.Fatalf("LookupFor goal: %v", err)
 	}
 }
 
@@ -102,7 +102,7 @@ func TestProviderValidateUnknownType(t *testing.T) {
 	t.Parallel()
 
 	p := matomo.New(client.Config{BaseURL: "https://matomo.example.com", TokenAuth: providerToken})
-	addr, err := resource.ParseAddress("matomo.goal.trial_started")
+	addr, err := resource.ParseAddress("matomo.tag.pageview")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestProviderLifecycleNotImplemented(t *testing.T) {
 	t.Parallel()
 
 	p := matomo.New(client.Config{BaseURL: "https://matomo.example.com", TokenAuth: providerToken})
-	addr, err := resource.ParseAddress("matomo.goal.trial_started")
+	addr, err := resource.ParseAddress("matomo.tag.pageview")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,14 +157,13 @@ func TestCheckProvidersInvokesConnectionChecker(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// ConnectionChecker is only invoked after a supported type resolves.
-	// With no resource types, LookupFor fails first.
+	// ConnectionChecker runs after a supported type resolves.
 	addr, err := resource.ParseAddress("matomo.goal.trial_started")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := reg.LookupFor(addr); err == nil {
-		t.Fatal("expected unknown type")
+	if _, err := reg.LookupFor(addr); err != nil {
+		t.Fatalf("LookupFor goal: %v", err)
 	}
 }
 

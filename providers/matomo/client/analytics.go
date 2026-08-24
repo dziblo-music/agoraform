@@ -10,8 +10,8 @@ import (
 
 // Analytics is the Matomo analytics and management API surface.
 //
-// Later resources (for example goals) should call through this helper
-// rather than constructing raw HTTP requests.
+// Goal resources call through this helper rather than constructing raw
+// HTTP requests.
 type Analytics struct {
 	c *Client
 }

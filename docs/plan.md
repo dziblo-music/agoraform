@@ -35,10 +35,12 @@ directory.
 through the registered provider. A remote miss (`provider.ErrNotFound`) is a
 create, not a failure.
 
-The Matomo provider is registered with the CLI. Resource types such as
-`matomo.goal` are not implemented yet, so planning those addresses fails
-as an unknown resource type. Unit tests that need live state use the
-in-memory `fake` provider.
+The Matomo provider is registered with the CLI. `matomo.goal` resources
+are planned against the configured Matomo site: a missing remote goal is
+a create, a changed supported field is an update, and an equivalent
+remote goal (including omitted defaults and computed fields such as
+`idgoal`) is unchanged. Unit tests that need a generic resource
+lifecycle use the in-memory `fake` provider.
 
 ## Change model
 

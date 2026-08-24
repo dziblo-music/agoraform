@@ -39,7 +39,7 @@ func TestPlanNoRegisteredProviders(t *testing.T) {
 	}
 }
 
-func TestPlanMatomoGoalTypeNotImplemented(t *testing.T) {
+func TestPlanMatomoGoalMissingCredentials(t *testing.T) {
 	t.Parallel()
 
 	path := writeManifest(t, "agoraform.yaml", matomoGoalManifest)
@@ -48,8 +48,63 @@ func TestPlanMatomoGoalTypeNotImplemented(t *testing.T) {
 	if code != cli.ExitError {
 		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "unknown resource type") {
-		t.Fatalf("stderr = %q, want unknown resource type", stderr.String())
+	if strings.Contains(stderr.String(), "unknown resource type") {
+		t.Fatalf("stderr = %q, matomo.goal should be registered", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "MATOMO_URL") && !strings.Contains(stderr.String(), "required") {
+		t.Fatalf("stderr = %q, want missing credential error", stderr.String())
+	}
+}
+
+func TestPlanMatomoGoalCreate(t *testing.T) {
+	t.Parallel()
+
+	p, _ := matomoGoalTestProvider(t, `[]`)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", matomoGoalManifest)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"plan", "-f", path}, reg)
+	if code != cli.ExitChanges {
+		t.Fatalf("exit code = %d, want %d; stderr=%q stdout=%q", code, cli.ExitChanges, stderr.String(), stdout.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "+ matomo.goal.trial_started") {
+		t.Fatalf("stdout missing create:\n%s", out)
+	}
+}
+
+func TestPlanMatomoGoalNoChanges(t *testing.T) {
+	t.Parallel()
+
+	live := `{
+		"1": {
+			"idgoal": "1",
+			"idsite": "3",
+			"name": "Trial Started",
+			"match_attribute": "event_action",
+			"pattern": "trialStarted",
+			"pattern_type": "contains",
+			"revenue": "0"
+		}
+	}`
+	p, _ := matomoGoalTestProvider(t, live)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", matomoGoalManifest)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"plan", "-f", path}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("exit code = %d, want %d; stderr=%q stdout=%q", code, cli.ExitOK, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "No changes.") {
+		t.Fatalf("stdout = %q, want no-change plan", stdout.String())
 	}
 }
 

@@ -19,9 +19,8 @@ const (
 
 // Provider is the Agoraform Matomo provider.
 //
-// Resource CRUD is intentionally unimplemented in this foundation. The
-// provider exists so the CLI can register Matomo, load credentials, and
-// share a single HTTP client with later resource types.
+// It registers the v0.1 matomo.goal resource type and shares a single
+// HTTP client with later Tag Manager resource types.
 type Provider struct {
 	cfg    Config
 	once   sync.Once
@@ -32,6 +31,7 @@ type Provider struct {
 var (
 	_ provider.Provider          = (*Provider)(nil)
 	_ provider.ConnectionChecker = (*Provider)(nil)
+	_ provider.Normalizer        = (*Provider)(nil)
 )
 
 // New returns a Matomo provider using cfg.
@@ -64,10 +64,7 @@ func NewWithHTTPClient(cfg Config, httpClient *http.Client) *Provider {
 func (p *Provider) Name() string { return Name }
 
 // ResourceTypes implements provider.Provider.
-//
-// v0.1 resource types (goal, Tag Manager objects) are registered in
-// follow-up issues once their CRUD is implemented.
-func (p *Provider) ResourceTypes() []string { return nil }
+func (p *Provider) ResourceTypes() []string { return []string{TypeGoal} }
 
 // Client returns the reusable Matomo HTTP client, creating it on first use.
 func (p *Provider) Client() (*client.Client, error) {
@@ -103,27 +100,61 @@ func (p *Provider) Validate(_ context.Context, res resource.Resource) error {
 	if !provider.Supports(p, res.Address.Type) {
 		return fmt.Errorf("resource %s: unknown type %q for provider %q", res.Address, res.Address.Type, Name)
 	}
-	return nil
+	switch res.Address.Type {
+	case TypeGoal:
+		return p.validateGoal(res)
+	default:
+		return nil
+	}
 }
 
 // Read implements provider.Provider.
-func (p *Provider) Read(_ context.Context, res resource.Resource) (resource.RemoteResource, error) {
-	return resource.RemoteResource{}, notImplemented("read", res.Address)
+func (p *Provider) Read(ctx context.Context, res resource.Resource) (resource.RemoteResource, error) {
+	switch res.Address.Type {
+	case TypeGoal:
+		return p.readGoal(ctx, res)
+	default:
+		return resource.RemoteResource{}, notImplemented("read", res.Address)
+	}
 }
 
 // Create implements provider.Provider.
-func (p *Provider) Create(_ context.Context, res resource.Resource) (resource.RemoteResource, error) {
-	return resource.RemoteResource{}, notImplemented("create", res.Address)
+func (p *Provider) Create(ctx context.Context, res resource.Resource) (resource.RemoteResource, error) {
+	switch res.Address.Type {
+	case TypeGoal:
+		return p.createGoal(ctx, res)
+	default:
+		return resource.RemoteResource{}, notImplemented("create", res.Address)
+	}
 }
 
 // Update implements provider.Provider.
-func (p *Provider) Update(_ context.Context, desired resource.Resource, _ resource.RemoteResource) (resource.RemoteResource, error) {
-	return resource.RemoteResource{}, notImplemented("update", desired.Address)
+func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual resource.RemoteResource) (resource.RemoteResource, error) {
+	switch desired.Address.Type {
+	case TypeGoal:
+		return p.updateGoal(ctx, desired, actual)
+	default:
+		return resource.RemoteResource{}, notImplemented("update", desired.Address)
+	}
 }
 
 // Import implements provider.Provider.
 func (p *Provider) Import(_ context.Context, addr resource.Address, _ string) (resource.RemoteResource, error) {
 	return resource.RemoteResource{}, notImplemented("import", addr)
+}
+
+// NormalizeComparable implements provider.Normalizer.
+func (p *Provider) NormalizeComparable(desired resource.Resource, live *resource.RemoteResource) (resource.Attributes, resource.Attributes, error) {
+	switch desired.Address.Type {
+	case TypeGoal:
+		return p.normalizeGoalComparable(desired, live)
+	default:
+		want := desired.Attributes.Clone()
+		if live == nil {
+			return want, nil, nil
+		}
+		return want, live.Attributes.Clone(), nil
+	}
 }
 
 func notImplemented(op string, addr resource.Address) error {

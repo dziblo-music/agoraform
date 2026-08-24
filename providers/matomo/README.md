@@ -1,12 +1,11 @@
 # Matomo provider
 
-The Matomo provider is Agoraform's first production provider. This package
-is the foundation: configuration, authentication, a reusable HTTP client,
-and registration with the core provider contract.
+The Matomo provider is Agoraform's first production provider. It loads
+credentials from the environment, talks to Matomo through
+`providers/matomo/client`, and manages the v0.1 `matomo.goal` resource.
 
-Resource types such as goals and Tag Manager objects are implemented in
-follow-up issues. They should call through `providers/matomo/client`
-instead of issuing raw HTTP requests.
+Tag Manager variables, triggers, tags, and versions are out of scope for
+v0.1.
 
 ## Configuration
 
@@ -16,7 +15,7 @@ environment:
 ```text
 MATOMO_URL           required   Matomo base URL, for example https://matomo.example.com
 MATOMO_TOKEN_AUTH    required   API token
-MATOMO_SITE_ID       optional   default analytics site id
+MATOMO_SITE_ID       required for goals   analytics site id
 MATOMO_CONTAINER_ID  optional   default Tag Manager container id
 ```
 
@@ -29,6 +28,39 @@ MATOMO_CONTAINER_ID  optional   default Tag Manager container id
 There is no manifest or Git-tracked file source for tokens. Do not put
 `token_auth` in `MATOMO_URL`.
 
+## Resources
+
+### `matomo.goal`
+
+Declares a Matomo analytics goal. Example:
+
+```yaml
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: matomo.goal.trial_started
+    attributes:
+      name: Trial Started
+      matchAttribute: event_action
+      pattern: trialStarted
+```
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `name` | yes | Goal name. Agoraform locates the remote goal by this name. Names must be unique on the site. |
+| `matchAttribute` | yes | `url`, `title`, `file`, `external_website`, `manually`, `visit_duration`, `visit_total_actions`, `visit_total_pageviews`, `event_action`, `event_category`, or `event_name`. |
+| `pattern` | unless `manually` | Value to match. |
+| `patternType` | no | `contains` (default), `exact`, or `regex`. Numeric match attributes default to `greater_than`. |
+
+`idgoal` is the provider-native identity. It is stored on the live
+resource after read/create/update and is not set in configuration.
+Other Matomo Goal API fields (`description`, `revenue`,
+`caseSensitive`, and similar) are not managed in v0.1.
+
+A missing remote goal plans as a create. A changed supported field
+plans as an update. Goal deletion is out of scope. `agoraform apply`
+is not implemented yet; create and update exist on the provider
+contract for that follow-up.
+
 ## HTTP client
 
 `providers/matomo/client` provides:
@@ -39,10 +71,11 @@ There is no manifest or Git-tracked file source for tokens. Do not put
 - a 30s default timeout
 - JSON decoding and Matomo `{"result":"error"}` mapping
 - secret redaction in returned errors
+- Goals helpers: `GetGoals`, `AddGoal`, `UpdateGoal`
 
 Two API surfaces share that client:
 
-- `Client.Analytics()` — analytics and management methods
+- `Client.Analytics()` — analytics and management methods, including goals
 - `Client.TagManager()` — Tag Manager methods (`TagManager.*`)
 
 `CheckConnection` calls the non-mutating `API.getMatomoVersion` method.
@@ -50,12 +83,9 @@ Two API surfaces share that client:
 ## CLI
 
 The CLI composition root registers the Matomo provider. Manifests may
-use the `matomo` address prefix. Until a resource type is implemented,
-`agoraform validate` and `agoraform plan` report an unknown resource
-type for addresses such as `matomo.goal.trial_started`.
-
-When a supported Matomo resource type is resolved, `validate` and `plan`
-call `CheckConnection` once before resource-specific validation.
+use addresses such as `matomo.goal.trial_started`. `validate` and `plan`
+call `CheckConnection` once after the provider and resource type resolve,
+then validate goal attributes and (for `plan`) read live goals.
 
 ## Safety
 
