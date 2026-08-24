@@ -1,4 +1,4 @@
-# Manifest format (0.1.0)
+# Manifest format (`v1alpha1`)
 
 Agoraform configuration is a versioned YAML document that lists desired
 marketing-infrastructure resources by logical address.
@@ -15,8 +15,8 @@ resources:
       pattern: trialStarted
 ```
 
-The v0.1 schema is intentionally small. It describes desired resources only.
-Provider credentials, modules, and expressions are out of scope.
+The `v1alpha1` schema is intentionally small. It describes desired resources
+only. Provider credentials, modules, and expressions are out of scope.
 
 | Field | Required | Description |
 | --- | --- | --- |
@@ -56,9 +56,9 @@ round-trip.
 
 ## Resource references
 
-An attribute value that is a well-formed logical resource address is a
-reference to that resource. References are explicit configuration: they name
-another desired resource, not a provider-native id.
+References are explicit attribute values using a single-key `$ref` mapping.
+The `$ref` value is the full logical `provider.type.name` address of another
+desired resource, never a provider-native id.
 
 ```yaml
 apiVersion: agoraform.io/v1alpha1
@@ -71,17 +71,25 @@ resources:
   - address: matomo.tag.trial_started
     attributes:
       type: matomoAnalytics
-      trigger: matomo.trigger.trial_started
+      trigger:
+        $ref: matomo.trigger.trial_started
 ```
 
+A reference object must contain exactly one key, `$ref`, whose value must be a
+valid logical resource address. References can appear in nested maps and lists.
 There is no expression language, interpolation, or attribute path selection.
-A reference is the full `provider.type.name` address, including in nested maps
-and lists. Strings that are not valid addresses stay ordinary attribute
-values, so existing v0.1.0 fields such as `pattern: trialStarted` are
-unchanged.
 
-Agoraform walks references and builds a directed dependency graph. A resource
-that references another depends on it. Equivalent graphs have a stable
+Plain strings always remain plain provider-owned values, even when they happen
+to look like a logical resource address. For example, this is a literal string,
+not a dependency:
+
+```yaml
+attributes:
+  pattern: checkout.step.complete
+```
+
+Agoraform walks explicit references and builds a directed dependency graph. A
+resource that references another depends on it. Equivalent graphs have a stable
 prerequisite-first order; unrelated resources keep address order as the
 tie-breaker.
 
@@ -95,20 +103,21 @@ Diagnostics include the referring resource, the attribute path, and the
 missing or cyclic addresses. Graph checks run during manifest load, before
 provider reads or mutations.
 
-Plans and generated import YAML keep logical addresses. Providers resolve a
-reference to a remote identity at runtime; that identity belongs in
-[local state](state.md), not in the manifest.
+Plans and generated import YAML keep logical addresses. Provider-native
+identities will be resolved at runtime by provider/resource execution and
+belong in [local state](state.md), not in the manifest.
 
 Matomo Tag Manager types such as `matomo.trigger` and `matomo.tag` are shown
-here as the intended reference syntax. They are not managed resources in
-0.1.0; unknown types still fail provider validation when that provider is
-registered.
+here as the intended reference syntax. They are not added as managed resource
+types by this change; unknown types still fail provider validation when that
+provider is registered.
 
 ## Attributes
 
-`attributes` is a YAML mapping of configurable provider fields. The core
-treats values as opaque and providers own their schemas. Provider-native
-identities are stored in [local state](state.md), not in the manifest.
+`attributes` is a YAML mapping of configurable provider fields. Except for the
+explicit `$ref` form described above, the core treats attribute values as opaque
+and providers own their schemas. Provider-native identities are stored in
+[local state](state.md), not in the manifest.
 
 Computed (read-only) fields belong to the live/remote resource a provider
 returns and must not be copied into configuration as mutable attributes.
@@ -170,7 +179,7 @@ directory.
 - unsupported or missing `apiVersion`
 - missing resource addresses
 - invalid or duplicate addresses
-- missing resource references, self-references, and dependency cycles
+- malformed or missing resource references, self-references, and dependency cycles
 - unknown providers or resource types, when a provider is registered
 - provider-specific required-field failures, when a provider is registered
 
