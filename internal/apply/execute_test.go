@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -95,6 +96,166 @@ func TestRunUpdateRetainsIdentity(t *testing.T) {
 	}
 	if !strings.Contains(got, "Apply complete! 0 created, 1 updated.") {
 		t.Fatalf("summary missing:\n%s", got)
+	}
+}
+
+const liveETag = "live-etag"
+
+func TestExecuteUpdatePassesFullLiveResourceFromRead(t *testing.T) {
+	t.Parallel()
+
+	inner := fake.New()
+	live := widget(t, "homepage", resource.Attributes{fake.AttrTitle: "Homepage"})
+	if err := inner.Seed(resource.RemoteResource{
+		Address:    live.Address,
+		Identity:   resource.Identity{ID: "id-homepage"},
+		Attributes: live.Attributes.Clone(),
+		Computed: resource.Attributes{
+			fake.AttrSerial: 9,
+			"etag":          liveETag,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	p := &computedAwareProvider{Provider: inner}
+
+	desired := widget(t, "homepage", resource.Attributes{
+		fake.AttrTitle: "Homepage",
+		fake.AttrColor: "blue",
+	})
+	st := mustStore(t)
+	planned := updatePlan(desired, live.Attributes, "id-homepage")
+
+	var out bytes.Buffer
+	result, err := apply.Execute(context.Background(), planned, []resource.Resource{desired}, lookupProvider(p), st, &out)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if result.Updated != 1 {
+		t.Fatalf("result = %+v, want 1 updated", result)
+	}
+	if p.updates != 1 {
+		t.Fatalf("updates = %d, want 1", p.updates)
+	}
+	if p.lastActual.Computed["etag"] != liveETag {
+		t.Fatalf("Update actual.Computed = %+v, want etag %q from Read", p.lastActual.Computed, liveETag)
+	}
+	if p.lastRead.Identity.ID != "id-homepage" {
+		t.Fatalf("pre-update Read identity = %q, want id-homepage", p.lastRead.Identity.ID)
+	}
+	if !strings.Contains(out.String(), "fake.widget.homepage: updated") {
+		t.Fatalf("output missing updated progress:\n%s", out.String())
+	}
+
+	id, ok, err := st.Identity(desired.Address)
+	if err != nil || !ok || id.ID != "id-homepage" {
+		t.Fatalf("Identity = (%v,%v,%v), want id-homepage", id, ok, err)
+	}
+}
+
+func TestExecuteUpdateReadFailureDoesNotUpdate(t *testing.T) {
+	t.Parallel()
+
+	inner := fake.New()
+	live := widget(t, "homepage", resource.Attributes{fake.AttrTitle: "Homepage"})
+	seed(t, inner, live, resource.Attributes{fake.AttrSerial: 1})
+	p := &scriptedProvider{Provider: inner, readErr: errors.New("remote read failed")}
+	st := mustStore(t)
+	if err := st.Bind(live.Address, resource.Identity{ID: "id-homepage"}); err != nil {
+		t.Fatal(err)
+	}
+
+	desired := widget(t, "homepage", resource.Attributes{
+		fake.AttrTitle: "Homepage",
+		fake.AttrColor: "red",
+	})
+	_, err := apply.Execute(context.Background(), updatePlan(desired, live.Attributes, "id-homepage"), []resource.Resource{desired}, lookupProvider(p), st, ioDiscard())
+	if err == nil {
+		t.Fatal("Execute succeeded, want pre-update read failure")
+	}
+	if !strings.Contains(err.Error(), "fake.widget.homepage") || !strings.Contains(err.Error(), "update") {
+		t.Fatalf("error = %q, want address and update", err)
+	}
+	if !strings.Contains(err.Error(), "read live resource") || !strings.Contains(err.Error(), "remote read failed") {
+		t.Fatalf("error = %q, want read failure diagnostic", err)
+	}
+	if p.updates != 0 {
+		t.Fatalf("updates = %d, want 0", p.updates)
+	}
+	_, _, updates, _ := inner.Calls()
+	if updates != 0 {
+		t.Fatalf("inner updates = %d, want 0", updates)
+	}
+	id, ok, identErr := st.Identity(desired.Address)
+	if identErr != nil || !ok || id.ID != "id-homepage" {
+		t.Fatalf("Identity = (%v,%v,%v), want unchanged binding", id, ok, identErr)
+	}
+}
+
+func TestExecuteUpdateReadWrongIdentityDoesNotUpdate(t *testing.T) {
+	t.Parallel()
+
+	inner := fake.New()
+	live := widget(t, "homepage", resource.Attributes{fake.AttrTitle: "Homepage"})
+	seed(t, inner, live, resource.Attributes{fake.AttrSerial: 1})
+	p := &scriptedProvider{Provider: inner, readIdentity: resource.Identity{ID: "other-id"}}
+	st := mustStore(t)
+	if err := st.Bind(live.Address, resource.Identity{ID: "id-homepage"}); err != nil {
+		t.Fatal(err)
+	}
+
+	desired := widget(t, "homepage", resource.Attributes{
+		fake.AttrTitle: "Homepage",
+		fake.AttrColor: "red",
+	})
+	_, err := apply.Execute(context.Background(), updatePlan(desired, live.Attributes, "id-homepage"), []resource.Resource{desired}, lookupProvider(p), st, ioDiscard())
+	if err == nil {
+		t.Fatal("Execute succeeded, want identity mismatch")
+	}
+	if !strings.Contains(err.Error(), "refusing to rebind") || !strings.Contains(err.Error(), "other-id") {
+		t.Fatalf("error = %q, want rebind refusal", err)
+	}
+	if p.updates != 0 {
+		t.Fatalf("updates = %d, want 0", p.updates)
+	}
+	id, ok, identErr := st.Identity(desired.Address)
+	if identErr != nil || !ok || id.ID != "id-homepage" {
+		t.Fatalf("Identity = (%v,%v,%v), want unchanged binding", id, ok, identErr)
+	}
+}
+
+func TestExecuteUpdateReadEmptyIdentityDoesNotUpdate(t *testing.T) {
+	t.Parallel()
+
+	inner := fake.New()
+	live := widget(t, "homepage", resource.Attributes{fake.AttrTitle: "Homepage"})
+	seed(t, inner, live, resource.Attributes{fake.AttrSerial: 1})
+	p := &scriptedProvider{Provider: inner, stripReadIdentity: true}
+	st := mustStore(t)
+	if err := st.Bind(live.Address, resource.Identity{ID: "id-homepage"}); err != nil {
+		t.Fatal(err)
+	}
+
+	desired := widget(t, "homepage", resource.Attributes{
+		fake.AttrTitle: "Homepage",
+		fake.AttrColor: "red",
+	})
+	_, err := apply.Execute(context.Background(), updatePlan(desired, live.Attributes, "id-homepage"), []resource.Resource{desired}, lookupProvider(p), st, ioDiscard())
+	if err == nil {
+		t.Fatal("Execute succeeded, want empty identity")
+	}
+	if !strings.Contains(err.Error(), "fake.widget.homepage") || !strings.Contains(err.Error(), "update") {
+		t.Fatalf("error = %q, want address and update", err)
+	}
+	if !strings.Contains(err.Error(), "read returned no identity") {
+		t.Fatalf("error = %q, want empty identity diagnostic", err)
+	}
+	if p.updates != 0 {
+		t.Fatalf("updates = %d, want 0", p.updates)
+	}
+	id, ok, identErr := st.Identity(desired.Address)
+	if identErr != nil || !ok || id.ID != "id-homepage" {
+		t.Fatalf("Identity = (%v,%v,%v), want unchanged binding", id, ok, identErr)
 	}
 }
 
@@ -534,6 +695,20 @@ func lookupProvider(p provider.Provider) apply.Lookup {
 	}
 }
 
+func updatePlan(desired resource.Resource, before resource.Attributes, identity string) *plan.Plan {
+	return &plan.Plan{
+		Changes: []plan.Change{
+			{
+				Address:  desired.Address,
+				Action:   plan.ActionUpdate,
+				Identity: resource.Identity{ID: identity},
+				Before:   before.Clone(),
+				After:    desired.Attributes.Clone(),
+			},
+		},
+	}
+}
+
 func mustStore(t *testing.T) *state.Store {
 	t.Helper()
 	st, err := state.New(filepath.Join(t.TempDir(), state.DefaultFilename))
@@ -601,8 +776,12 @@ type scriptedProvider struct {
 	provider.Provider
 	createErr           error
 	updateErr           error
+	readErr             error
 	stripCreateIdentity bool
+	stripReadIdentity   bool
+	readIdentity        resource.Identity
 	updateIdentity      resource.Identity
+	updates             int
 }
 
 func (p *scriptedProvider) Create(ctx context.Context, res resource.Resource) (resource.RemoteResource, error) {
@@ -619,7 +798,25 @@ func (p *scriptedProvider) Create(ctx context.Context, res resource.Resource) (r
 	return live, nil
 }
 
+func (p *scriptedProvider) Read(ctx context.Context, res resource.Resource) (resource.RemoteResource, error) {
+	if p.readErr != nil {
+		return resource.RemoteResource{}, p.readErr
+	}
+	live, err := p.Provider.Read(ctx, res)
+	if err != nil {
+		return resource.RemoteResource{}, err
+	}
+	if p.stripReadIdentity {
+		live.Identity = resource.Identity{}
+	}
+	if !p.readIdentity.IsZero() {
+		live.Identity = p.readIdentity
+	}
+	return live, nil
+}
+
 func (p *scriptedProvider) Update(ctx context.Context, desired resource.Resource, actual resource.RemoteResource) (resource.RemoteResource, error) {
+	p.updates++
 	if p.updateErr != nil {
 		return resource.RemoteResource{}, p.updateErr
 	}
@@ -631,6 +828,30 @@ func (p *scriptedProvider) Update(ctx context.Context, desired resource.Resource
 		live.Identity = p.updateIdentity
 	}
 	return live, nil
+}
+
+type computedAwareProvider struct {
+	provider.Provider
+	updates    int
+	lastRead   resource.Resource
+	lastActual resource.RemoteResource
+}
+
+func (p *computedAwareProvider) Read(ctx context.Context, res resource.Resource) (resource.RemoteResource, error) {
+	p.lastRead = res
+	return p.Provider.Read(ctx, res)
+}
+
+func (p *computedAwareProvider) Update(ctx context.Context, desired resource.Resource, actual resource.RemoteResource) (resource.RemoteResource, error) {
+	p.updates++
+	p.lastActual = actual
+	if actual.Computed == nil || actual.Computed["etag"] != liveETag {
+		return resource.RemoteResource{}, fmt.Errorf("update requires live etag %q; actual.Computed=%v", liveETag, actual.Computed)
+	}
+	if _, ok := actual.Computed[fake.AttrSerial]; !ok {
+		return resource.RemoteResource{}, fmt.Errorf("update requires live computed %s", fake.AttrSerial)
+	}
+	return p.Provider.Update(ctx, desired, actual)
 }
 
 type failingStore struct {

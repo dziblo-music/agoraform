@@ -76,9 +76,12 @@ func Run(ctx context.Context, desired []resource.Resource, lookup Lookup, st Per
 
 // Execute carries out the actions in p in deterministic address order.
 //
-// It does not recompute diffs. Unsupported actions are rejected before any
-// mutation. Execution stops at the first provider or state-write failure.
-// Progress lines are written to out; the Apply complete summary is not.
+// It does not recompute diffs. For updates, it re-reads the identity-bound
+// live resource so Provider.Update receives the complete RemoteResource,
+// including computed fields, rather than the plan's comparable Before view.
+// Unsupported actions are rejected before any mutation. Execution stops at
+// the first provider or state-write failure. Progress lines are written to
+// out; the Apply complete summary is not.
 func Execute(ctx context.Context, p *plan.Plan, desired []resource.Resource, lookup Lookup, st Store, out io.Writer) (Result, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -202,19 +205,30 @@ func executeUpdate(ctx context.Context, change plan.Change, desired resource.Res
 	if p == nil {
 		return applyError(addr, "update", fmt.Errorf("provider is nil"))
 	}
+	if change.Identity.IsZero() {
+		return applyError(addr, "update", fmt.Errorf("missing planned identity"))
+	}
 
+	// Refresh the complete identity-bound live resource immediately before
+	// mutation. Plan.Change.Before is a comparable attribute view and must
+	// not be reconstructed as Provider.Update's actual argument.
 	desired.Identity = change.Identity
-	actual := resource.RemoteResource{
-		Address:    addr,
-		Identity:   change.Identity,
-		Attributes: change.Before.Clone(),
+	actual, err := p.Read(ctx, desired)
+	if err != nil {
+		return applyError(addr, "update", fmt.Errorf("read live resource: %w", err))
+	}
+	if actual.Identity.IsZero() {
+		return applyError(addr, "update", fmt.Errorf("read returned no identity"))
+	}
+	if actual.Identity.ID != change.Identity.ID {
+		return fmt.Errorf("apply %s: update: read returned identity %q for persisted identity %q; refusing to rebind managed resource", addr, actual.Identity.ID, change.Identity.ID)
 	}
 
 	live, err := p.Update(ctx, desired, actual)
 	if err != nil {
 		return applyError(addr, "update", err)
 	}
-	if !change.Identity.IsZero() && !live.Identity.IsZero() && live.Identity.ID != change.Identity.ID {
+	if !live.Identity.IsZero() && live.Identity.ID != change.Identity.ID {
 		return fmt.Errorf("apply %s: update: provider returned identity %q for persisted identity %q; refusing to rebind managed resource", addr, live.Identity.ID, change.Identity.ID)
 	}
 

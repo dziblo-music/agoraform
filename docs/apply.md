@@ -45,7 +45,11 @@ directory.
 `apply` loads and validates the manifest, loads local identity state from
 `agoraform.state.json` next to the manifest, then builds the same plan as
 `agoraform plan`. Only after that plan is produced does it call provider
-`Create` or `Update`. There is no interactive approval prompt in v0.1.
+`Create` or `Update`. For an update, apply keeps the planned action, binds
+the desired resource to the planned identity, reads that exact remote
+object, and passes the full live resource to `Update`. It does not
+reconstruct live state from the plan's comparable `Before` attributes.
+There is no interactive approval prompt in v0.1.
 
 The Matomo provider is registered with the CLI. `matomo.goal` resources can
 be created and updated. Unit tests that need a generic resource lifecycle
