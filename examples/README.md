@@ -3,8 +3,7 @@
 Example manifests live here. They are structurally valid v0.1 documents and
 contain no credentials or personal data.
 
-- [agoraform.yaml](agoraform.yaml) — minimal manifest using a Matomo-style
-  resource address to illustrate `provider.type.name` addressing.
+- [agoraform.yaml](agoraform.yaml) — minimal `matomo.goal` manifest.
 
 Validate an example from the repository root:
 
@@ -12,10 +11,9 @@ Validate an example from the repository root:
 agoraform validate -f examples/agoraform.yaml
 ```
 
-The example uses a Matomo-style address. The Matomo provider is registered
-with the CLI, but `matomo.goal` is not implemented yet, so `validate` and
-`plan` report an unknown resource type. Structural loading of this file is
-covered by unit tests.
+`matomo.goal` is implemented. `validate` and `plan` require `MATOMO_URL`,
+`MATOMO_TOKEN_AUTH`, and `MATOMO_SITE_ID`. Structural loading of this file
+is covered by unit tests.
 
 Provider credentials are supplied through `MATOMO_*` environment variables,
 never in the manifest. See [providers/matomo/README.md](../providers/matomo/README.md).

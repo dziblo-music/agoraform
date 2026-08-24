@@ -75,8 +75,8 @@ func (c Config) String() string {
 
 // Client is a reusable Matomo HTTP API client.
 //
-// Resource implementations should call Call or the Analytics / TagManager
-// helpers instead of issuing raw HTTP requests.
+// Resource implementations should call Call, Analytics (including Goals
+// helpers), or TagManager instead of issuing raw HTTP requests.
 type Client struct {
 	cfg      Config
 	endpoint string

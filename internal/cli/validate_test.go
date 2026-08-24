@@ -1,6 +1,9 @@
 package cli_test
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +12,8 @@ import (
 	"github.com/dziblo-music/agoraform/internal/cli"
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/provider/fake"
+	"github.com/dziblo-music/agoraform/providers/matomo"
+	"github.com/dziblo-music/agoraform/providers/matomo/client"
 )
 
 const validManifest = `apiVersion: agoraform.io/v1alpha1
@@ -27,6 +32,16 @@ resources:
   - address: matomo.goal.trial_started
     attributes:
       name: Trial Started
+      matchAttribute: event_action
+      pattern: trialStarted
+`
+
+const matomoGoalIncompleteManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: matomo.goal.trial_started
+    attributes:
+      name: Trial Started
+      matchAttribute: event_action
 `
 
 const invalidManifest = `apiVersion: agoraform.io/v1alpha1
@@ -136,7 +151,7 @@ func TestValidateDefaultFilename(t *testing.T) {
 	}
 }
 
-func TestValidateMatomoGoalTypeNotImplemented(t *testing.T) {
+func TestValidateMatomoGoalMissingCredentials(t *testing.T) {
 	t.Parallel()
 
 	path := writeManifest(t, "agoraform.yaml", matomoGoalManifest)
@@ -146,11 +161,11 @@ func TestValidateMatomoGoalTypeNotImplemented(t *testing.T) {
 		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
 	}
 	errOut := stderr.String()
-	if !strings.Contains(errOut, "unknown resource type") {
-		t.Fatalf("stderr = %q, want unknown resource type", errOut)
+	if strings.Contains(errOut, "unknown resource type") {
+		t.Fatalf("stderr = %q, matomo.goal should be registered", errOut)
 	}
-	if strings.Contains(errOut, "unknown provider") {
-		t.Fatalf("stderr = %q, matomo should be registered", errOut)
+	if !strings.Contains(errOut, "MATOMO_URL") && !strings.Contains(errOut, "required") {
+		t.Fatalf("stderr = %q, want missing credential error", errOut)
 	}
 }
 
@@ -185,6 +200,66 @@ func TestValidateHelp(t *testing.T) {
 	if !strings.Contains(out, "validate") || !strings.Contains(out, "agoraform.yaml") {
 		t.Fatalf("help output missing expected text:\n%s", out)
 	}
+}
+
+func TestValidateMatomoGoalWithProvider(t *testing.T) {
+	t.Parallel()
+
+	p, _ := matomoGoalTestProvider(t, `[]`)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", matomoGoalManifest)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitOK, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "1 resource") {
+		t.Fatalf("stdout = %q, want 1 resource", stdout.String())
+	}
+}
+
+func TestValidateMatomoGoalMissingPattern(t *testing.T) {
+	t.Parallel()
+
+	p, _ := matomoGoalTestProvider(t, `[]`)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", matomoGoalIncompleteManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "pattern") {
+		t.Fatalf("stderr = %q, want pattern validation error", stderr.String())
+	}
+}
+
+func matomoGoalTestProvider(t *testing.T, getGoalsBody string) (*matomo.Provider, *httptest.Server) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(body), "API.getMatomoVersion") {
+			_, _ = io.WriteString(w, `"5.2.0"`)
+			return
+		}
+		_, _ = io.WriteString(w, getGoalsBody)
+	}))
+	t.Cleanup(srv.Close)
+	p := matomo.NewWithHTTPClient(client.Config{
+		BaseURL:    srv.URL,
+		TokenAuth:  "cli-test-token",
+		SiteID:     "3",
+		HTTPClient: srv.Client(),
+	}, srv.Client())
+	return p, srv
 }
 
 func writeManifest(t *testing.T, name, contents string) string {

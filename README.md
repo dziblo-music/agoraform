@@ -44,7 +44,7 @@ Initial provider targets include:
 
 ## Status
 
-Agoraform is currently in early development. The CLI can validate v0.1 YAML manifests and produce a non-mutating plan against registered providers. The Matomo provider foundation (client, authentication, and registration) is in place; Matomo resource types are still in progress.
+Agoraform is currently in early development. The CLI can validate v0.1 YAML manifests and produce a non-mutating plan against registered providers. The Matomo provider implements `matomo.goal` (read, create, and update through the provider contract). `apply` and `import` are not implemented yet.
 
 The project is being built from scratch as an open-source initiative, with an emphasis on:
 
@@ -99,7 +99,7 @@ go build -ldflags "-X github.com/dziblo-music/agoraform/internal/cli.Version=0.1
 
 `plan` reads live resources through registered providers, diffs them against the manifest, and prints a deterministic execution plan. It never mutates remote resources. See [docs/plan.md](docs/plan.md) for the change model, output, and safety rules.
 
-The Matomo provider is registered with the CLI. Resource types such as `matomo.goal` are not implemented yet. Tests use the in-memory `fake` provider when they need a complete resource lifecycle.
+The Matomo provider is registered with the CLI. `matomo.goal` can be declared, validated, and planned. Tests use the in-memory `fake` provider when they need a complete resource lifecycle that does not depend on Matomo.
 
 `apply` and `import` return a clear not-implemented error until their behavior is added.
 
