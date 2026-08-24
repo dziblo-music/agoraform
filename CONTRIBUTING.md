@@ -18,7 +18,7 @@ separate issue.
 
 ### Prerequisites
 
-- Go 1.23 or newer (`go version`)
+- Go 1.26.7 or newer (`go version`)
 - Git
 
 Fork or clone the repository and create a branch from the latest `main`.
@@ -74,7 +74,9 @@ Use:
 
     Closes #123
 
-when the PR should automatically close an issue after merge.
+when the PR should automatically close an issue after merge. Use `Refs #123`
+when the issue has post-merge acceptance work, such as release artifact
+verification, and must remain open after the PR lands.
 
 All required CI checks must pass before merge.
 
@@ -120,5 +122,6 @@ Contributions are accepted under the [Apache License 2.0](LICENSE).
 
 ## Releases
 
-See [docs/release.md](docs/release.md) for tagging, GitHub draft releases,
-and the manual install verification required before publishing.
+See [docs/release.md](docs/release.md) for the pinned release toolchain,
+SemVer/tag rules, GitHub draft releases, and the manual install verification
+required before publishing.
