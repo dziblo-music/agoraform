@@ -14,7 +14,7 @@ not in resource attributes. See [docs/state.md](../docs/state.md).
 `MATOMO_URL`, `MATOMO_TOKEN_AUTH`, and `MATOMO_SITE_ID` first. Structural
 loading of this file is covered by unit tests without a live instance.
 
-From the repository root, after installing a 0.1.0 binary:
+From the root of an extracted release archive or repository checkout:
 
 ```bash
 export MATOMO_URL=https://matomo.example.com
