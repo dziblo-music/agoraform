@@ -28,6 +28,8 @@ Provider credentials, modules, and expressions are out of scope.
 Do not put API tokens, passwords, or other secrets in a manifest. Provider
 authentication belongs in environment or runtime configuration, not in Git.
 
+Existing v0.1.0 manifests that do not use resource references remain valid.
+
 ## Resource addresses
 
 A resource address is three lowercase identifiers separated by dots:
@@ -51,6 +53,56 @@ rejected.
 Addresses are used in validation errors, plans, imports, and any later
 identity mapping. Parsing an address and rendering it with `String()` must
 round-trip.
+
+## Resource references
+
+An attribute value that is a well-formed logical resource address is a
+reference to that resource. References are explicit configuration: they name
+another desired resource, not a provider-native id.
+
+```yaml
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: matomo.trigger.trial_started
+    attributes:
+      type: customEvent
+      event: trialStarted
+
+  - address: matomo.tag.trial_started
+    attributes:
+      type: matomoAnalytics
+      trigger: matomo.trigger.trial_started
+```
+
+There is no expression language, interpolation, or attribute path selection.
+A reference is the full `provider.type.name` address, including in nested maps
+and lists. Strings that are not valid addresses stay ordinary attribute
+values, so existing v0.1.0 fields such as `pattern: trialStarted` are
+unchanged.
+
+Agoraform walks references and builds a directed dependency graph. A resource
+that references another depends on it. Equivalent graphs have a stable
+prerequisite-first order; unrelated resources keep address order as the
+tie-breaker.
+
+`validate`, `plan`, and `apply` reject:
+
+- a reference to a resource that is not in the manifest
+- a resource that references itself
+- a dependency cycle
+
+Diagnostics include the referring resource, the attribute path, and the
+missing or cyclic addresses. Graph checks run during manifest load, before
+provider reads or mutations.
+
+Plans and generated import YAML keep logical addresses. Providers resolve a
+reference to a remote identity at runtime; that identity belongs in
+[local state](state.md), not in the manifest.
+
+Matomo Tag Manager types such as `matomo.trigger` and `matomo.tag` are shown
+here as the intended reference syntax. They are not managed resources in
+0.1.0; unknown types still fail provider validation when that provider is
+registered.
 
 ## Attributes
 
@@ -118,6 +170,7 @@ directory.
 - unsupported or missing `apiVersion`
 - missing resource addresses
 - invalid or duplicate addresses
+- missing resource references, self-references, and dependency cycles
 - unknown providers or resource types, when a provider is registered
 - provider-specific required-field failures, when a provider is registered
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/dziblo-music/agoraform/internal/graph"
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/resource"
 	"github.com/dziblo-music/agoraform/internal/state"
@@ -37,14 +38,19 @@ func Build(ctx context.Context, desired []resource.Resource, lookup Lookup) (*Pl
 
 // BuildWithState is Build plus persisted identity bindings.
 //
-// When identities contains a binding, that identity is attached to the
-// desired resource before Validate/Read. A bound identity that is missing
-// remotely is a stale-state error, not a create. A provider must also return
-// the same identity it was asked to resolve; core rejects mismatches rather
-// than allowing a mutable discovery field to rebind the logical resource.
+// Resource references are validated as a dependency graph before any
+// remote read. When identities contains a binding, that identity is
+// attached to the desired resource before Validate/Read. A bound identity
+// that is missing remotely is a stale-state error, not a create. A
+// provider must also return the same identity it was asked to resolve;
+// core rejects mismatches rather than allowing a mutable discovery field
+// to rebind the logical resource.
 func BuildWithState(ctx context.Context, desired []resource.Resource, lookup Lookup, identities Identities) (*Plan, error) {
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if _, err := graph.Build(desired); err != nil {
+		return nil, fmt.Errorf("plan: %w", err)
 	}
 	if lookup == nil && len(desired) > 0 {
 		return nil, fmt.Errorf("plan: provider lookup is required")

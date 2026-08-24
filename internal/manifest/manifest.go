@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/dziblo-music/agoraform/internal/graph"
 	"github.com/dziblo-music/agoraform/internal/resource"
 	"gopkg.in/yaml.v3"
 )
@@ -89,6 +90,10 @@ func Parse(data []byte, origin string) (*Manifest, error) {
 		})
 	}
 
+	if _, err := graph.Build(resources); err != nil {
+		return nil, fmt.Errorf("%s: %w", origin, err)
+	}
+
 	return &Manifest{
 		Origin:     origin,
 		APIVersion: raw.APIVersion,
@@ -171,6 +176,11 @@ func normalizeValue(v any) (any, error) {
 			out[i] = nv
 		}
 		return out, nil
+	case string:
+		if addr, err := resource.ParseAddress(x); err == nil {
+			return resource.Ref{Address: addr}, nil
+		}
+		return x, nil
 	default:
 		return v, nil
 	}

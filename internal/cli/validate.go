@@ -17,9 +17,9 @@ func newValidateCommand(reg *provider.Registry) *cobra.Command {
 		Long: `Validate an Agoraform YAML manifest.
 
 The command loads the manifest, checks the v0.1 schema, resource addresses,
-and duplicate logical names. When providers are registered, it also checks
-resource types, provider connection settings, and provider-specific required
-fields.
+duplicate logical names, resource references, and dependency cycles. When
+providers are registered, it also checks resource types, provider
+connection settings, and provider-specific required fields.
 
 The default manifest path is agoraform.yaml.`,
 		Args: func(_ *cobra.Command, args []string) error {

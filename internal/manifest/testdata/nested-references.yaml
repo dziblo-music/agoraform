@@ -1,0 +1,16 @@
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.left
+    attributes:
+      title: Left
+  - address: fake.widget.right
+    attributes:
+      title: Right
+  - address: fake.widget.child
+    attributes:
+      title: Child
+      meta:
+        primary: fake.widget.left
+        extras:
+          - plain-string
+          - fake.widget.right

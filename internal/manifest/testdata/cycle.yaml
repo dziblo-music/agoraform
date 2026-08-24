@@ -1,0 +1,10 @@
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.alpha
+    attributes:
+      title: Alpha
+      parent: fake.widget.beta
+  - address: fake.widget.beta
+    attributes:
+      title: Beta
+      parent: fake.widget.alpha

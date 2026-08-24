@@ -10,13 +10,15 @@ func TestAttributesCloneIndependent(t *testing.T) {
 		"meta": map[string]any{
 			"color": "blue",
 		},
-		"tags": []any{"a", "b"},
+		"tags":   []any{"a", "b"},
+		"parent": Ref{Address: Address{Provider: "fake", Type: "widget", Name: "homepage"}},
 	}
 
 	cloned := orig.Clone()
 	cloned["title"] = "Changed"
 	cloned["meta"].(map[string]any)["color"] = "red"
 	cloned["tags"].([]any)[0] = "z"
+	cloned["parent"] = Ref{Address: Address{Provider: "fake", Type: "widget", Name: "other"}}
 
 	if orig["title"] != "Homepage" {
 		t.Fatalf("clone mutated original title: %v", orig["title"])
@@ -26,6 +28,9 @@ func TestAttributesCloneIndependent(t *testing.T) {
 	}
 	if orig["tags"].([]any)[0] != "a" {
 		t.Fatalf("clone mutated nested slice: %v", orig["tags"])
+	}
+	if orig["parent"].(Ref).Address.Name != "homepage" {
+		t.Fatalf("clone mutated original parent: %v", orig["parent"])
 	}
 }
 

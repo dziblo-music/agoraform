@@ -67,6 +67,9 @@ func TestParseInvalidManifests(t *testing.T) {
 		{file: "duplicate-address.yaml", wantSub: "duplicate resource address"},
 		{file: "invalid-address.yaml", wantSub: "provider.type.name"},
 		{file: "missing-address.yaml", wantSub: "address is required"},
+		{file: "missing-reference.yaml", wantSub: "unknown resource"},
+		{file: "self-reference.yaml", wantSub: "references itself"},
+		{file: "cycle.yaml", wantSub: "cyclic dependency"},
 	}
 
 	for _, tc := range cases {
@@ -228,6 +231,85 @@ func TestExampleManifestParses(t *testing.T) {
 	}
 	if m.Resources[0].Address.String() != "matomo.goal.trial_started" {
 		t.Fatalf("example address = %s", m.Resources[0].Address)
+	}
+}
+
+func TestParseResourceReference(t *testing.T) {
+	t.Parallel()
+
+	m := loadTestdata(t, "with-reference.yaml")
+	if len(m.Resources) != 2 {
+		t.Fatalf("resources = %d, want 2", len(m.Resources))
+	}
+	child := m.Resources[1]
+	if child.Address.String() != "fake.widget.banner" {
+		t.Fatalf("child address = %s", child.Address)
+	}
+	ref, ok := resource.AsRef(child.Attributes["parent"])
+	if !ok {
+		t.Fatalf("parent type = %T, want resource.Ref", child.Attributes["parent"])
+	}
+	if ref.String() != "fake.widget.homepage" {
+		t.Fatalf("parent = %s, want fake.widget.homepage", ref)
+	}
+}
+
+func TestParseNestedReferences(t *testing.T) {
+	t.Parallel()
+
+	m := loadTestdata(t, "nested-references.yaml")
+	child := m.Resources[2]
+	meta, ok := child.Attributes["meta"].(map[string]any)
+	if !ok {
+		t.Fatalf("meta type = %T", child.Attributes["meta"])
+	}
+	primary, ok := resource.AsRef(meta["primary"])
+	if !ok || primary.String() != "fake.widget.left" {
+		t.Fatalf("meta.primary = %v (%T)", meta["primary"], meta["primary"])
+	}
+	extras, ok := meta["extras"].([]any)
+	if !ok || len(extras) != 2 {
+		t.Fatalf("meta.extras = %v", meta["extras"])
+	}
+	if extras[0] != "plain-string" {
+		t.Fatalf("extras[0] = %v, want plain string", extras[0])
+	}
+	extraRef, ok := resource.AsRef(extras[1])
+	if !ok || extraRef.String() != "fake.widget.right" {
+		t.Fatalf("extras[1] = %v (%T)", extras[1], extras[1])
+	}
+}
+
+func TestParseTransitiveReferences(t *testing.T) {
+	t.Parallel()
+
+	m := loadTestdata(t, "transitive-references.yaml")
+	if len(m.Resources) != 3 {
+		t.Fatalf("resources = %d, want 3", len(m.Resources))
+	}
+}
+
+func TestCheckProvidersWithReference(t *testing.T) {
+	t.Parallel()
+
+	m := loadTestdata(t, "with-reference.yaml")
+	reg := provider.NewRegistry()
+	if err := reg.Register(fake.New()); err != nil {
+		t.Fatal(err)
+	}
+	if err := manifest.CheckProviders(context.Background(), m, reg); err != nil {
+		t.Fatalf("referenced widgets: %v", err)
+	}
+}
+
+func TestParseV01ManifestWithoutReferencesRemainsValid(t *testing.T) {
+	t.Parallel()
+
+	m := loadTestdata(t, "valid.yaml")
+	for _, res := range m.Resources {
+		resource.WalkRefs(res.Attributes, func(path string, addr resource.Address) {
+			t.Fatalf("%s: unexpected reference at %s -> %s", res.Address, path, addr)
+		})
 	}
 }
 

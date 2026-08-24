@@ -74,6 +74,8 @@ func cloneValue(v any) any {
 			out[i] = cloneValue(val)
 		}
 		return out
+	case Ref:
+		return x
 	default:
 		return v
 	}
