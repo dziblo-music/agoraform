@@ -102,7 +102,7 @@ func (p *Provider) Validate(_ context.Context, res resource.Resource) error {
 	}
 	switch res.Address.Type {
 	case TypeGoal:
-		return p.validateGoal(res)
+		return p.validateGoalSafe(res)
 	default:
 		return nil
 	}
@@ -112,7 +112,7 @@ func (p *Provider) Validate(_ context.Context, res resource.Resource) error {
 func (p *Provider) Read(ctx context.Context, res resource.Resource) (resource.RemoteResource, error) {
 	switch res.Address.Type {
 	case TypeGoal:
-		return p.readGoal(ctx, res)
+		return p.readGoalSafe(ctx, res)
 	default:
 		return resource.RemoteResource{}, notImplemented("read", res.Address)
 	}
@@ -122,7 +122,7 @@ func (p *Provider) Read(ctx context.Context, res resource.Resource) (resource.Re
 func (p *Provider) Create(ctx context.Context, res resource.Resource) (resource.RemoteResource, error) {
 	switch res.Address.Type {
 	case TypeGoal:
-		return p.createGoal(ctx, res)
+		return p.createGoalSafe(ctx, res)
 	default:
 		return resource.RemoteResource{}, notImplemented("create", res.Address)
 	}
@@ -132,7 +132,7 @@ func (p *Provider) Create(ctx context.Context, res resource.Resource) (resource.
 func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual resource.RemoteResource) (resource.RemoteResource, error) {
 	switch desired.Address.Type {
 	case TypeGoal:
-		return p.updateGoal(ctx, desired, actual)
+		return p.updateGoalSafe(ctx, desired, actual)
 	default:
 		return resource.RemoteResource{}, notImplemented("update", desired.Address)
 	}
@@ -147,7 +147,7 @@ func (p *Provider) Import(_ context.Context, addr resource.Address, _ string) (r
 func (p *Provider) NormalizeComparable(desired resource.Resource, live *resource.RemoteResource) (resource.Attributes, resource.Attributes, error) {
 	switch desired.Address.Type {
 	case TypeGoal:
-		return p.normalizeGoalComparable(desired, live)
+		return p.normalizeGoalComparableSafe(desired, live)
 	default:
 		want := desired.Attributes.Clone()
 		if live == nil {
