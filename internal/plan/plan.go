@@ -31,9 +31,8 @@ type AttributeDiff struct {
 
 // Change is one planned resource outcome.
 //
-// Before and After are normalized configurable attribute maps. Computed
-// fields are never included. Diffs is the attribute-level view used by
-// rendering and review tools.
+// Before and After are normalized configurable attribute maps. Diffs is
+// the attribute-level view used by rendering and review tools.
 type Change struct {
 	Address  resource.Address
 	Action   Action
@@ -41,6 +40,12 @@ type Change struct {
 	Before   resource.Attributes
 	After    resource.Attributes
 	Diffs    []AttributeDiff
+
+	// Computed is the live provider-reported read-only view observed
+	// while planning. Apply uses it to seed runtime Resolved bindings
+	// for unchanged prerequisites. It is not configuration, is never
+	// copied into Before or After, and Format ignores it.
+	Computed resource.Attributes
 }
 
 // Plan is a deterministic, machine-usable set of resource changes.

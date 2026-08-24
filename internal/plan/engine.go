@@ -139,6 +139,7 @@ func planResource(ctx context.Context, res resource.Resource, lookup Lookup, ide
 		Before:   got,
 		After:    want,
 		Diffs:    diffs,
+		Computed: live.Computed.Clone(),
 	}, nil
 }
 

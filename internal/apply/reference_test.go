@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -311,8 +312,11 @@ func TestRunUnchangedPrerequisiteStillResolves(t *testing.T) {
 		t.Fatalf("inner creates=%d updates=%d, want 1 0", creates, updates)
 	}
 	resolved, ok := resource.AsResolved(cap.created[0].Attributes[fake.AttrParent])
-	if !ok || resolved.Identity.ID != "id-homepage" {
-		t.Fatalf("resolved parent = (%v, %v), want id-homepage", resolved, ok)
+	if !ok || resolved.Address != parent.Address || resolved.Identity.ID != "id-homepage" {
+		t.Fatalf("resolved parent = (%v, %v), want homepage id-homepage", resolved, ok)
+	}
+	if got := resolved.Outputs[fake.AttrSerial]; got != 4 {
+		t.Fatalf("resolved outputs = %+v, want serial 4", resolved.Outputs)
 	}
 }
 
@@ -350,6 +354,52 @@ func TestRunResolvesIdentityForDependentUpdate(t *testing.T) {
 	resolved, ok := resource.AsResolved(cap.updated[0].Attributes[fake.AttrParent])
 	if !ok || resolved.Identity.ID != "id-homepage" {
 		t.Fatalf("updated parent attr = (%v, %v), want resolved id-homepage", resolved, ok)
+	}
+	if got := resolved.Outputs[fake.AttrSerial]; got != 1 {
+		t.Fatalf("updated parent outputs = %+v, want serial 1 from unchanged prerequisite", resolved.Outputs)
+	}
+}
+
+func TestExecuteMissingRuntimeOutputDoesNotMutateDependent(t *testing.T) {
+	t.Parallel()
+
+	inner := fake.New()
+	p := &requiringOutputProvider{Provider: inner, attr: fake.AttrParent, output: "etag"}
+	parent := widget(t, "homepage", resource.Attributes{fake.AttrTitle: "Homepage"})
+	child := widget(t, "banner", resource.Attributes{
+		fake.AttrTitle:  "Banner",
+		fake.AttrParent: resource.Ref{Address: parent.Address},
+	})
+	st := mustStore(t)
+	planned := &plan.Plan{
+		Changes: []plan.Change{
+			{
+				Address:  parent.Address,
+				Action:   plan.ActionUnchanged,
+				Identity: resource.Identity{ID: "id-homepage"},
+				After:    parent.Attributes,
+				Computed: resource.Attributes{fake.AttrSerial: 4},
+			},
+			{Address: child.Address, Action: plan.ActionCreate, After: child.Attributes},
+		},
+	}
+
+	_, err := apply.Execute(context.Background(), planned, []resource.Resource{child, parent}, lookupProvider(p), st, ioDiscard())
+	if err == nil {
+		t.Fatal("Execute succeeded, want missing runtime output")
+	}
+	msg := err.Error()
+	for _, want := range []string{"fake.widget.banner", "create", "parent", "fake.widget.homepage", "etag"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("error = %q, want %q", msg, want)
+		}
+	}
+	_, creates, updates, _ := inner.Calls()
+	if creates != 0 || updates != 0 {
+		t.Fatalf("missing output mutated provider: creates=%d updates=%d", creates, updates)
+	}
+	if _, ok, _ := st.Identity(child.Address); ok {
+		t.Fatal("dependent identity was persisted after missing output")
 	}
 }
 
@@ -544,4 +594,39 @@ func (p *failingAddressProvider) Create(ctx context.Context, res resource.Resour
 		return resource.RemoteResource{}, p.failErr
 	}
 	return p.Provider.Create(ctx, res)
+}
+
+type requiringOutputProvider struct {
+	provider.Provider
+	attr   string
+	output string
+}
+
+func (p *requiringOutputProvider) Create(ctx context.Context, res resource.Resource) (resource.RemoteResource, error) {
+	if err := requireResolvedOutput(res, p.attr, p.output); err != nil {
+		return resource.RemoteResource{}, err
+	}
+	return p.Provider.Create(ctx, res)
+}
+
+func (p *requiringOutputProvider) Update(ctx context.Context, desired resource.Resource, actual resource.RemoteResource) (resource.RemoteResource, error) {
+	if err := requireResolvedOutput(desired, p.attr, p.output); err != nil {
+		return resource.RemoteResource{}, err
+	}
+	return p.Provider.Update(ctx, desired, actual)
+}
+
+func requireResolvedOutput(res resource.Resource, attr, output string) error {
+	v, ok := res.Attributes[attr]
+	if !ok {
+		return nil
+	}
+	resolved, ok := resource.AsResolved(v)
+	if !ok {
+		return fmt.Errorf("attribute %q: dependency is not resolved", attr)
+	}
+	if _, ok := resolved.Outputs[output]; !ok {
+		return fmt.Errorf("attribute %q: dependency %s has no output %q", attr, resolved.Address, output)
+	}
+	return nil
 }

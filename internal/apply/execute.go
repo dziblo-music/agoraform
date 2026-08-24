@@ -82,8 +82,9 @@ func Run(ctx context.Context, desired []resource.Resource, lookup Lookup, st Per
 // sequentially: prerequisites first, with address order as the tie-breaker
 // among unrelated resources. Immediately before each mutation, explicit
 // resource.Ref values are replaced with resource.Resolved bindings from
-// earlier operations (or from planned identities for unchanged
-// prerequisites). Providers translate those bindings into native API values.
+// earlier operations, or from the planned identity and computed outputs
+// for unchanged prerequisites. Providers translate those bindings into
+// native API values.
 //
 // It does not recompute diffs. For updates, it re-reads the identity-bound
 // live resource so Provider.Update receives the complete RemoteResource,
@@ -207,6 +208,7 @@ func seedRuntime(changes []plan.Change) map[string]resource.Resolved {
 		runtime[change.Address.String()] = resource.Resolved{
 			Address:  change.Address,
 			Identity: change.Identity,
+			Outputs:  change.Computed.Clone(),
 		}
 	}
 	return runtime

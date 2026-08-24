@@ -61,11 +61,13 @@ Apply executes sequentially in deterministic dependency order: prerequisite
 resources run before dependents, and unrelated resources keep address order
 as the tie-breaker. Immediately before each create or update, apply replaces
 explicit `$ref` values with runtime bindings that carry the prerequisite's
-provider-native identity and computed outputs. Providers translate those
-bindings into native API values. The bindings are not written into the
-manifest, plan output, or user-authored configuration. If a prerequisite
-has no identity after it has been applied (or skipped as unchanged), apply
-fails with an actionable diagnostic and does not mutate the dependent.
+provider-native identity and computed outputs. For unchanged prerequisites,
+those bindings come from the live resource observed while planning rather
+than a second apply-time read. Providers translate the bindings into native
+API values. The bindings are not written into the manifest, plan output, or
+user-authored configuration. If a prerequisite has no identity after it has
+been applied (or skipped as unchanged), apply fails with an actionable
+diagnostic and does not mutate the dependent.
 
 The Matomo provider is registered with the CLI. `matomo.goal` resources can
 be created and updated. Unit tests that need a generic resource lifecycle
