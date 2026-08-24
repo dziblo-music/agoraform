@@ -15,8 +15,8 @@ type identityIgnoringReader struct {
 	returned resource.Identity
 }
 
-func (r identityIgnoringReader) Name() string { return "fake" }
-func (r identityIgnoringReader) ResourceTypes() []string { return []string{"widget"} }
+func (r identityIgnoringReader) Name() string                                      { return "fake" }
+func (r identityIgnoringReader) ResourceTypes() []string                           { return []string{"widget"} }
 func (r identityIgnoringReader) Validate(context.Context, resource.Resource) error { return nil }
 func (r identityIgnoringReader) Read(_ context.Context, res resource.Resource) (resource.RemoteResource, error) {
 	return resource.RemoteResource{
