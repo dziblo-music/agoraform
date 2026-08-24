@@ -352,11 +352,11 @@ func TestRunRejectsCycleWithoutMutation(t *testing.T) {
 	p := fake.New()
 	a := widget(t, "alpha", resource.Attributes{
 		fake.AttrTitle:  "Alpha",
-		fake.AttrParent: "fake.widget.beta",
+		fake.AttrParent: resource.Ref{Address: mustAddress(t, "fake.widget.beta")},
 	})
 	b := widget(t, "beta", resource.Attributes{
 		fake.AttrTitle:  "Beta",
-		fake.AttrParent: "fake.widget.alpha",
+		fake.AttrParent: resource.Ref{Address: mustAddress(t, "fake.widget.alpha")},
 	})
 	st := mustStore(t)
 
