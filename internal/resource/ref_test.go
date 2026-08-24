@@ -15,16 +15,11 @@ func TestAsRef(t *testing.T) {
 		t.Fatalf("AsRef(Ref) = (%v, %v)", got, ok)
 	}
 
-	got, ok = AsRef("matomo.trigger.trial_started")
-	if !ok || got.Address != addr {
-		t.Fatalf("AsRef(string) = (%v, %v)", got, ok)
+	if _, ok := AsRef("matomo.trigger.trial_started"); ok {
+		t.Fatal("plain address-looking string should not be a reference")
 	}
-
 	if _, ok := AsRef("trialStarted"); ok {
 		t.Fatal("plain string should not be a reference")
-	}
-	if _, ok := AsRef("matomo.trigger"); ok {
-		t.Fatal("two-segment string should not be a reference")
 	}
 	if _, ok := AsRef(1); ok {
 		t.Fatal("number should not be a reference")
@@ -43,10 +38,10 @@ func TestWalkRefsDeterministicAndNested(t *testing.T) {
 			Address: mustTestAddress(t, "matomo.trigger.trial_started"),
 		},
 		"meta": map[string]any{
-			"primary": "matomo.variable.user_id",
+			"primary": Ref{Address: mustTestAddress(t, "matomo.variable.user_id")},
 			"extra": []any{
 				"not-an-address",
-				"matomo.trigger.signup",
+				Ref{Address: mustTestAddress(t, "matomo.trigger.signup")},
 			},
 		},
 	}
@@ -66,6 +61,19 @@ func TestWalkRefsDeterministicAndNested(t *testing.T) {
 	if !reflect.DeepEqual(addrs, wantAddrs) {
 		t.Fatalf("addrs = %v, want %v", addrs, wantAddrs)
 	}
+}
+
+func TestWalkRefsIgnoresAddressLookingStrings(t *testing.T) {
+	t.Parallel()
+
+	WalkRefs(Attributes{
+		"pattern": "checkout.step.complete",
+		"nested": map[string]any{
+			"value": "matomo.trigger.trial_started",
+		},
+	}, func(path string, addr Address) {
+		t.Fatalf("unexpected reference at %s -> %s", path, addr)
+	})
 }
 
 func TestWalkRefsIgnoresNilCallbackAndEmpty(t *testing.T) {
