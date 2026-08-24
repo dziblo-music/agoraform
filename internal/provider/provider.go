@@ -69,9 +69,10 @@ type Provider interface {
 	// resource and returns the updated live result.
 	Update(ctx context.Context, desired resource.Resource, actual resource.RemoteResource) (resource.RemoteResource, error)
 
-	// Import binds an existing remote identity to a logical address and
-	// returns the live resource. If the identity does not exist, Import
-	// returns ErrNotFound.
+	// Import reads the existing remote resource identified by id as the
+	// supplied logical address without mutating remote state. The returned
+	// RemoteResource must carry exactly addr and exactly the requested id as
+	// its identity. If that identity does not exist, Import returns ErrNotFound.
 	Import(ctx context.Context, addr resource.Address, id string) (resource.RemoteResource, error)
 }
 
