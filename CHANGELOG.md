@@ -18,7 +18,8 @@ First public release.
 - v0.1 YAML manifest schema (`apiVersion: agoraform.io/v1alpha1`)
 - Local identity state in `agoraform.state.json`
 - Matomo provider with a single managed resource: `matomo.goal` (read, create, update, import)
-- GitHub Actions release workflow that publishes draft multi-platform binaries
+- GitHub Actions release workflow that verifies SemVer tags and `main` ancestry, then publishes draft multi-platform binaries
+- Reproducible release packaging with Go 1.26.7, GoReleaser 2.17.1, SHA-256 checksums, and immutable GitHub Action pins
 
 ### Supported in 0.1.0
 
@@ -33,7 +34,7 @@ First public release.
 ### Limitations
 
 - Google Ads and Meta Ads are not implemented
-- Matomo Tag Manager resources, import, and container publishing are not implemented
+- Matomo Tag Manager resources and container publishing are not implemented
 - Remote state, workspaces, locking, and encryption are not implemented
 - `apply` does not delete remote resources
 - `plan` ignores remote objects that are not in the manifest
