@@ -22,6 +22,13 @@ type Reader interface {
 	Name() string
 	ResourceTypes() []string
 	Validate(ctx context.Context, res resource.Resource) error
+
+	// Read resolves the live resource represented by res. When res.Identity is
+	// non-zero, implementations must resolve that exact provider-native
+	// identity and return the same identity on RemoteResource. They must return
+	// ErrNotFound when that identity is absent and must not fall back to mutable
+	// discovery fields such as name. Core reconciliation independently verifies
+	// this invariant before accepting a state-bound read.
 	Read(ctx context.Context, res resource.Resource) (resource.RemoteResource, error)
 }
 

@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/provider/fake"
 	"github.com/dziblo-music/agoraform/internal/resource"
+	"github.com/dziblo-music/agoraform/internal/state"
 )
 
 func TestPlanEmptyManifestNoProviders(t *testing.T) {
@@ -236,7 +238,7 @@ func TestPlanHelpDocumentsExitCodes(t *testing.T) {
 		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitOK, stderr.String())
 	}
 	out := stdout.String()
-	for _, want := range []string{"plan", "agoraform.yaml", "never creates", "2"} {
+	for _, want := range []string{"plan", "agoraform.yaml", "never creates", "agoraform.state.json", "2"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("help output missing %q:\n%s", want, out)
 		}
@@ -248,6 +250,130 @@ func TestExitCodeConstants(t *testing.T) {
 
 	if cli.ExitOK != 0 || cli.ExitError != 1 || cli.ExitChanges != 2 || cli.ExitUsage != 3 {
 		t.Fatalf("exit codes = %d %d %d %d, want 0 1 2 3", cli.ExitOK, cli.ExitError, cli.ExitChanges, cli.ExitUsage)
+	}
+}
+
+const matomoGoalWithIDGoalManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: matomo.goal.trial_started
+    attributes:
+      idGoal: "12"
+      name: Trial Started
+      matchAttribute: event_action
+      pattern: trialStarted
+`
+
+func TestPlanUsesPersistedIdentity(t *testing.T) {
+	t.Parallel()
+
+	p := fake.New()
+	addr := mustCLIAddress(t, "fake.widget.homepage")
+	if err := p.Seed(resource.RemoteResource{
+		Address:    addr,
+		Identity:   resource.Identity{ID: "widget-1"},
+		Attributes: resource.Attributes{fake.AttrTitle: "Homepage banner"},
+		Computed:   resource.Attributes{fake.AttrSerial: 4},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", validManifest)
+	st, err := state.New(state.PathForManifest(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Bind(addr, resource.Identity{ID: "widget-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"plan", "-f", path}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("exit code = %d, want %d; stderr=%q stdout=%q", code, cli.ExitOK, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "No changes.") {
+		t.Fatalf("stdout = %q, want no-change plan", stdout.String())
+	}
+}
+
+func TestPlanStaleStateIdentity(t *testing.T) {
+	t.Parallel()
+
+	reg := provider.NewRegistry()
+	if err := reg.Register(fake.New()); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", validManifest)
+	st, err := state.New(state.PathForManifest(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Bind(mustCLIAddress(t, "fake.widget.homepage"), resource.Identity{ID: "missing"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"plan", "-f", path}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "persisted identity") {
+		t.Fatalf("stderr = %q, want stale identity diagnostic", stderr.String())
+	}
+}
+
+func TestPlanMalformedStateFile(t *testing.T) {
+	t.Parallel()
+
+	reg := provider.NewRegistry()
+	if err := reg.Register(fake.New()); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", validManifest)
+	if err := os.WriteFile(state.PathForManifest(path), []byte("{not-json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"plan", "-f", path}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "malformed") && !strings.Contains(stderr.String(), "state") {
+		t.Fatalf("stderr = %q, want malformed state diagnostic", stderr.String())
+	}
+}
+
+func TestPlanRejectsManifestIDGoal(t *testing.T) {
+	t.Parallel()
+
+	p, _ := matomoGoalTestProvider(t, `{"12":{"idgoal":"12","name":"Trial Started","match_attribute":"event_action","pattern":"trialStarted","pattern_type":"contains"}}`)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", matomoGoalWithIDGoalManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"plan", "-f", path}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "idGoal") {
+		t.Fatalf("stderr = %q, want idGoal diagnostic", stderr.String())
 	}
 }
 

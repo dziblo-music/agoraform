@@ -473,14 +473,22 @@ func TestCreateGoalValidatesBeforeMutation(t *testing.T) {
 	}
 }
 
-func TestGoalImportStillNotImplemented(t *testing.T) {
+func TestImportGoal(t *testing.T) {
 	t.Parallel()
 
-	p := testGoalProvider(t, newGoalServer(t))
+	srv := newGoalServer(t)
+	srv.seed(apiGoal{ID: 1, Name: "Trial Started", MatchAttribute: "event_action", Pattern: "trialStarted", PatternType: "contains"})
+	p := testGoalProvider(t, srv)
 	addr := mustGoalAddress(t, "trial_started")
-	_, err := p.Import(context.Background(), addr, "1")
-	if err == nil || !strings.Contains(err.Error(), "not implemented") {
-		t.Fatalf("Import = %v, want not implemented", err)
+	live, err := p.Import(context.Background(), addr, "1")
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	if live.Identity.ID != "1" {
+		t.Fatalf("identity = %q, want 1", live.Identity.ID)
+	}
+	if live.Attributes[matomo.AttrName] != "Trial Started" {
+		t.Fatalf("name = %v", live.Attributes[matomo.AttrName])
 	}
 }
 

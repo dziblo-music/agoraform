@@ -139,8 +139,13 @@ func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual
 }
 
 // Import implements provider.Provider.
-func (p *Provider) Import(_ context.Context, addr resource.Address, _ string) (resource.RemoteResource, error) {
-	return resource.RemoteResource{}, notImplemented("import", addr)
+func (p *Provider) Import(ctx context.Context, addr resource.Address, id string) (resource.RemoteResource, error) {
+	switch addr.Type {
+	case TypeGoal:
+		return p.importGoal(ctx, addr, id)
+	default:
+		return resource.RemoteResource{}, notImplemented("import", addr)
+	}
 }
 
 // NormalizeComparable implements provider.Normalizer.

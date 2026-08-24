@@ -32,7 +32,9 @@ There is no manifest or Git-tracked file source for tokens. Do not put
 
 ### `matomo.goal`
 
-Declares a Matomo analytics goal. Initial create/discovery may omit `idGoal`:
+Declares a Matomo analytics goal. Initial create/discovery looks up a goal by
+`name`. Once Agoraform manages the resource, persist Matomo's goal ID in
+[local state](../../docs/state.md), not in the manifest:
 
 ```yaml
 apiVersion: agoraform.io/v1alpha1
@@ -44,31 +46,30 @@ resources:
       pattern: trialStarted
 ```
 
-Once Matomo's provider-native goal ID is known, persist it as the resource
-identity binding:
-
-```yaml
-resources:
-  - address: matomo.goal.trial_started
-    attributes:
-      idGoal: "12"
-      name: Trial Started
-      matchAttribute: event_action
-      pattern: trialStarted
+```json
+{
+  "version": 1,
+  "resources": {
+    "matomo.goal.trial_started": {
+      "provider": "matomo",
+      "remoteId": "12"
+    }
+  }
+}
 ```
 
 | Attribute | Required | Description |
 | --- | --- | --- |
-| `idGoal` | no for initial create/discovery; recommended once known | Stable Matomo identity binding. Excluded from diffs and mutation payloads. |
-| `name` | yes | Goal name. Immutable once `idGoal` is bound. |
+| `name` | yes | Goal name. Immutable once local state binds the resource. |
 | `matchAttribute` | yes | `url`, `title`, `file`, `external_website`, `manually`, `visit_duration`, `visit_total_actions`, `visit_total_pageviews`, `event_action`, `event_category`, or `event_name`. |
 | `pattern` | unless `manually` | Value to match. |
 | `patternType` | no | `contains` (default), `exact`, or `regex`. Numeric match attributes default to `greater_than`. |
 
 Lowercase `idgoal` from Matomo responses remains a computed field on the live
-resource. `idGoal` in configuration is only the identity binding used to make
-future reads stable. A stale bound ID is an error, not a create candidate, so
-Agoraform will not silently create a duplicate after a rename or remote loss.
+resource. Do not set `idGoal` in configuration; manifests that still contain
+it are rejected. A stale persisted identity is an error, not a create
+candidate, so Agoraform will not silently create a duplicate after a rename
+or remote loss.
 
 Other Matomo Goal API fields (`description`, `revenue`, `caseSensitive`,
 `allowMultipleConversionsPerVisit`, and `useEventValueAsRevenue`) are not

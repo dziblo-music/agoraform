@@ -9,45 +9,42 @@ import (
 
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/resource"
+	"github.com/dziblo-music/agoraform/internal/state"
 	"github.com/dziblo-music/agoraform/providers/matomo/client"
 )
 
 const (
-	// AttrIDGoal binds a logical Agoraform resource to Matomo's provider-native
-	// goal identity. It is identity metadata, not a mutable Matomo Goal field,
-	// and is excluded from comparable attributes and API mutation payloads.
+	// AttrIDGoal is the former manifest identity field. It is no longer
+	// configurable; Matomo goal identity is stored in local state.
 	AttrIDGoal = "idGoal"
 )
 
-// validateGoalSafe layers stable-identity and Matomo-exact validation on top
-// of the original v0.1 goal schema.
+// validateGoalSafe layers stable-identity and Matomo-exact validation on
+// top of the original v0.1 goal schema.
 func (p *Provider) validateGoalSafe(res resource.Resource) error {
-	base, idGoal, bound, err := goalWithoutIdentity(res)
-	if err != nil {
+	if err := rejectManifestIdentity(res); err != nil {
 		return err
 	}
-	if err := p.validateGoal(base); err != nil {
+	if err := p.validateGoal(res); err != nil {
 		return err
 	}
-
-	if bound {
-		if err := validateGoalIdentity(res.Address, idGoal); err != nil {
-			return err
-		}
+	if _, bound, err := boundGoalIdentity(res); err != nil {
+		return err
+	} else if bound {
+		// Format is checked by boundGoalIdentity.
 	}
 
-	match := stringAttr(base.Attributes, AttrMatchAttribute)
-	patternType := stringAttr(base.Attributes, AttrPatternType)
+	match := stringAttr(res.Attributes, AttrMatchAttribute)
+	patternType := stringAttr(res.Attributes, AttrPatternType)
 	if patternType == "" && match != matchManually {
 		patternType = defaultPatternTypeFor(matchAttributes[match])
 	}
 	if patternType == "exact" && requiresHTTPExactMatch(match) {
-		pattern := stringAttr(base.Attributes, AttrPattern)
+		pattern := stringAttr(res.Attributes, AttrPattern)
 		if !hasHTTPPrefix(pattern) {
 			return fmt.Errorf("resource %s: attribute %q must start with http:// or https:// when %s is \"exact\" and %s is %q", res.Address, AttrPattern, AttrPatternType, AttrMatchAttribute, match)
 		}
 	}
-
 	return nil
 }
 
@@ -55,19 +52,22 @@ func (p *Provider) readGoalSafe(ctx context.Context, res resource.Resource) (res
 	if err := p.validateGoalSafe(res); err != nil {
 		return resource.RemoteResource{}, err
 	}
-	base, idGoal, bound, _ := goalWithoutIdentity(res)
+	id, bound, err := boundGoalIdentity(res)
+	if err != nil {
+		return resource.RemoteResource{}, err
+	}
 	if !bound {
-		return p.readGoal(ctx, base)
+		return p.readGoal(ctx, res)
 	}
 
-	live, err := p.readGoalByID(ctx, res.Address, idGoal)
+	live, err := p.readGoalByID(ctx, res.Address, id)
 	if err != nil {
 		if errors.Is(err, provider.ErrNotFound) {
-			return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: bound %s %q was not found; refusing to plan a replacement resource", res.Address, AttrIDGoal, idGoal)
+			return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: persisted identity %q was not found remotely; refusing to plan a replacement resource: %w", res.Address, id, state.ErrStaleIdentity)
 		}
-		return resource.RemoteResource{}, fmt.Errorf("matomo: read %s by %s %q: %w", res.Address, AttrIDGoal, idGoal, err)
+		return resource.RemoteResource{}, fmt.Errorf("matomo: read %s by identity %q: %w", res.Address, id, err)
 	}
-	if err := ensureImmutableGoalName(base, live); err != nil {
+	if err := ensureImmutableGoalName(res, live); err != nil {
 		return resource.RemoteResource{}, err
 	}
 	return live, nil
@@ -77,11 +77,12 @@ func (p *Provider) createGoalSafe(ctx context.Context, res resource.Resource) (r
 	if err := p.validateGoalSafe(res); err != nil {
 		return resource.RemoteResource{}, err
 	}
-	base, idGoal, bound, _ := goalWithoutIdentity(res)
-	if bound {
-		return resource.RemoteResource{}, fmt.Errorf("matomo: create %s: %s %q already binds this resource to an existing remote goal", res.Address, AttrIDGoal, idGoal)
+	if _, bound, err := boundGoalIdentity(res); err != nil {
+		return resource.RemoteResource{}, err
+	} else if bound {
+		return resource.RemoteResource{}, fmt.Errorf("matomo: create %s: resource already has persisted identity %q", res.Address, res.Identity.ID)
 	}
-	return p.createGoal(ctx, base)
+	return p.createGoal(ctx, res)
 }
 
 func (p *Provider) updateGoalSafe(ctx context.Context, desired resource.Resource, actual resource.RemoteResource) (resource.RemoteResource, error) {
@@ -91,10 +92,10 @@ func (p *Provider) updateGoalSafe(ctx context.Context, desired resource.Resource
 	if actual.Identity.IsZero() {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: missing remote identity", desired.Address)
 	}
-
-	base, idGoal, bound, _ := goalWithoutIdentity(desired)
-	if bound && idGoal != actual.Identity.ID {
-		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: configured %s %q does not match planned remote identity %q", desired.Address, AttrIDGoal, idGoal, actual.Identity.ID)
+	if id, bound, err := boundGoalIdentity(desired); err != nil {
+		return resource.RemoteResource{}, err
+	} else if bound && id != actual.Identity.ID {
+		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: persisted identity %q does not match planned remote identity %q", desired.Address, id, actual.Identity.ID)
 	}
 
 	// Re-read immediately before mutation. Matomo's Goals.updateGoal API writes
@@ -104,7 +105,7 @@ func (p *Provider) updateGoalSafe(ctx context.Context, desired resource.Resource
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: refresh remote goal %q: %w", desired.Address, actual.Identity.ID, err)
 	}
-	if err := ensureImmutableGoalName(base, current); err != nil {
+	if err := ensureImmutableGoalName(desired, current); err != nil {
 		return resource.RemoteResource{}, err
 	}
 
@@ -115,7 +116,7 @@ func (p *Provider) updateGoalSafe(ctx context.Context, desired resource.Resource
 		Description:                      computedString(current.Computed, "description"),
 		UseEventValueAsRevenue:           computedString(current.Computed, "event_value_as_revenue"),
 	}
-	if truthyMatomoValue(preserved.UseEventValueAsRevenue) && !strings.HasPrefix(stringAttr(base.Attributes, AttrMatchAttribute), "event_") {
+	if truthyMatomoValue(preserved.UseEventValueAsRevenue) && !strings.HasPrefix(stringAttr(desired.Attributes, AttrMatchAttribute), "event_") {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: cannot change %s away from an event attribute while unmanaged useEventValueAsRevenue is enabled", desired.Address, AttrMatchAttribute)
 	}
 
@@ -123,7 +124,7 @@ func (p *Provider) updateGoalSafe(ctx context.Context, desired resource.Resource
 	if err != nil {
 		return resource.RemoteResource{}, err
 	}
-	if err := c.Analytics().UpdateGoalPreserving(ctx, actual.Identity.ID, goalInput(base.Attributes), preserved); err != nil {
+	if err := c.Analytics().UpdateGoalPreserving(ctx, actual.Identity.ID, goalInput(desired.Attributes), preserved); err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: %w", desired.Address, err)
 	}
 
@@ -134,46 +135,65 @@ func (p *Provider) updateGoalSafe(ctx context.Context, desired resource.Resource
 	return live, nil
 }
 
-func (p *Provider) normalizeGoalComparableSafe(desired resource.Resource, live *resource.RemoteResource) (resource.Attributes, resource.Attributes, error) {
-	base, idGoal, bound, err := goalWithoutIdentity(desired)
+func (p *Provider) importGoal(ctx context.Context, addr resource.Address, id string) (resource.RemoteResource, error) {
+	id = strings.TrimSpace(id)
+	if err := validateGoalIdentity(addr, id); err != nil {
+		return resource.RemoteResource{}, err
+	}
+	live, err := p.readGoalByID(ctx, addr, id)
 	if err != nil {
-		return nil, nil, err
-	}
-	if live != nil && bound {
-		if live.Identity.IsZero() || live.Identity.ID != idGoal {
-			return nil, nil, fmt.Errorf("resource %s: configured %s %q does not match remote identity %q", desired.Address, AttrIDGoal, idGoal, live.Identity.ID)
+		if errors.Is(err, provider.ErrNotFound) {
+			return resource.RemoteResource{}, fmt.Errorf("matomo: import %s: remote goal %q was not found: %w", addr, id, err)
 		}
-		if err := ensureImmutableGoalName(base, *live); err != nil {
-			return nil, nil, err
-		}
+		return resource.RemoteResource{}, fmt.Errorf("matomo: import %s: %w", addr, err)
 	}
-	return p.normalizeGoalComparable(base, live)
+	return live, nil
 }
 
-func goalWithoutIdentity(res resource.Resource) (resource.Resource, string, bool, error) {
-	attrs := res.Attributes.Clone()
-	v, ok := attrs[AttrIDGoal]
-	if !ok {
-		res.Attributes = attrs
-		return res, "", false, nil
+func (p *Provider) normalizeGoalComparableSafe(desired resource.Resource, live *resource.RemoteResource) (resource.Attributes, resource.Attributes, error) {
+	if err := rejectManifestIdentity(desired); err != nil {
+		return nil, nil, err
 	}
-	delete(attrs, AttrIDGoal)
-	id, err := coerceString(v)
-	if err != nil {
-		return resource.Resource{}, "", true, fmt.Errorf("resource %s: attribute %q %w", res.Address, AttrIDGoal, err)
+	if live != nil {
+		if _, bound, err := boundGoalIdentity(desired); err != nil {
+			return nil, nil, err
+		} else if bound {
+			if live.Identity.IsZero() || live.Identity.ID != desired.Identity.ID {
+				return nil, nil, fmt.Errorf("resource %s: persisted identity %q does not match remote identity %q", desired.Address, desired.Identity.ID, live.Identity.ID)
+			}
+			if err := ensureImmutableGoalName(desired, *live); err != nil {
+				return nil, nil, err
+			}
+		}
 	}
-	id = strings.TrimSpace(id)
-	res.Attributes = attrs
-	return res, id, true, nil
+	return p.normalizeGoalComparable(desired, live)
+}
+
+func rejectManifestIdentity(res resource.Resource) error {
+	if _, ok := res.Attributes[AttrIDGoal]; ok {
+		return fmt.Errorf("resource %s: attribute %q is not configurable; persist the Matomo goal identity in local state (%s), not in the manifest", res.Address, AttrIDGoal, state.DefaultFilename)
+	}
+	return nil
+}
+
+func boundGoalIdentity(res resource.Resource) (string, bool, error) {
+	if res.Identity.IsZero() {
+		return "", false, nil
+	}
+	id := strings.TrimSpace(res.Identity.ID)
+	if err := validateGoalIdentity(res.Address, id); err != nil {
+		return "", true, err
+	}
+	return id, true, nil
 }
 
 func validateGoalIdentity(addr resource.Address, id string) error {
 	if id == "" {
-		return fmt.Errorf("resource %s: attribute %q must be a non-empty Matomo goal id", addr, AttrIDGoal)
+		return fmt.Errorf("resource %s: persisted identity is empty; a Matomo goal id is required", addr)
 	}
 	n, err := strconv.ParseInt(id, 10, 64)
 	if err != nil || n <= 0 {
-		return fmt.Errorf("resource %s: attribute %q must be a positive integer Matomo goal id", addr, AttrIDGoal)
+		return fmt.Errorf("resource %s: persisted identity %q is not a valid Matomo goal id", addr, id)
 	}
 	return nil
 }
