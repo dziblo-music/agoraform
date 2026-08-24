@@ -24,26 +24,16 @@ func (r Ref) IsZero() bool {
 	return r.Address.IsZero()
 }
 
-// AsRef reports whether v is a resource reference.
+// AsRef reports whether v is an explicit resource reference.
 //
-// A Ref value is always a reference. A string is a reference when it is a
-// well-formed logical resource address (provider.type.name).
+// Only Ref values are references. Plain strings remain provider-owned values,
+// even when they happen to have the form provider.type.name.
 func AsRef(v any) (Ref, bool) {
-	switch x := v.(type) {
-	case Ref:
-		if x.IsZero() {
-			return Ref{}, false
-		}
-		return x, true
-	case string:
-		addr, err := ParseAddress(x)
-		if err != nil {
-			return Ref{}, false
-		}
-		return Ref{Address: addr}, true
-	default:
+	ref, ok := v.(Ref)
+	if !ok || ref.IsZero() {
 		return Ref{}, false
 	}
+	return ref, true
 }
 
 // WalkRefs visits every resource reference in v.
