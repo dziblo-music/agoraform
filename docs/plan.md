@@ -59,7 +59,9 @@ Destructive deletion is out of scope. Resources that exist remotely but are
 not in the manifest are ignored.
 
 The machine-usable plan (`internal/plan.Plan`) is independent of terminal
-output. Rendering is a separate `Format` step.
+output. Rendering is a separate `Format` step. `agoraform apply` consumes
+the same plan representation and executes only its create and update
+actions. See [apply.md](apply.md).
 
 ## Normalization
 

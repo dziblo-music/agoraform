@@ -65,7 +65,7 @@ func NewRootCommandWithRegistry(streams IOStreams, reg *provider.Registry) *cobr
 
 	cmd.AddCommand(newValidateCommand(reg))
 	cmd.AddCommand(newPlanCommand(reg))
-	cmd.AddCommand(newApplyCommand())
+	cmd.AddCommand(newApplyCommand(reg))
 	cmd.AddCommand(newImportCommand())
 
 	return cmd

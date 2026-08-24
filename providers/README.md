@@ -16,9 +16,11 @@ Providers implement `internal/provider.Provider`:
 - `Import` for binding an existing remote identity to a logical address
 
 `agoraform plan` uses `provider.Reader` only (`Name`, `ResourceTypes`,
-`Validate`, `Read`). Providers may also implement `provider.Normalizer` so
-defaults and omitted values do not create false diffs. Computed/read-only
-fields belong on `RemoteResource.Computed`, not in comparable attributes.
+`Validate`, `Read`). `agoraform apply` then dispatches `Create` and
+`Update` for the actions in that plan. Providers may also implement
+`provider.Normalizer` so defaults and omitted values do not create false
+diffs. Computed/read-only fields belong on `RemoteResource.Computed`, not
+in comparable attributes.
 
 Register implementations with `provider.Registry`. The core never imports
 Matomo or other vendor API types.

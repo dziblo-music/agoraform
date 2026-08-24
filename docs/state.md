@@ -87,16 +87,19 @@ the returned identity in state.
 
 ## Apply and import primitives
 
-`apply` and `import` commands are not implemented yet. The state store
-already exposes the operations those commands need:
+`agoraform apply` uses this store after each successful mutation:
 
 - after a successful create, persist the returned identity
 - after an update, keep or refresh the same identity
-- after an import of `<address> <remote-id>`, persist that mapping
 - do not write state for a failed mutation
+- if a mutation succeeds but the identity cannot be written, apply
+  reports the write failure and does not claim full success
 
-A successful apply or import followed by plan should then resolve the
-same remote object from state.
+The `import` command is not implemented yet. The store already exposes
+`RecordImport` for a later `<address> <remote-id>` binding.
+
+A successful apply followed by plan resolves the same remote object from
+state rather than rediscovering it by a mutable field such as name.
 
 ## Matomo goals
 
