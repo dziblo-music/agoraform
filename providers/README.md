@@ -17,7 +17,9 @@ Providers implement `internal/provider.Provider`:
 
 `agoraform plan` uses `provider.Reader` only (`Name`, `ResourceTypes`,
 `Validate`, `Read`). `agoraform apply` then dispatches `Create` and
-`Update` for the actions in that plan. Providers may also implement
+`Update` for the actions in that plan. `agoraform import` calls `Import`
+to read an existing remote identity; implementations must not create,
+update, or delete the remote resource. Providers may also implement
 `provider.Normalizer` so defaults and omitted values do not create false
 diffs. Computed/read-only fields belong on `RemoteResource.Computed`, not
 in comparable attributes.
@@ -38,4 +40,4 @@ Tag Manager resource types are not implemented yet. See
 
 `internal/provider/fake` is an in-memory `widget` provider used by unit tests.
 It is not a user-facing marketing provider. It exists to prove the core
-contract and to support later plan/apply tests without network calls.
+contract and to support plan, apply, and import tests without network calls.

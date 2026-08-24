@@ -130,5 +130,6 @@ Matomo credentials come from `MATOMO_URL`, `MATOMO_TOKEN_AUTH`, and
 `MATOMO_SITE_ID`. See [the Matomo provider README](../providers/matomo/README.md).
 
 `agoraform plan` uses the same manifest. See [plan.md](plan.md) for
-reconciliation, output, and exit codes. See [state.md](state.md) for the
-local identity file.
+reconciliation, output, and exit codes. See [import.md](import.md) to bring
+an existing remote resource under management. See [state.md](state.md) for
+the local identity file.

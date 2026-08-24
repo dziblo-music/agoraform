@@ -86,6 +86,11 @@ plans as an update. Goal deletion is out of scope. `agoraform apply`
 executes those planned creates and updates and persists Matomo's goal ID
 in local state.
 
+`agoraform import matomo.goal.NAME ID` reads an existing goal by id, prints
+configurable YAML, and stores that id in local state. It does not recreate
+the goal or emit `idGoal` as a manifest attribute. See
+[import.md](../../docs/import.md).
+
 ## HTTP client
 
 `providers/matomo/client` provides:
@@ -108,9 +113,10 @@ Two API surfaces share that client:
 ## CLI
 
 The CLI composition root registers the Matomo provider. Manifests may
-use addresses such as `matomo.goal.trial_started`. `validate` and `plan`
-call `CheckConnection` once after the provider and resource type resolve,
-then validate goal attributes and (for `plan`) read live goals.
+use addresses such as `matomo.goal.trial_started`. `validate`, `plan`,
+and `import` call `CheckConnection` once after the provider and resource
+type resolve, then validate goal attributes and (for `plan`) read live
+goals.
 
 ## Safety
 

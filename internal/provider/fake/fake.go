@@ -85,6 +85,20 @@ func (p *Provider) Seed(remote resource.RemoteResource) error {
 	return nil
 }
 
+// Remove drops a live resource by identity. Tests use this to simulate a
+// remote object disappearing after import or create.
+func (p *Provider) Remove(id string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	key, ok := p.byID[id]
+	if !ok {
+		return false
+	}
+	delete(p.resources, key)
+	delete(p.byID, id)
+	return true
+}
+
 // Calls returns how many times each lifecycle method has been invoked.
 func (p *Provider) Calls() (reads, creates, updates, imports int) {
 	p.mu.Lock()

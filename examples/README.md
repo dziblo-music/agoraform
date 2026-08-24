@@ -14,9 +14,9 @@ Validate an example from the repository root:
 agoraform validate -f examples/agoraform.yaml
 ```
 
-`matomo.goal` is implemented. `validate`, `plan`, and `apply` require
-`MATOMO_URL`, `MATOMO_TOKEN_AUTH`, and `MATOMO_SITE_ID`. Structural loading
-of this file is covered by unit tests.
+`matomo.goal` is implemented. `validate`, `plan`, `apply`, and `import`
+require `MATOMO_URL`, `MATOMO_TOKEN_AUTH`, and `MATOMO_SITE_ID`. Structural
+loading of this file is covered by unit tests.
 
 Provider credentials are supplied through `MATOMO_*` environment variables,
 never in the manifest. See [providers/matomo/README.md](../providers/matomo/README.md).

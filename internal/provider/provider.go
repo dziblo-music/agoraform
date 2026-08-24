@@ -55,7 +55,8 @@ type ConnectionChecker interface {
 // Provider is the v0.1 contract between Agoraform's core and a provider.
 //
 // Implementations must not log credentials. Mutation methods (Create, Update)
-// are used by apply/import workflows; plan must only call Name,
+// are used by apply. Import reads an existing remote identity and must not
+// create, update, or delete remote resources. Plan must only call Name,
 // ResourceTypes, Validate, and Read.
 type Provider interface {
 	Reader

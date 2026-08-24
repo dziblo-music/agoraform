@@ -95,11 +95,16 @@ the returned identity in state.
 - if a mutation succeeds but the identity cannot be written, apply
   reports the write failure and does not claim full success
 
-The `import` command is not implemented yet. The store already exposes
-`RecordImport` for a later `<address> <remote-id>` binding.
+`agoraform import ADDRESS REMOTE-ID` uses the same store:
 
-A successful apply followed by plan resolves the same remote object from
-state rather than rediscovering it by a mutable field such as name.
+- read the existing remote object by provider-native identity
+- persist the logical-address → identity mapping
+- reject a logical address that already has a binding
+- never create, update, or delete the remote resource
+
+A successful apply or import followed by plan resolves the same remote
+object from state rather than rediscovering it by a mutable field such as
+name. See [import.md](import.md).
 
 ## Matomo goals
 
