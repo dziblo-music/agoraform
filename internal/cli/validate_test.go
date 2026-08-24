@@ -199,7 +199,8 @@ resources:
   - address: fake.widget.banner
     attributes:
       title: Banner
-      parent: fake.widget.homepage
+      parent:
+        $ref: fake.widget.homepage
 `
 	reg := provider.NewRegistry()
 	if err := reg.Register(fake.New()); err != nil {
@@ -224,7 +225,8 @@ resources:
   - address: fake.widget.banner
     attributes:
       title: Banner
-      parent: fake.widget.missing
+      parent:
+        $ref: fake.widget.missing
 `
 	path := writeManifest(t, "agoraform.yaml", missing)
 	streams, _, stderr := testStreams()
@@ -246,7 +248,8 @@ resources:
   - address: fake.widget.loop
     attributes:
       title: Loop
-      parent: fake.widget.loop
+      parent:
+        $ref: fake.widget.loop
 `
 	path := writeManifest(t, "agoraform.yaml", selfRef)
 	streams, _, stderr := testStreams()
@@ -267,11 +270,13 @@ resources:
   - address: fake.widget.alpha
     attributes:
       title: Alpha
-      parent: fake.widget.beta
+      parent:
+        $ref: fake.widget.beta
   - address: fake.widget.beta
     attributes:
       title: Beta
-      parent: fake.widget.alpha
+      parent:
+        $ref: fake.widget.alpha
 `
 	path := writeManifest(t, "agoraform.yaml", cycle)
 	streams, _, stderr := testStreams()
