@@ -22,8 +22,13 @@ func (a Attributes) Clone() Attributes {
 //
 // Attributes are configurable fields declared in the manifest. Computed
 // (read-only) values do not belong here.
+//
+// Identity is not configuration. Core code may attach a persisted
+// provider-native identity from local state before calling a provider.
+// Manifests must not declare identity fields.
 type Resource struct {
 	Address    Address
+	Identity   Identity
 	Attributes Attributes
 }
 

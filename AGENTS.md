@@ -100,8 +100,9 @@ The plan engine must never perform mutations.
 Do not introduce destructive reconciliation unless explicitly required by an
 approved issue.
 
-Do not introduce persistent Terraform-style state unless a concrete provider
-requirement demonstrates that it is necessary.
+v0.1 has local identity state in `agoraform.state.json`. Do not add remote
+backends, workspaces, locking, encryption, or Terraform-compatible state
+unless a later issue requires them.
 
 ## Provider development
 

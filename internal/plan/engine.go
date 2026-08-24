@@ -8,6 +8,7 @@ import (
 
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/resource"
+	"github.com/dziblo-music/agoraform/internal/state"
 )
 
 // Lookup resolves the read-only provider for a resource address.
@@ -16,12 +17,30 @@ import (
 // methods into the planner.
 type Lookup func(addr resource.Address) (provider.Reader, error)
 
+// Identities looks up persisted provider-native identities.
+//
+// A nil Identities value is treated as empty. Implementations must treat
+// identities as opaque strings and must not interpret provider-specific
+// field names.
+type Identities interface {
+	Identity(addr resource.Address) (resource.Identity, bool, error)
+}
+
 // Build compares desired resources with provider-reported live state.
 //
 // Missing remote resources become creates. Configurable differences become
 // updates. Computed/read-only fields are ignored. Resources are planned in
 // address order. Build never invokes Create, Update, or Import.
 func Build(ctx context.Context, desired []resource.Resource, lookup Lookup) (*Plan, error) {
+	return BuildWithState(ctx, desired, lookup, nil)
+}
+
+// BuildWithState is Build plus persisted identity bindings.
+//
+// When identities contains a binding, that identity is attached to the
+// desired resource before Validate/Read. A bound identity that is missing
+// remotely is a stale-state error, not a create.
+func BuildWithState(ctx context.Context, desired []resource.Resource, lookup Lookup, identities Identities) (*Plan, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -36,7 +55,7 @@ func Build(ctx context.Context, desired []resource.Resource, lookup Lookup) (*Pl
 
 	changes := make([]Change, 0, len(resources))
 	for _, res := range resources {
-		change, err := planResource(ctx, res, lookup)
+		change, err := planResource(ctx, res, lookup, identities)
 		if err != nil {
 			return nil, err
 		}
@@ -46,8 +65,13 @@ func Build(ctx context.Context, desired []resource.Resource, lookup Lookup) (*Pl
 	return &Plan{Changes: changes}, nil
 }
 
-func planResource(ctx context.Context, res resource.Resource, lookup Lookup) (Change, error) {
+func planResource(ctx context.Context, res resource.Resource, lookup Lookup, identities Identities) (Change, error) {
 	addr := res.Address
+	bound, err := attachIdentity(addr, &res, identities)
+	if err != nil {
+		return Change{}, fmt.Errorf("plan %s: %w", addr, err)
+	}
+
 	reader, err := lookup(addr)
 	if err != nil {
 		return Change{}, fmt.Errorf("plan %s: %w", addr, err)
@@ -62,6 +86,9 @@ func planResource(ctx context.Context, res resource.Resource, lookup Lookup) (Ch
 
 	live, err := reader.Read(ctx, res)
 	if errors.Is(err, provider.ErrNotFound) {
+		if bound {
+			return Change{}, fmt.Errorf("plan %s: persisted identity %q was not found remotely; refusing to create a replacement: %w", addr, res.Identity.ID, state.ErrStaleIdentity)
+		}
 		want, _, err := comparableAttributes(reader, res, nil)
 		if err != nil {
 			return Change{}, fmt.Errorf("plan %s: %w", addr, err)
@@ -96,6 +123,24 @@ func planResource(ctx context.Context, res resource.Resource, lookup Lookup) (Ch
 		After:    want,
 		Diffs:    diffs,
 	}, nil
+}
+
+func attachIdentity(addr resource.Address, res *resource.Resource, identities Identities) (bool, error) {
+	identity := res.Identity
+	if identities != nil {
+		id, ok, err := identities.Identity(addr)
+		if err != nil {
+			return false, err
+		}
+		if ok {
+			if !identity.IsZero() && identity.ID != id.ID {
+				return true, fmt.Errorf("desired identity %q conflicts with persisted identity %q", identity.ID, id.ID)
+			}
+			identity = id
+		}
+	}
+	res.Identity = identity
+	return !res.Identity.IsZero(), nil
 }
 
 func comparableAttributes(reader provider.Reader, desired resource.Resource, live *resource.RemoteResource) (want, got resource.Attributes, err error) {

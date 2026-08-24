@@ -52,6 +52,7 @@ CI also checks that `gofmt` would not change any files. Run `gofmt -l .` locally
 Do not commit API tokens, credentials, personal data, or machine-local paths.
 
 The v0.1 manifest format is documented in [docs/manifest.md](docs/manifest.md).
+Local identity state is documented in [docs/state.md](docs/state.md).
 
 ## Pull requests
 

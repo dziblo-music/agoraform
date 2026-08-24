@@ -132,6 +132,14 @@ func (p *Provider) Read(_ context.Context, res resource.Resource) (resource.Remo
 	defer p.mu.Unlock()
 	p.reads++
 
+	if !res.Identity.IsZero() {
+		key, ok := p.byID[res.Identity.ID]
+		if !ok {
+			return resource.RemoteResource{}, provider.ErrNotFound
+		}
+		return cloneRemote(p.resources[key]), nil
+	}
+
 	remote, ok := p.resources[res.Address.String()]
 	if !ok {
 		return resource.RemoteResource{}, provider.ErrNotFound

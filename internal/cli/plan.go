@@ -8,6 +8,7 @@ import (
 	"github.com/dziblo-music/agoraform/internal/plan"
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/resource"
+	"github.com/dziblo-music/agoraform/internal/state"
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +26,8 @@ func newPlanCommand(reg *provider.Registry) *cobra.Command {
 changes required to reach the desired manifest state.
 
 plan only validates configuration and reads remote state. It never creates,
-updates, or imports resources.
+updates, or imports resources. Persisted identities are read from
+agoraform.state.json next to the manifest.
 
 Exit codes:
   0  plan succeeded and no changes are required
@@ -57,9 +59,14 @@ The default manifest path is agoraform.yaml.`,
 				return fmt.Errorf("plan requires a registered provider; none are registered")
 			}
 
-			result, err := plan.Build(cmd.Context(), m.Resources, func(addr resource.Address) (provider.Reader, error) {
+			st, err := state.Load(state.PathForManifest(path))
+			if err != nil {
+				return err
+			}
+
+			result, err := plan.BuildWithState(cmd.Context(), m.Resources, func(addr resource.Address) (provider.Reader, error) {
 				return reg.LookupFor(addr)
-			})
+			}, st)
 			if err != nil {
 				return err
 			}

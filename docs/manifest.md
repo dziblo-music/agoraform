@@ -23,7 +23,7 @@ Provider credentials, modules, and expressions are out of scope.
 | `apiVersion` | yes | Must be `agoraform.io/v1alpha1`. |
 | `resources` | no | List of desired resources. Omitted or empty is valid. |
 | `resources[].address` | yes | Logical address of the form `provider.type.name`. |
-| `resources[].attributes` | no | Configurable attributes and provider identity binding metadata for the resource. |
+| `resources[].attributes` | no | Configurable attributes for the resource. Provider-native identities do not belong here. |
 
 Do not put API tokens, passwords, or other secrets in a manifest. Provider
 authentication belongs in environment or runtime configuration, not in Git.
@@ -53,26 +53,23 @@ round-trip.
 
 ## Attributes
 
-`attributes` is a YAML mapping. Most entries are configurable provider fields;
-a provider may also define explicit identity-binding metadata when the remote
-API requires a stable provider-native identifier. The core treats values as
-opaque and providers own their schemas.
+`attributes` is a YAML mapping of configurable provider fields. The core
+treats values as opaque and providers own their schemas. Provider-native
+identities are stored in [local state](state.md), not in the manifest.
 
 Computed (read-only) fields belong to the live/remote resource a provider
 returns and must not be copied into configuration as mutable attributes.
 
 ## Matomo Goal (`matomo.goal`)
 
-v0.1 manages a Matomo analytics goal. On initial discovery, Agoraform may find
-a goal by `name`. Once the Matomo `idGoal` is known, persist it in the resource
-attributes so subsequent reads bind to that stable provider-native identity.
-A bound goal is never silently recreated when its remote ID disappears.
+v0.1 manages a Matomo analytics goal. On initial discovery, Agoraform may
+find a goal by `name`. Once the resource is managed, persist Matomo's
+`idGoal` in [local state](state.md). Do not copy it into attributes.
 
 ```yaml
 resources:
   - address: matomo.goal.trial_started
     attributes:
-      idGoal: "12"
       name: Trial Started
       matchAttribute: event_action
       pattern: trialStarted
@@ -80,8 +77,7 @@ resources:
 
 | Attribute | Required | Description |
 | --- | --- | --- |
-| `idGoal` | no for initial create/discovery; recommended once known | Provider-native identity binding. It is not sent as a mutable Goal field and does not participate in diffs. |
-| `name` | yes | Goal name. Immutable once `idGoal` binds the logical resource to a remote goal. |
+| `name` | yes | Goal name. Immutable once local state binds the logical resource to a remote goal. |
 | `matchAttribute` | yes | How the goal matches. One of `url`, `title`, `file`, `external_website`, `manually`, `visit_duration`, `visit_total_actions`, `visit_total_pageviews`, `event_action`, `event_category`, `event_name`. |
 | `pattern` | unless `manually` | Value to match. Numeric match attributes require a number. |
 | `patternType` | no | `contains` (default), `exact`, or `regex`. Numeric match attributes default to `greater_than`. |
@@ -134,4 +130,5 @@ Matomo credentials come from `MATOMO_URL`, `MATOMO_TOKEN_AUTH`, and
 `MATOMO_SITE_ID`. See [the Matomo provider README](../providers/matomo/README.md).
 
 `agoraform plan` uses the same manifest. See [plan.md](plan.md) for
-reconciliation, output, and exit codes.
+reconciliation, output, and exit codes. See [state.md](state.md) for the
+local identity file.

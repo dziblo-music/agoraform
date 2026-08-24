@@ -5,6 +5,9 @@ contain no credentials or personal data.
 
 - [agoraform.yaml](agoraform.yaml) — minimal `matomo.goal` manifest.
 
+Managed identities belong in `agoraform.state.json` beside the manifest,
+not in resource attributes. See [docs/state.md](../docs/state.md).
+
 Validate an example from the repository root:
 
 ```bash
