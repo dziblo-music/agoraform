@@ -12,9 +12,9 @@ prints the SemVer identifier without the prefix (`0.1.0`).
 
 ### Added
 
-- Resource references: an attribute value that is a logical resource address (`provider.type.name`) is an explicit reference to another desired resource
+- Explicit resource references using `$ref: provider.type.name` objects, while ordinary strings remain provider-owned values
 - A provider-neutral directed dependency graph with stable prerequisite-first ordering
-- Manifest load, `validate`, `plan`, and `apply` reject missing references, self-references, and dependency cycles before remote reads or mutations
+- Manifest load, `validate`, `plan`, and `apply` reject malformed or missing references, self-references, and dependency cycles before remote reads or mutations
 - Plans and import YAML keep logical addresses; provider-native identities stay out of configuration
 
 ## [0.1.0] - 2026-08-24
