@@ -31,15 +31,15 @@ Agoraform is licensed under the [Apache License 2.0](LICENSE).
 
 ## Install
 
-Requires no runtime besides the binary. Release artifacts are built with
-`CGO_ENABLED=0`.
+Requires no runtime besides the binary. Official release artifacts are built
+with Go 1.26.7 and `CGO_ENABLED=0`.
 
 ### GitHub Releases
 
 1. Download the archive for your OS and architecture from
    [GitHub Releases](https://github.com/dziblo-music/agoraform/releases)
    (tag `v0.1.0` for this version).
-2. Verify the SHA-256 digest against `checksums.txt`.
+2. Download `checksums.txt` from the same release and verify the archive.
 3. Extract `agoraform` (Windows: `agoraform.exe`) and place it on `PATH`.
 4. Confirm the SemVer 2.0 version string:
 
@@ -47,7 +47,9 @@ Requires no runtime besides the binary. Release artifacts are built with
 agoraform --version
 ```
 
-A 0.1.0 release binary prints `0.1.0`. Untagged local builds print `0.0.0-dev`.
+A 0.1.0 release binary prints `0.1.0`. Git tags use the Go convention with a
+`v` prefix (`v0.1.0`); the CLI version string does not. Untagged local builds
+print `0.0.0-dev`.
 
 Archives:
 
@@ -59,13 +61,38 @@ Archives:
 | `agoraform_0.1.0_darwin_arm64.tar.gz` | macOS arm64 |
 | `agoraform_0.1.0_windows_amd64.zip` | Windows amd64 |
 
-Example checksum check (Linux/macOS):
+Release archives also contain `README.md`, `CHANGELOG.md`, license files, and
+the `examples/agoraform.yaml` quickstart manifest.
+
+#### Verify checksums
+
+Linux example:
 
 ```bash
 sha256sum -c checksums.txt --ignore-missing
 ```
 
+macOS example (replace the archive name for Intel Macs):
+
+```bash
+shasum -a 256 agoraform_0.1.0_darwin_arm64.tar.gz
+grep 'agoraform_0.1.0_darwin_arm64.tar.gz' checksums.txt
+```
+
+The two SHA-256 values must match.
+
+Windows PowerShell:
+
+```powershell
+Get-FileHash .\agoraform_0.1.0_windows_amd64.zip -Algorithm SHA256
+Select-String 'agoraform_0.1.0_windows_amd64.zip' .\checksums.txt
+```
+
+The two SHA-256 values must match before you run the binary.
+
 ### go install
+
+Requires Go 1.26.7 or newer.
 
 ```bash
 go install github.com/dziblo-music/agoraform/cmd/agoraform@v0.1.0
@@ -75,7 +102,7 @@ The module version in the tag is `v0.1.0`. The CLI still prints `0.1.0`.
 
 ### Build from source
 
-Requires Go 1.23 or newer.
+Requires Go 1.26.7 or newer.
 
 ```bash
 git clone https://github.com/dziblo-music/agoraform.git
@@ -90,7 +117,9 @@ On Windows:
 go build -o agoraform.exe ./cmd/agoraform
 ```
 
-A plain `go build` reports `0.0.0-dev`. To stamp 0.1.0:
+A plain untagged `go build` reports `0.0.0-dev`. Release builds inject the
+version rather than hard-coding it in source. To reproduce a 0.1.0 version
+stamp locally:
 
 ```bash
 go build -ldflags "-X github.com/dziblo-music/agoraform/internal/cli.Version=0.1.0" -o agoraform ./cmd/agoraform
@@ -109,10 +138,17 @@ MATOMO_SITE_ID       numeric site id
 `validate`, `plan`, `apply`, and `import` call Matomo. They fail without
 those variables and a reachable instance. Credentials never belong in YAML.
 
-Copy the example manifest:
+From an extracted release archive or a source checkout, copy the included
+example manifest:
 
 ```bash
 cp examples/agoraform.yaml agoraform.yaml
+```
+
+On Windows PowerShell:
+
+```powershell
+Copy-Item .\examples\agoraform.yaml .\agoraform.yaml
 ```
 
 Then:
