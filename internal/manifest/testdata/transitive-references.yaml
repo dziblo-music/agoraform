@@ -6,8 +6,10 @@ resources:
   - address: fake.widget.mid
     attributes:
       title: Mid
-      parent: fake.widget.root
+      parent:
+        $ref: fake.widget.root
   - address: fake.widget.leaf
     attributes:
       title: Leaf
-      parent: fake.widget.mid
+      parent:
+        $ref: fake.widget.mid
