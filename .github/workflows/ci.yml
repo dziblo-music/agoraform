@@ -33,5 +33,8 @@ jobs:
       - name: Test
         run: go test ./...
 
+      - name: Compile state tests for Windows
+        run: GOOS=windows GOARCH=amd64 go test -c -o "$RUNNER_TEMP/agoraform-state.test.exe" ./internal/state
+
       - name: Vet
         run: go vet ./...

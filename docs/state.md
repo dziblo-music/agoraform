@@ -30,6 +30,12 @@ The default file is `agoraform.state.json` in the same directory as the
 manifest. `agoraform plan -f site/agoraform.yaml` reads
 `site/agoraform.state.json`. A missing file is empty state, not an error.
 
+The state file is machine/account-local management metadata and should not
+normally be committed to Git. The repository `.gitignore` ignores
+`agoraform.state.json` at any directory depth. If a future workflow needs
+shared or remote state, it should be designed explicitly rather than treating
+the v0.1 local file as portable configuration.
+
 The file is local only. Remote backends, workspaces, locking, encryption,
 and history are out of scope.
 
@@ -54,14 +60,23 @@ and history are out of scope.
 | `provider` | Provider name. Must match the address provider segment. |
 | `remoteId` | Opaque provider-native identity. |
 
-Serialization is deterministic. Writes replace the file atomically so an
-interrupted save does not leave a partial document.
+Provider-native IDs are not assumed to be globally unique across all resource
+types. Duplicate ownership is rejected within the same provider and resource
+type, while different resource types may legitimately reuse the same opaque
+ID value.
+
+Serialization is deterministic. Writes create and sync a private temporary
+file beside the destination, then atomically replace the prior state. A failed
+replacement leaves the previous valid state untouched; Agoraform never uses a
+delete-then-rename fallback.
 
 ## Plan
 
-When state contains an identity for a resource, `plan` reads that remote
-object by identity. Name or other discovery fields cannot rebind a
-managed resource to a different remote object.
+When state contains an identity for a resource, `plan` asks the provider to
+read that exact remote object by identity. Core then verifies that the
+provider returned the same identity. Name or other discovery fields cannot
+rebind a managed resource to a different remote object even if a provider
+implementation accidentally ignores the identity hint.
 
 If the bound remote object is gone, plan fails with a stale-identity
 error. It does not plan a create.
@@ -111,7 +126,8 @@ Agoraform reports actionable errors for:
 - unsupported state version
 - invalid resource addresses
 - missing or empty identities
-- duplicate identity records
+- duplicate identity records within one provider resource type
 - provider/address mismatch
+- a provider returning an identity different from the persisted binding
 - a persisted identity whose remote object no longer exists
 - a state file that cannot be written atomically

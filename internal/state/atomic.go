@@ -7,6 +7,14 @@ import (
 )
 
 func writeAtomic(path string, data []byte) error {
+	return writeAtomicWithReplace(path, data, replaceFile)
+}
+
+func writeAtomicWithReplace(path string, data []byte, replace func(tmp, dest string) error) error {
+	if replace == nil {
+		return fmt.Errorf("replace function is required")
+	}
+
 	dir := filepath.Dir(path)
 	if dir == "" {
 		dir = "."
@@ -27,6 +35,13 @@ func writeAtomic(path string, data []byte) error {
 		}
 	}()
 
+	// Establish final permissions before the commit point. There must be no
+	// fallible metadata operation after replace succeeds, otherwise callers
+	// could observe an error even though new state is already on disk.
+	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("set temporary file permissions: %w", err)
+	}
 	if _, err := f.Write(data); err != nil {
 		_ = f.Close()
 		return fmt.Errorf("write temporary file: %w", err)
@@ -39,22 +54,12 @@ func writeAtomic(path string, data []byte) error {
 		return fmt.Errorf("close temporary file: %w", err)
 	}
 
-	if err := replaceFile(tmp, path); err != nil {
-		return err
+	// replaceFile is the only commit point. It must replace the destination
+	// atomically and must never delete the old state before the replacement is
+	// guaranteed to succeed.
+	if err := replace(tmp, path); err != nil {
+		return fmt.Errorf("replace state file: %w", err)
 	}
 	cleanup = false
-	if err := os.Chmod(path, 0o600); err != nil {
-		return fmt.Errorf("set permissions: %w", err)
-	}
 	return nil
-}
-
-func replaceFile(tmp, dest string) error {
-	if err := os.Rename(tmp, dest); err == nil {
-		return nil
-	}
-	if err := os.Remove(dest); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	return os.Rename(tmp, dest)
 }

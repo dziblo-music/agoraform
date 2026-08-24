@@ -87,9 +87,14 @@ func validateRecords(records map[string]Record) error {
 		if err := validateRecord(addr, rec); err != nil {
 			return err
 		}
-		dupKey := rec.Provider + "\x00" + rec.RemoteID
+
+		// Provider IDs are opaque and are not necessarily globally unique
+		// across a provider. Scope duplicate ownership checks to the provider
+		// resource type so, for example, goal ID "1" and tag ID "1" can
+		// coexist safely.
+		dupKey := rec.Provider + "\x00" + addr.Type + "\x00" + rec.RemoteID
 		if other, ok := seenRemote[dupKey]; ok {
-			return fmt.Errorf("duplicate identity %q for provider %q on %s and %s", rec.RemoteID, rec.Provider, other, addr)
+			return fmt.Errorf("duplicate identity %q for provider %q resource type %q on %s and %s", rec.RemoteID, rec.Provider, addr.Type, other, addr)
 		}
 		seenRemote[dupKey] = addr.String()
 	}

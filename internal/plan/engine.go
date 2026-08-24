@@ -39,7 +39,9 @@ func Build(ctx context.Context, desired []resource.Resource, lookup Lookup) (*Pl
 //
 // When identities contains a binding, that identity is attached to the
 // desired resource before Validate/Read. A bound identity that is missing
-// remotely is a stale-state error, not a create.
+// remotely is a stale-state error, not a create. A provider must also return
+// the same identity it was asked to resolve; core rejects mismatches rather
+// than allowing a mutable discovery field to rebind the logical resource.
 func BuildWithState(ctx context.Context, desired []resource.Resource, lookup Lookup, identities Identities) (*Plan, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -102,6 +104,15 @@ func planResource(ctx context.Context, res resource.Resource, lookup Lookup, ide
 	}
 	if err != nil {
 		return Change{}, fmt.Errorf("plan %s: read live resource: %w", addr, err)
+	}
+
+	if bound {
+		if live.Identity.IsZero() {
+			return Change{}, fmt.Errorf("plan %s: provider returned no identity for persisted identity %q; refusing to rebind managed resource", addr, res.Identity.ID)
+		}
+		if live.Identity.ID != res.Identity.ID {
+			return Change{}, fmt.Errorf("plan %s: provider returned identity %q for persisted identity %q; refusing to rebind managed resource", addr, live.Identity.ID, res.Identity.ID)
+		}
 	}
 
 	want, got, err := comparableAttributes(reader, res, &live)
