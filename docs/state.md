@@ -1,6 +1,6 @@
-# Local state (v0.1)
+# Local state (0.1.0)
 
-Agoraform v0.1 stores a small local identity map so logical resource
+Agoraform 0.1.0 stores a small local identity map so logical resource
 addresses can stay bound to provider-native remote IDs. The manifest
 describes desired configuration. State stores only management metadata.
 

@@ -1,4 +1,4 @@
-# Plan engine (v0.1)
+# Plan engine (0.1.0)
 
 `agoraform plan` compares desired manifest resources with provider-reported
 live state and prints a deterministic execution plan. It never mutates
@@ -80,14 +80,16 @@ Unchanged resources are omitted from the action list.
 ```text
 Agoraform will perform the following actions:
 
-+ fake.widget.trial_started
++ matomo.goal.trial_started
 
-    title: "Trial Started"
+    name: "Trial Started"
+    matchAttribute: "event_action"
+    pattern: "trialStarted"
 
-~ fake.widget.user_id
+~ matomo.goal.signup
 
-    color:
-      "uid" -> "userId"
+    pattern:
+      "signUp" -> "signup"
 
 Plan: 1 to create, 1 to update, 0 to destroy.
 ```

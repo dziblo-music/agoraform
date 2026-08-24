@@ -44,6 +44,9 @@ func TestVersion(t *testing.T) {
 	if got != cli.Version {
 		t.Fatalf("version = %q, want %q", got, cli.Version)
 	}
+	if strings.HasPrefix(got, "v") {
+		t.Fatalf("version %q must be SemVer 2.0 without a v prefix", got)
+	}
 }
 
 func TestImportRequiresArguments(t *testing.T) {

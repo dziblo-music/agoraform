@@ -52,7 +52,7 @@ func NewRootCommandWithRegistry(streams IOStreams, reg *provider.Registry) *cobr
 		Long:          "Agoraform defines, plans, and applies marketing infrastructure from code.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		Version:       Version,
+		Version:       effectiveVersion(),
 	}
 
 	cmd.SetIn(streams.In)

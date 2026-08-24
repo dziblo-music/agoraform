@@ -18,7 +18,7 @@ separate issue.
 
 ### Prerequisites
 
-- Go 1.23 or newer (`go version`)
+- Go 1.26.7 or newer (`go version`)
 - Git
 
 Fork or clone the repository and create a branch from the latest `main`.
@@ -74,7 +74,9 @@ Use:
 
     Closes #123
 
-when the PR should automatically close an issue after merge.
+when the PR should automatically close an issue after merge. Use `Refs #123`
+when the issue has post-merge acceptance work, such as release artifact
+verification, and must remain open after the PR lands.
 
 All required CI checks must pass before merge.
 
@@ -106,8 +108,20 @@ Never commit API tokens, account secrets, or real customer data.
 
 ## Compatibility
 
-Agoraform currently uses pre-1.0 semantic versioning.
+Agoraform follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
+Git tags are `v` plus the SemVer identifier (`v0.1.0`). `agoraform --version`
+prints the identifier without the prefix (`0.1.0`).
 
-The manifest format and CLI may evolve while the project is in the `0.x`
-release series. Breaking changes should nevertheless be intentional and
-documented.
+Until 1.0.0, a MINOR bump in the `0.x` series may include breaking CLI or
+manifest changes. Those changes must still be intentional and documented in
+[CHANGELOG.md](CHANGELOG.md).
+
+## License
+
+Contributions are accepted under the [Apache License 2.0](LICENSE).
+
+## Releases
+
+See [docs/release.md](docs/release.md) for the pinned release toolchain,
+SemVer/tag rules, GitHub draft releases, and the manual install verification
+required before publishing.

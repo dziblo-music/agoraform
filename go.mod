@@ -1,6 +1,6 @@
 module github.com/dziblo-music/agoraform
 
-go 1.23
+go 1.26.7
 
 require (
 	github.com/spf13/cobra v1.10.2

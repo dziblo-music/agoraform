@@ -2,10 +2,10 @@
 
 The Matomo provider is Agoraform's first production provider. It loads
 credentials from the environment, talks to Matomo through
-`providers/matomo/client`, and manages the v0.1 `matomo.goal` resource.
+`providers/matomo/client`, and manages the 0.1.0 `matomo.goal` resource.
 
 Tag Manager variables, triggers, tags, and versions are out of scope for
-v0.1.
+0.1.0.
 
 ## Configuration
 
@@ -16,8 +16,10 @@ environment:
 MATOMO_URL           required   Matomo base URL, for example https://matomo.example.com
 MATOMO_TOKEN_AUTH    required   API token
 MATOMO_SITE_ID       required for goals   analytics site id
-MATOMO_CONTAINER_ID  optional   default Tag Manager container id
 ```
+
+`MATOMO_CONTAINER_ID` exists in the client for future Tag Manager work. It is
+not used by `matomo.goal` and is not part of the 0.1.0 workflow.
 
 ### Precedence
 
@@ -73,7 +75,7 @@ or remote loss.
 
 Other Matomo Goal API fields (`description`, `revenue`, `caseSensitive`,
 `allowMultipleConversionsPerVisit`, and `useEventValueAsRevenue`) are not
-managed in v0.1. They are nevertheless preserved during updates: Agoraform
+managed in 0.1.0. They are nevertheless preserved during updates: Agoraform
 re-reads the live goal immediately before mutation and sends those values back
 to Matomo because `Goals.updateGoal` otherwise resets omitted parameters to
 API defaults.
@@ -114,9 +116,9 @@ Two API surfaces share that client:
 
 The CLI composition root registers the Matomo provider. Manifests may
 use addresses such as `matomo.goal.trial_started`. `validate`, `plan`,
-and `import` call `CheckConnection` once after the provider and resource
-type resolve, then validate goal attributes and (for `plan`) read live
-goals.
+`apply`, and `import` call `CheckConnection` once after the provider and
+resource type resolve, then validate goal attributes and (for `plan`) read
+live goals.
 
 ## Safety
 

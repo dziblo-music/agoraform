@@ -1,4 +1,4 @@
-# Import (v0.1)
+# Import (0.1.0)
 
 `agoraform import` brings an existing remote resource under Agoraform
 management without recreating it. It reads the live object, prints

@@ -1,4 +1,4 @@
-# Manifest format (v0.1)
+# Manifest format (0.1.0)
 
 Agoraform configuration is a versioned YAML document that lists desired
 marketing-infrastructure resources by logical address.
@@ -40,8 +40,9 @@ Examples:
 
 ```text
 matomo.goal.trial_started
-fake.widget.homepage
 ```
+
+`fake.widget` exists only in unit tests. It is not a user-facing provider.
 
 Each segment must start with a letter (`a-z`) and may then contain letters,
 digits, or underscores. Addresses are compared exactly; duplicates are

@@ -1,0 +1,83 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: agoraform
+
+builds:
+  - id: agoraform
+    main: ./cmd/agoraform
+    binary: agoraform
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/dziblo-music/agoraform/internal/cli.Version={{.Version}}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE
+      - NOTICE
+      - README.md
+      - CHANGELOG.md
+      - examples/agoraform.yaml
+      - examples/README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+      - Merge pull request
+      - Merge branch
+
+release:
+  draft: true
+  replace_existing_draft: true
+  prerelease: auto
+  name_template: "v{{ .Version }}"
+  header: |
+    Agoraform {{ .Version }}
+
+    SemVer 2.0 release. `agoraform --version` prints `{{ .Version }}`.
+    The git tag is `v{{ .Version }}`.
+
+    **Supported in {{ .Version }}:** `validate`, `plan`, `apply`, and `import` for `matomo.goal` only, with local identity state. Create and update only; no destroy.
+
+    This GitHub release is created as a **draft**. Publish it only after a clean install of a release artifact has been verified.
+
+    Full notes: [CHANGELOG.md](https://github.com/dziblo-music/agoraform/blob/v{{ .Version }}/CHANGELOG.md)
+  footer: |
+    ## Verify
+
+    Compare SHA-256 checksums against `checksums.txt` before running the binary.
+
+    ```bash
+    agoraform --version   # prints {{ .Version }}
+    ```
