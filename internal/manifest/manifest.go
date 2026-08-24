@@ -143,6 +143,21 @@ func normalizeAttributes(in map[string]any) (resource.Attributes, error) {
 func normalizeValue(v any) (any, error) {
 	switch x := v.(type) {
 	case map[string]any:
+		if rawRef, ok := x["$ref"]; ok {
+			if len(x) != 1 {
+				return nil, fmt.Errorf("resource reference must contain only $ref")
+			}
+			s, ok := rawRef.(string)
+			if !ok {
+				return nil, fmt.Errorf("resource reference $ref must be a string")
+			}
+			addr, err := resource.ParseAddress(s)
+			if err != nil {
+				return nil, fmt.Errorf("resource reference $ref: %w", err)
+			}
+			return resource.Ref{Address: addr}, nil
+		}
+
 		out := make(map[string]any, len(x))
 		for k, val := range x {
 			nv, err := normalizeValue(val)
@@ -159,13 +174,9 @@ func normalizeValue(v any) (any, error) {
 			if !ok {
 				return nil, fmt.Errorf("map key %v is not a string", k)
 			}
-			nv, err := normalizeValue(val)
-			if err != nil {
-				return nil, err
-			}
-			out[ks] = nv
+			out[ks] = val
 		}
-		return out, nil
+		return normalizeValue(out)
 	case []any:
 		out := make([]any, len(x))
 		for i, val := range x {
@@ -176,11 +187,6 @@ func normalizeValue(v any) (any, error) {
 			out[i] = nv
 		}
 		return out, nil
-	case string:
-		if addr, err := resource.ParseAddress(x); err == nil {
-			return resource.Ref{Address: addr}, nil
-		}
-		return x, nil
 	default:
 		return v, nil
 	}
