@@ -67,12 +67,3 @@ func TestImportIsReadOnlyAndReturnsRequestedLogicalAddress(t *testing.T) {
 		t.Fatalf("calls creates=%d updates=%d imports=%d, want 0 0 1", creates, updates, imports)
 	}
 }
-
-func mustAddress(t *testing.T, s string) resource.Address {
-	t.Helper()
-	addr, err := resource.ParseAddress(s)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return addr
-}
