@@ -29,6 +29,10 @@ const (
 	// AttrParent is an optional reference to another fake.widget resource.
 	AttrParent = "parent"
 
+	// AttrAlso is an optional second reference, used to test branching
+	// dependencies where one resource depends on two others.
+	AttrAlso = "also"
+
 	// AttrSerial is a computed (read-only) widget serial number.
 	AttrSerial = "serial"
 )
@@ -134,17 +138,18 @@ func (p *Provider) Validate(_ context.Context, res resource.Resource) error {
 		}
 	}
 	if parent, exists := res.Attributes[AttrParent]; exists {
-		ref, ok := resource.AsRef(parent)
-		if !ok {
-			return fmt.Errorf("resource %s: attribute %q must be a resource reference", res.Address, AttrParent)
+		if err := validateParent(res.Address, parent); err != nil {
+			return err
 		}
-		if ref.Address.Provider != Name || ref.Address.Type != TypeWidget {
-			return fmt.Errorf("resource %s: attribute %q must reference a %s.%s resource", res.Address, AttrParent, Name, TypeWidget)
+	}
+	if also, exists := res.Attributes[AttrAlso]; exists {
+		if err := validateReference(res.Address, AttrAlso, also); err != nil {
+			return err
 		}
 	}
 	for key := range res.Attributes {
 		switch key {
-		case AttrTitle, AttrColor, AttrParent:
+		case AttrTitle, AttrColor, AttrParent, AttrAlso:
 		default:
 			return fmt.Errorf("resource %s: unknown attribute %q", res.Address, key)
 		}
@@ -194,7 +199,7 @@ func (p *Provider) Create(ctx context.Context, res resource.Resource) (resource.
 	remote := resource.RemoteResource{
 		Address:    res.Address,
 		Identity:   resource.Identity{ID: fmt.Sprintf("widget-%d", p.nextID)},
-		Attributes: res.Attributes.Clone(),
+		Attributes: logicalAttributes(res.Attributes),
 		Computed: resource.Attributes{
 			AttrSerial: p.nextSerial,
 		},
@@ -230,7 +235,7 @@ func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual
 	}
 
 	p.nextSerial++
-	existing.Attributes = desired.Attributes.Clone()
+	existing.Attributes = logicalAttributes(desired.Attributes)
 	if existing.Computed == nil {
 		existing.Computed = resource.Attributes{}
 	}
@@ -271,6 +276,62 @@ func (p *Provider) storeLocked(remote resource.RemoteResource) {
 	p.resources[key] = cloneRemote(remote)
 	if !remote.Identity.IsZero() {
 		p.byID[remote.Identity.ID] = key
+	}
+}
+
+func validateParent(addr resource.Address, parent any) error {
+	return validateReference(addr, AttrParent, parent)
+}
+
+func validateReference(addr resource.Address, attr string, v any) error {
+	var target resource.Address
+	if resolved, ok := resource.AsResolved(v); ok {
+		target = resolved.Address
+	} else {
+		ref, ok := resource.AsRef(v)
+		if !ok {
+			return fmt.Errorf("resource %s: attribute %q must be a resource reference", addr, attr)
+		}
+		target = ref.Address
+	}
+	if target.Provider != Name || target.Type != TypeWidget {
+		return fmt.Errorf("resource %s: attribute %q must reference a %s.%s resource", addr, attr, Name, TypeWidget)
+	}
+	return nil
+}
+
+// logicalAttributes stores comparable configuration, converting runtime
+// Resolved bindings back to logical Refs so later plans do not treat
+// identities as attribute drift.
+func logicalAttributes(attrs resource.Attributes) resource.Attributes {
+	return replaceResolvedWithRef(attrs.Clone()).(resource.Attributes)
+}
+
+func replaceResolvedWithRef(v any) any {
+	if resolved, ok := resource.AsResolved(v); ok {
+		return resource.Ref{Address: resolved.Address}
+	}
+	switch x := v.(type) {
+	case resource.Attributes:
+		out := make(resource.Attributes, len(x))
+		for k, val := range x {
+			out[k] = replaceResolvedWithRef(val)
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, val := range x {
+			out[k] = replaceResolvedWithRef(val)
+		}
+		return out
+	case []any:
+		out := make([]any, len(x))
+		for i, val := range x {
+			out[i] = replaceResolvedWithRef(val)
+		}
+		return out
+	default:
+		return v
 	}
 }
 

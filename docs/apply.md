@@ -13,7 +13,7 @@ manifest
 load local state
    │
    ▼
-validate
+validate (including dependency graph)
    │
    ▼
 read remote resources
@@ -22,7 +22,11 @@ read remote resources
 build plan
    │
    ▼
-execute create / update
+order by dependency graph
+   │
+   ▼
+resolve refs, then create / update
+(prerequisites first, sequential)
    │
    ▼
 persist identities
@@ -53,9 +57,15 @@ object, and passes the full live resource to `Update`. It does not
 reconstruct live state from the plan's comparable `Before` attributes.
 There is no interactive approval prompt in v0.1.
 
-Apply execution remains sequential address order. Using the dependency
-graph to order mutations is left to later apply work; this change only
-validates the graph before apply begins.
+Apply executes sequentially in deterministic dependency order: prerequisite
+resources run before dependents, and unrelated resources keep address order
+as the tie-breaker. Immediately before each create or update, apply replaces
+explicit `$ref` values with runtime bindings that carry the prerequisite's
+provider-native identity and computed outputs. Providers translate those
+bindings into native API values. The bindings are not written into the
+manifest, plan output, or user-authored configuration. If a prerequisite
+has no identity after it has been applied (or skipped as unchanged), apply
+fails with an actionable diagnostic and does not mutate the dependent.
 
 The Matomo provider is registered with the CLI. `matomo.goal` resources can
 be created and updated. Unit tests that need a generic resource lifecycle
@@ -73,9 +83,11 @@ v0.1 executes:
 Unchanged resources are skipped. Destructive deletion is out of scope.
 Unsupported action types are rejected before any mutation.
 
-Execution is sequential and follows deterministic address order. Apply stops
-at the first provider or state-write failure. Failure diagnostics include the
-resource address and attempted operation.
+Execution is sequential and follows deterministic dependency order.
+Prerequisites execute before dependents. Apply stops at the first provider
+or state-write failure, so a failed prerequisite never executes its
+dependents. Failure diagnostics include the resource address and attempted
+operation.
 
 ## State and identity
 
@@ -125,6 +137,7 @@ Unlike `plan`, a successful apply that made changes still exits `0`.
 ## Safety
 
 - Configuration and local state are validated before any mutation.
+- Invalid dependency graphs produce zero mutations.
 - Apply reuses the plan engine; it does not reimplement reconciliation.
 - Provider secrets are never printed in apply output or persisted in state.
 - v0.1 does not delete remote resources, run mutations in parallel, or

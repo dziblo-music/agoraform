@@ -76,6 +76,12 @@ func cloneValue(v any) any {
 		return out
 	case Ref:
 		return x
+	case Resolved:
+		return Resolved{
+			Address:  x.Address,
+			Identity: x.Identity,
+			Outputs:  x.Outputs.Clone(),
+		}
 	default:
 		return v
 	}

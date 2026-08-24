@@ -20,11 +20,14 @@ func newApplyCommand(reg *provider.Registry) *cobra.Command {
 		Long: `Read live resources, plan the required create and update actions, and
 apply them through registered providers.
 
-apply loads and validates the manifest and local identity state before any
-mutation. It reuses the same plan engine as the plan command and never
-deletes remote resources. Successful creates persist the provider-native
-identity returned by the provider in agoraform.state.json next to the
-manifest.
+apply loads and validates the manifest, including the resource
+dependency graph, and local identity state before any mutation. Creates
+and updates run sequentially in prerequisite-first order. Referenced
+resources receive provider-native identities at apply time; those
+identities are not written into the manifest. apply reuses the same plan
+engine as the plan command and never deletes remote resources.
+Successful creates persist the provider-native identity returned by the
+provider in agoraform.state.json next to the manifest.
 
 Exit codes:
   0  apply succeeded

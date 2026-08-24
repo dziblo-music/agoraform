@@ -176,6 +176,39 @@ func TestFakeProviderAcceptsParentReference(t *testing.T) {
 	}
 }
 
+func TestFakeProviderStoresResolvedParentAsLogicalRef(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	p := fake.New()
+	parentAddr := mustAddress(t, "fake.widget.homepage")
+	child := resource.Resource{
+		Address: mustAddress(t, "fake.widget.banner"),
+		Attributes: resource.Attributes{
+			fake.AttrTitle: "Banner",
+			fake.AttrParent: resource.Resolved{
+				Address:  parentAddr,
+				Identity: resource.Identity{ID: "widget-1"},
+				Outputs:  resource.Attributes{fake.AttrSerial: 2},
+			},
+		},
+	}
+	if err := p.Validate(ctx, child); err != nil {
+		t.Fatalf("Validate resolved parent: %v", err)
+	}
+	created, err := p.Create(ctx, child)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	ref, ok := resource.AsRef(created.Attributes[fake.AttrParent])
+	if !ok || ref.Address != parentAddr {
+		t.Fatalf("stored parent = %v (%T), want logical Ref", created.Attributes[fake.AttrParent], created.Attributes[fake.AttrParent])
+	}
+	if _, ok := resource.AsResolved(created.Attributes[fake.AttrParent]); ok {
+		t.Fatal("live attributes leaked Resolved identity")
+	}
+}
+
 func mustAddress(t *testing.T, s string) resource.Address {
 	t.Helper()
 	addr, err := resource.ParseAddress(s)
