@@ -142,35 +142,6 @@ func TestFakeProviderValidate(t *testing.T) {
 	}
 }
 
-func TestFakeProviderSeedAndImportRebind(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	p := fake.New()
-	original := mustAddress(t, "fake.widget.old")
-	if err := p.Seed(resource.RemoteResource{
-		Address:    original,
-		Identity:   resource.Identity{ID: "widget-imported"},
-		Attributes: resource.Attributes{fake.AttrTitle: "Imported"},
-		Computed:   resource.Attributes{fake.AttrSerial: 9},
-	}); err != nil {
-		t.Fatalf("Seed: %v", err)
-	}
-
-	target := mustAddress(t, "fake.widget.new")
-	imported, err := p.Import(ctx, target, "widget-imported")
-	if err != nil {
-		t.Fatalf("Import: %v", err)
-	}
-	if imported.Address != target {
-		t.Fatalf("Import address = %s, want %s", imported.Address, target)
-	}
-
-	if _, err := p.Read(ctx, resource.Resource{Address: original}); !errors.Is(err, provider.ErrNotFound) {
-		t.Fatalf("Read old address = %v, want ErrNotFound", err)
-	}
-}
-
 func mustAddress(t *testing.T, s string) resource.Address {
 	t.Helper()
 	addr, err := resource.ParseAddress(s)

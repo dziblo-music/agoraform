@@ -66,7 +66,7 @@ func NewRootCommandWithRegistry(streams IOStreams, reg *provider.Registry) *cobr
 	cmd.AddCommand(newValidateCommand(reg))
 	cmd.AddCommand(newPlanCommand(reg))
 	cmd.AddCommand(newApplyCommand(reg))
-	cmd.AddCommand(newImportCommand())
+	cmd.AddCommand(newImportCommand(reg))
 
 	return cmd
 }
@@ -110,15 +110,4 @@ func isUsageError(err error) bool {
 	return strings.Contains(msg, "unknown command") ||
 		strings.Contains(msg, "unknown flag") ||
 		strings.Contains(msg, "accepts no arguments")
-}
-
-func newNotImplementedCommand(use, short string) *cobra.Command {
-	return &cobra.Command{
-		Use:   use,
-		Short: short,
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("%s: not implemented yet", use)
-		},
-	}
 }

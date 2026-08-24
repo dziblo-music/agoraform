@@ -85,6 +85,20 @@ func (p *Provider) Seed(remote resource.RemoteResource) error {
 	return nil
 }
 
+// Remove drops a live resource by identity. Tests use this to simulate a
+// remote object disappearing after import or create.
+func (p *Provider) Remove(id string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	key, ok := p.byID[id]
+	if !ok {
+		return false
+	}
+	delete(p.resources, key)
+	delete(p.byID, id)
+	return true
+}
+
 // Calls returns how many times each lifecycle method has been invoked.
 func (p *Provider) Calls() (reads, creates, updates, imports int) {
 	p.mu.Lock()
@@ -137,7 +151,9 @@ func (p *Provider) Read(_ context.Context, res resource.Resource) (resource.Remo
 		if !ok {
 			return resource.RemoteResource{}, provider.ErrNotFound
 		}
-		return cloneRemote(p.resources[key]), nil
+		remote := cloneRemote(p.resources[key])
+		remote.Address = res.Address
+		return remote, nil
 	}
 
 	remote, ok := p.resources[res.Address.String()]
@@ -188,7 +204,15 @@ func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual
 	defer p.mu.Unlock()
 	p.updates++
 
-	existing, ok := p.resources[desired.Address.String()]
+	key := desired.Address.String()
+	if !desired.Identity.IsZero() {
+		var ok bool
+		key, ok = p.byID[desired.Identity.ID]
+		if !ok {
+			return resource.RemoteResource{}, provider.ErrNotFound
+		}
+	}
+	existing, ok := p.resources[key]
 	if !ok {
 		return resource.RemoteResource{}, provider.ErrNotFound
 	}
@@ -200,7 +224,9 @@ func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual
 	}
 	existing.Computed[AttrSerial] = p.nextSerial
 	p.storeLocked(existing)
-	return cloneRemote(existing), nil
+	live := cloneRemote(existing)
+	live.Address = desired.Address
+	return live, nil
 }
 
 // Import implements provider.Provider.
@@ -223,13 +249,9 @@ func (p *Provider) Import(_ context.Context, addr resource.Address, id string) (
 	if !ok {
 		return resource.RemoteResource{}, provider.ErrNotFound
 	}
-	remote := p.resources[currentAddr]
-	if currentAddr != addr.String() {
-		delete(p.resources, currentAddr)
-		remote.Address = addr
-		p.storeLocked(remote)
-	}
-	return cloneRemote(remote), nil
+	remote := cloneRemote(p.resources[currentAddr])
+	remote.Address = addr
+	return remote, nil
 }
 
 func (p *Provider) storeLocked(remote resource.RemoteResource) {

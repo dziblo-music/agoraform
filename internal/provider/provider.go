@@ -55,7 +55,8 @@ type ConnectionChecker interface {
 // Provider is the v0.1 contract between Agoraform's core and a provider.
 //
 // Implementations must not log credentials. Mutation methods (Create, Update)
-// are used by apply/import workflows; plan must only call Name,
+// are used by apply. Import reads an existing remote identity and must not
+// create, update, or delete remote resources. Plan must only call Name,
 // ResourceTypes, Validate, and Read.
 type Provider interface {
 	Reader
@@ -68,9 +69,10 @@ type Provider interface {
 	// resource and returns the updated live result.
 	Update(ctx context.Context, desired resource.Resource, actual resource.RemoteResource) (resource.RemoteResource, error)
 
-	// Import binds an existing remote identity to a logical address and
-	// returns the live resource. If the identity does not exist, Import
-	// returns ErrNotFound.
+	// Import reads the existing remote resource identified by id as the
+	// supplied logical address without mutating remote state. The returned
+	// RemoteResource must carry exactly addr and exactly the requested id as
+	// its identity. If that identity does not exist, Import returns ErrNotFound.
 	Import(ctx context.Context, addr resource.Address, id string) (resource.RemoteResource, error)
 }
 

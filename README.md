@@ -44,7 +44,7 @@ Initial provider targets include:
 
 ## Status
 
-Agoraform is currently in early development. The CLI can validate v0.1 YAML manifests, produce a non-mutating plan, and apply planned creates and updates through registered providers. Local identity state maps logical addresses to opaque provider-native IDs. The Matomo provider implements `matomo.goal` (read, create, update, and import through the provider contract). The import command is not implemented yet.
+Agoraform is currently in early development. The CLI can validate v0.1 YAML manifests, produce a non-mutating plan, apply planned creates and updates, and import existing remote resources into local management. Local identity state maps logical addresses to opaque provider-native IDs. The Matomo provider implements `matomo.goal` (read, create, update, and import).
 
 The project is being built from scratch as an open-source initiative, with an emphasis on:
 
@@ -106,16 +106,21 @@ go build -ldflags "-X github.com/dziblo-music/agoraform/internal/cli.Version=0.1
 
 `apply` builds the same plan, then executes create and update actions through provider APIs. Successful creates persist the returned provider-native identity in local state. Deletion is out of scope. See [docs/apply.md](docs/apply.md).
 
-The Matomo provider is registered with the CLI. `matomo.goal` can be declared, validated, planned, and applied. Tests use the in-memory `fake` provider when they need a complete resource lifecycle that does not depend on Matomo.
+```bash
+./agoraform import ADDRESS REMOTE-ID
+./agoraform import -f path/to/manifest.yaml ADDRESS REMOTE-ID
+```
 
-`import` returns a clear not-implemented error until its behavior is added.
+`import` reads an existing remote resource, prints deterministic YAML for configurable fields, and persists the provider-native identity in local state. It never mutates the remote resource and does not rewrite the manifest. See [docs/import.md](docs/import.md).
+
+The Matomo provider is registered with the CLI. `matomo.goal` can be declared, validated, planned, applied, and imported. Tests use the in-memory `fake` provider when they need a complete resource lifecycle that does not depend on Matomo.
 
 ### Exit codes
 
 | Code | Meaning |
 |------|---------|
 | `0` | Success. For `plan`, succeeded and no changes are required. For `apply`, planned mutations completed |
-| `1` | Command failure (including unimplemented commands, failed planning, or failed apply) |
+| `1` | Command failure (failed planning, apply, or import) |
 | `2` | `plan` succeeded and changes are present |
 | `3` | Invalid usage (unknown command/flag or bad arguments) |
 

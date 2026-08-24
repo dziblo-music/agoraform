@@ -335,22 +335,32 @@ func TestApplyMatomoGoalCreateThenPlan(t *testing.T) {
 
 func matomoGoalApplyProvider(t *testing.T) (*matomo.Provider, *httptest.Server) {
 	t.Helper()
+	p, srv := matomoGoalServerProvider(t)
+	return p, srv.server
+}
+
+func matomoGoalServerProvider(t *testing.T) (*matomo.Provider, *cliGoalServer) {
+	t.Helper()
 	srv := newCLIGoalServer(t)
 	httpSrv := httptest.NewServer(srv)
 	t.Cleanup(httpSrv.Close)
+	srv.server = httpSrv
 	p := matomo.NewWithHTTPClient(client.Config{
 		BaseURL:    httpSrv.URL,
 		TokenAuth:  "cli-test-token",
 		SiteID:     "3",
 		HTTPClient: httpSrv.Client(),
 	}, httpSrv.Client())
-	return p, httpSrv
+	return p, srv
 }
 
 type cliGoalServer struct {
-	mu     sync.Mutex
-	nextID int
-	goals  map[string]map[string]any
+	mu      sync.Mutex
+	nextID  int
+	goals   map[string]map[string]any
+	creates int
+	updates int
+	server  *httptest.Server
 }
 
 func newCLIGoalServer(t *testing.T) *cliGoalServer {
@@ -391,6 +401,7 @@ func (s *cliGoalServer) writeGoals(w http.ResponseWriter) {
 func (s *cliGoalServer) addGoal(w http.ResponseWriter, vals url.Values) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.creates++
 	id := strconv.Itoa(s.nextID)
 	s.nextID++
 	patternType := vals.Get("patternType")
@@ -412,6 +423,7 @@ func (s *cliGoalServer) addGoal(w http.ResponseWriter, vals url.Values) {
 func (s *cliGoalServer) updateGoal(w http.ResponseWriter, vals url.Values) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.updates++
 	id := vals.Get("idGoal")
 	g, ok := s.goals[id]
 	if !ok {

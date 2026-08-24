@@ -46,18 +46,13 @@ func TestVersion(t *testing.T) {
 	}
 }
 
-func TestUnimplementedCommands(t *testing.T) {
+func TestImportRequiresArguments(t *testing.T) {
 	t.Parallel()
 
 	streams, _, stderr := testStreams()
 	code := cli.ExecuteWith(streams, []string{"import"})
-	if code != cli.ExitError {
-		t.Fatalf("exit code = %d, want %d", code, cli.ExitError)
-	}
-
-	errOut := stderr.String()
-	if !strings.Contains(errOut, "import: not implemented yet") {
-		t.Fatalf("stderr = %q, want not-implemented message for import", errOut)
+	if code != cli.ExitUsage {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitUsage, stderr.String())
 	}
 }
 

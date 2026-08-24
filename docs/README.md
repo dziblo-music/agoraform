@@ -8,6 +8,7 @@ guides lives here.
 - [Manifest format (v0.1)](manifest.md)
 - [Plan engine (v0.1)](plan.md)
 - [Apply execution (v0.1)](apply.md)
+- [Import (v0.1)](import.md)
 - [Local state (v0.1)](state.md)
 - [Matomo provider](../providers/matomo/README.md)
 
