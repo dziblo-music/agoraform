@@ -1,4 +1,4 @@
-# Example Agoraform manifest (v0.1)
+# Example Agoraform manifest (0.1.0)
 #
 # This file is illustrative. It contains no credentials or personal data.
 # Provider authentication is supplied at runtime, not in the manifest.
