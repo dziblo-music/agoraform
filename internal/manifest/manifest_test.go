@@ -313,6 +313,92 @@ func TestParseV01ManifestWithoutReferencesRemainsValid(t *testing.T) {
 	}
 }
 
+func TestParseAddressLookingStringRemainsLiteral(t *testing.T) {
+	t.Parallel()
+
+	src := []byte(`
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.homepage
+    attributes:
+      title: Homepage
+      pattern: checkout.step.complete
+`)
+	m, err := manifest.Parse(src, "literal.yaml")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	got := m.Resources[0].Attributes["pattern"]
+	if got != "checkout.step.complete" {
+		t.Fatalf("pattern = %#v (%T), want literal string", got, got)
+	}
+	resource.WalkRefs(m.Resources[0].Attributes, func(path string, addr resource.Address) {
+		t.Fatalf("unexpected reference at %s -> %s", path, addr)
+	})
+}
+
+func TestParseRejectsMalformedExplicitReference(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "non-string",
+			src: `
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.homepage
+    attributes:
+      parent:
+        $ref: 42
+`,
+			want: "$ref must be a string",
+		},
+		{
+			name: "extra key",
+			src: `
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.homepage
+    attributes:
+      parent:
+        $ref: fake.widget.other
+        note: not-allowed
+`,
+			want: "must contain only $ref",
+		},
+		{
+			name: "invalid address",
+			src: `
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.homepage
+    attributes:
+      parent:
+        $ref: not-an-address
+`,
+			want: "provider.type.name",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := manifest.Parse([]byte(tc.src), tc.name+".yaml")
+			if err == nil {
+				t.Fatal("Parse succeeded, want error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error %q, want substring %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestParseNestedAttributes(t *testing.T) {
 	t.Parallel()
 
