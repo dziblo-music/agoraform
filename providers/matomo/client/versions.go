@@ -86,6 +86,12 @@ func (t *TagManager) CreateContainerVersion(ctx context.Context, name, descripti
 
 // PublishContainerVersion publishes an existing container version to
 // environment.
+//
+// A successful response must carry a Matomo container release ID. Empty,
+// JSON null, unreadable, oversized, and unrelated payloads are rejected.
+// Those failures are uncertain outcomes: the publish request has already
+// been sent, so callers must inspect the remote container before creating
+// another version.
 func (t *TagManager) PublishContainerVersion(ctx context.Context, idContainerVersion, environment string) error {
 	if t == nil || t.c == nil {
 		return fmt.Errorf("matomo: tag manager client is nil")
@@ -103,13 +109,13 @@ func (t *TagManager) PublishContainerVersion(ctx context.Context, idContainerVer
 	params.Set("environment", environment)
 	raw, err := t.Call(ctx, "publishContainerVersion", params)
 	if err != nil {
-		return err
-	}
-	if _, err := decodeVersionID(raw, "TagManager.publishContainerVersion"); err != nil {
-		if isEmptyJSON(raw) {
-			return nil
+		if isUnconfirmed(err) {
+			return uncertainOutcomeError("TagManager.publishContainerVersion", unconfirmedReason(err), err)
 		}
 		return err
+	}
+	if _, err := decodeReleaseID(raw); err != nil {
+		return uncertainOutcomeError("TagManager.publishContainerVersion", err.Error(), err)
 	}
 	return nil
 }
@@ -170,7 +176,79 @@ func decodeVersionID(raw json.RawMessage, method string) (string, error) {
 	return "", fmt.Errorf("matomo: unexpected %s payload", method)
 }
 
-func isEmptyJSON(raw json.RawMessage) bool {
+// decodeReleaseID accepts the release-ID encodings returned by supported
+// Matomo Tag Manager versions: a JSON number, a digit string, or the
+// historical {"value": ...} scalar wrapper. Empty, null, and unrelated
+// payloads are rejected so publication cannot be treated as success without
+// evidence that Matomo completed the publish.
+func decodeReleaseID(raw json.RawMessage) (string, error) {
 	raw = bytes.TrimSpace(raw)
-	return len(raw) == 0 || string(raw) == "null"
+	if len(raw) == 0 {
+		return "", fmt.Errorf("empty response")
+	}
+	if string(raw) == "null" {
+		return "", fmt.Errorf("null response")
+	}
+
+	if id, ok, err := releaseIDFromScalar(raw); ok {
+		return id, err
+	}
+
+	if raw[0] == '{' {
+		var keyed map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &keyed); err == nil {
+			inner, ok := keyed["value"]
+			if !ok {
+				return "", fmt.Errorf("unexpected payload")
+			}
+			inner = bytes.TrimSpace(inner)
+			if len(inner) == 0 || string(inner) == "null" {
+				return "", fmt.Errorf("empty release id")
+			}
+			if id, ok, err := releaseIDFromScalar(inner); ok {
+				return id, err
+			}
+		}
+	}
+
+	return "", fmt.Errorf("unexpected payload")
+}
+
+func releaseIDFromScalar(raw json.RawMessage) (string, bool, error) {
+	var str string
+	if err := json.Unmarshal(raw, &str); err == nil {
+		id := strings.TrimSpace(str)
+		if id == "" {
+			return "", true, fmt.Errorf("empty release id")
+		}
+		if !isReleaseID(id) {
+			return "", true, fmt.Errorf("unexpected payload")
+		}
+		return id, true, nil
+	}
+
+	var num json.Number
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	if err := dec.Decode(&num); err == nil {
+		id := strings.TrimSpace(num.String())
+		if !isReleaseID(id) {
+			return "", true, fmt.Errorf("unexpected payload")
+		}
+		return id, true, nil
+	}
+
+	return "", false, nil
+}
+
+func isReleaseID(id string) bool {
+	if id == "" {
+		return false
+	}
+	for _, r := range id {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }

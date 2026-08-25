@@ -249,6 +249,53 @@ func TestApplyPublicationFailureReportsPartialConvergence(t *testing.T) {
 	}
 }
 
+func TestApplyPublicationUncertainResponseReportsPartialConvergence(t *testing.T) {
+	t.Parallel()
+
+	s := newFinalizeServer(t)
+	empty := ""
+	s.publishBody = &empty
+	p := newFinalizeProvider(t, s)
+	if err := p.Configure(resource.Attributes{"publish": true}); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+	st, err := state.New(filepath.Join(t.TempDir(), state.DefaultFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	_, err = apply.Run(context.Background(), nil, nil, st, &out, reg)
+	if err == nil {
+		t.Fatal("Run succeeded, want uncertain publication failure")
+	}
+	if !apply.IsPartial(err) {
+		t.Fatalf("uncertain publication after version create was not partial: %v", err)
+	}
+	if !client.IsUncertainOutcome(err) {
+		t.Fatalf("empty publish response was not uncertain: %v", err)
+	}
+	if !strings.Contains(err.Error(), "uncertain") || !strings.Contains(err.Error(), "do not create another version") {
+		t.Fatalf("error = %q, want uncertain publication guidance", err)
+	}
+	if strings.Contains(err.Error(), "rerun agoraform plan and agoraform apply") {
+		t.Fatalf("error = %q, uncertain outcome should not encourage blind retry", err)
+	}
+	if !strings.Contains(out.String(), "version 10 created") {
+		t.Fatalf("created-version detail missing:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "Apply complete!") {
+		t.Fatalf("failed publication claimed apply complete:\n%s", out.String())
+	}
+	if strings.Contains(err.Error(), "test-secret-token") || strings.Contains(out.String(), "test-secret-token") {
+		t.Fatal("secret leaked in apply diagnostic")
+	}
+}
+
 func TestApplyPublicationCreateFailureIsNotPartial(t *testing.T) {
 	t.Parallel()
 
@@ -358,6 +405,7 @@ type finalizeServer struct {
 	failPublish          bool
 	malformedPublishable bool
 	liveVariableName     string
+	publishBody          *string
 }
 
 func newFinalizeServer(t *testing.T) *finalizeServer {
@@ -447,12 +495,17 @@ func (s *finalizeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		s.publishes++
 		fail := s.failPublish
-		if !fail {
+		body := s.publishBody
+		if !fail && body == nil {
 			s.liveVersion = vals.Get("idContainerVersion")
 		}
 		s.mu.Unlock()
 		if fail {
 			_, _ = io.WriteString(w, `{"result":"error","message":"cannot publish test-secret-token"}`)
+			return
+		}
+		if body != nil {
+			_, _ = io.WriteString(w, *body)
 			return
 		}
 		_, _ = io.WriteString(w, `1`)

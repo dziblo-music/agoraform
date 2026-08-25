@@ -84,6 +84,12 @@ matomo.container.main: published to live
 If version creation succeeds but publication fails, the error still reports
 that the version was created so the partial remote mutation is visible.
 
+An empty, JSON `null`, unreadable, oversized, or otherwise unrecognizable
+publish response is not treated as success. The publish request has already
+been sent, so Agoraform cannot know whether Matomo completed publication. The resulting error says
+the outcome is uncertain and tells you to inspect the remote container
+before retrying. Do not create another version until that status is known.
+
 ## Permission and environment preflight
 
 Before any version is created, Agoraform asks Matomo for the environments the
