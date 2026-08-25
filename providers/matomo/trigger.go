@@ -208,7 +208,8 @@ func (p *Provider) updateTrigger(ctx context.Context, desired resource.Resource,
 	}
 
 	preserved := client.TriggerPreservedFields{
-		Conditions: conditionsValue(current.Computed["conditions"]),
+		Description: computedString(current.Computed, "description"),
+		Conditions:  conditionsValue(current.Computed["conditions"]),
 	}
 	if err := c.TagManager().UpdateContainerTrigger(ctx, version, actual.Identity.ID, triggerInput(desired.Attributes), preserved); err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: %w", desired.Address, err)

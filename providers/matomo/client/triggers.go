@@ -37,9 +37,11 @@ type TriggerInput struct {
 
 // TriggerPreservedFields is the unmanaged portion of a Tag Manager
 // trigger that must be carried forward on update. Matomo's update API
-// replaces omitted conditions with an empty list.
+// replaces omitted conditions with an empty list and description with an
+// empty string.
 type TriggerPreservedFields struct {
-	Conditions json.RawMessage
+	Description string
+	Conditions  json.RawMessage
 }
 
 type rawTrigger struct {
@@ -135,6 +137,7 @@ func (t *TagManager) UpdateContainerTrigger(ctx context.Context, idContainerVers
 	params.Del("type") // updateContainerTrigger does not accept type
 	params.Set("idContainerVersion", idContainerVersion)
 	params.Set("idTrigger", idTrigger)
+	params.Set("description", preserved.Description)
 	if err := setFormJSON(params, "conditions", preserved.Conditions, "TagManager.updateContainerTrigger"); err != nil {
 		return err
 	}
