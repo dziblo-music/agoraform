@@ -31,14 +31,25 @@ type Config struct {
 	TokenAuth   string
 	SiteID      string
 	ContainerID string
+	// Environment is the Tag Manager environment agoraform publish
+	// targets. Empty values default to DefaultEnvironment.
+	Environment string
 	Timeout     time.Duration
 	HTTPClient  *http.Client
 }
+
+// DefaultEnvironment is the v0.2.0 Tag Manager publish target.
+const DefaultEnvironment = "live"
 
 // WithDefaults returns a copy with a timeout applied when unset.
 func (c Config) WithDefaults() Config {
 	if c.Timeout <= 0 {
 		c.Timeout = DefaultTimeout
+	}
+	if strings.TrimSpace(c.Environment) == "" {
+		c.Environment = DefaultEnvironment
+	} else {
+		c.Environment = strings.TrimSpace(c.Environment)
 	}
 	return c
 }
@@ -70,7 +81,7 @@ func (c Config) Redacted() Config {
 
 func (c Config) String() string {
 	r := c.Redacted()
-	return fmt.Sprintf("matomo config url=%s site_id=%s container_id=%s", r.BaseURL, r.SiteID, r.ContainerID)
+	return fmt.Sprintf("matomo config url=%s site_id=%s container_id=%s environment=%s", r.BaseURL, r.SiteID, r.ContainerID, r.Environment)
 }
 
 // Client is a reusable Matomo HTTP API client.

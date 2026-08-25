@@ -21,11 +21,14 @@ prints the SemVer identifier without the prefix (`0.1.0`).
 - Matomo Tag Manager `matomo.trigger` for Custom Event triggers in the configured container draft (read, create, update, import)
 - Matomo Tag Manager `matomo.tag` for Matomo Analytics event tags that reference triggers and variables by logical address (read, create, update, import)
 - Tag Manager import reconstructs logical `$ref` relationships from local state so imported tags plan with zero changes against unchanged remotes
+- `agoraform publish` creates a Matomo Tag Manager container version from the current draft and publishes it to the configured environment (`MATOMO_ENVIRONMENT`, default `live`)
 
 ### Changed
 
 - `plan` reads resources in deterministic dependency order (prerequisites first) so Tag Manager tags can compare trigger and variable `$ref`s without leaking provider-native ids
 - `agoraform import` for `matomo.tag` requires related fire triggers (and prefers managed variables) to already be bound in local state before reconstructing configuration
+- `agoraform apply` writes Tag Manager resources to the container draft only and never publishes a container version
+- Repeated `agoraform publish` against an already-published unchanged draft does not create or publish a duplicate version
 
 ## [0.1.0] - 2026-08-24
 

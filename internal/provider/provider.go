@@ -76,6 +76,24 @@ type Provider interface {
 	Import(ctx context.Context, addr resource.Address, id string) (resource.RemoteResource, error)
 }
 
+// ContainerPublisher is an optional provider hook for explicit container
+// publication. apply must never call this interface. Publication is a
+// deliberate agoraform publish operation, separate from resource CRUD.
+type ContainerPublisher interface {
+	PublishContainer(ctx context.Context) (PublishResult, error)
+}
+
+// PublishResult reports the outcome of an explicit container publication.
+type PublishResult struct {
+	// Address is a logical label for progress output, such as
+	// matomo.container.main.
+	Address string
+	// Created is true when a new container version was created and
+	// published. It is false when the configured draft was already
+	// represented by the currently published version.
+	Created bool
+}
+
 // Supports reports whether p manages the given resource type.
 func Supports(p Provider, resourceType string) bool {
 	if p == nil {

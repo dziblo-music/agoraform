@@ -278,7 +278,7 @@ func TestApplyHelpDocumentsBehavior(t *testing.T) {
 		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitOK, stderr.String())
 	}
 	out := stdout.String()
-	for _, want := range []string{"apply", "agoraform.yaml", "agoraform.state.json", "deletes remote resources"} {
+	for _, want := range []string{"apply", "agoraform.yaml", "agoraform.state.json", "deletes remote resources", "never publishes"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("help output missing %q:\n%s", want, out)
 		}

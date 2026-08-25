@@ -41,9 +41,10 @@ type Provider struct {
 }
 
 var (
-	_ provider.Provider          = (*Provider)(nil)
-	_ provider.ConnectionChecker = (*Provider)(nil)
-	_ provider.Normalizer        = (*Provider)(nil)
+	_ provider.Provider           = (*Provider)(nil)
+	_ provider.ConnectionChecker  = (*Provider)(nil)
+	_ provider.Normalizer         = (*Provider)(nil)
+	_ provider.ContainerPublisher = (*Provider)(nil)
 )
 
 // New returns a Matomo provider using cfg.

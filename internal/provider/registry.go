@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 
 	"github.com/dziblo-music/agoraform/internal/resource"
@@ -77,6 +78,25 @@ func (r *Registry) Len() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return len(r.providers)
+}
+
+// List returns registered providers in stable name order.
+func (r *Registry) List() []Provider {
+	if r == nil {
+		return nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	names := make([]string, 0, len(r.providers))
+	for name := range r.providers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]Provider, 0, len(names))
+	for _, name := range names {
+		out = append(out, r.providers[name])
+	}
+	return out
 }
 
 func validateProviderName(name string) error {

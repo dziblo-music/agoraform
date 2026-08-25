@@ -49,7 +49,7 @@ func NewRootCommandWithRegistry(streams IOStreams, reg *provider.Registry) *cobr
 	cmd := &cobra.Command{
 		Use:           "agoraform",
 		Short:         "Marketing Infrastructure as Code",
-		Long:          "Agoraform defines, plans, and applies marketing infrastructure from code.",
+		Long:          "Agoraform defines, plans, applies, and publishes marketing infrastructure from code.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       effectiveVersion(),
@@ -67,6 +67,7 @@ func NewRootCommandWithRegistry(streams IOStreams, reg *provider.Registry) *cobr
 	cmd.AddCommand(newPlanCommand(reg))
 	cmd.AddCommand(newApplyCommand(reg))
 	cmd.AddCommand(newImportCommand(reg))
+	cmd.AddCommand(newPublishCommand(reg))
 
 	return cmd
 }

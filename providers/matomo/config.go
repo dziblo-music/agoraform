@@ -21,6 +21,10 @@ const (
 
 	// EnvContainerID is an optional default Tag Manager container id.
 	EnvContainerID = "MATOMO_CONTAINER_ID"
+
+	// EnvEnvironment is the Tag Manager environment agoraform publish
+	// targets. When unset, publication uses client.DefaultEnvironment.
+	EnvEnvironment = "MATOMO_ENVIRONMENT"
 )
 
 // Config is an alias for the Matomo client configuration.
@@ -37,6 +41,7 @@ func ConfigFromEnv() Config {
 		TokenAuth:   strings.TrimSpace(os.Getenv(EnvTokenAuth)),
 		SiteID:      strings.TrimSpace(os.Getenv(EnvSiteID)),
 		ContainerID: strings.TrimSpace(os.Getenv(EnvContainerID)),
+		Environment: strings.TrimSpace(os.Getenv(EnvEnvironment)),
 		Timeout:     client.DefaultTimeout,
 	}
 }

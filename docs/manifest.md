@@ -93,7 +93,7 @@ resource that references another depends on it. Equivalent graphs have a stable
 prerequisite-first order; unrelated resources keep address order as the
 tie-breaker.
 
-`validate`, `plan`, and `apply` reject:
+`validate`, `plan`, `apply`, and `publish` reject:
 
 - a reference to a resource that is not in the manifest
 - a resource that references itself

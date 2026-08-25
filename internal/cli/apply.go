@@ -25,9 +25,12 @@ dependency graph, and local identity state before any mutation. Creates
 and updates run sequentially in prerequisite-first order. Referenced
 resources receive provider-native identities at apply time; those
 identities are not written into the manifest. apply reuses the same plan
-engine as the plan command and never deletes remote resources.
-Successful creates persist the provider-native identity returned by the
-provider in agoraform.state.json next to the manifest.
+engine as the plan command and never deletes remote resources. Tag
+Manager create and update operations write the container draft only;
+apply never publishes a container version. Use agoraform publish for
+that explicit step. Successful creates persist the provider-native
+identity returned by the provider in agoraform.state.json next to the
+manifest.
 
 Exit codes:
   0  apply succeeded

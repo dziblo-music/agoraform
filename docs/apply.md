@@ -71,8 +71,10 @@ diagnostic and does not mutate the dependent.
 
 The Matomo provider is registered with the CLI. `matomo.goal`,
 `matomo.variable`, `matomo.trigger`, and `matomo.tag` resources can be
-created and updated. Unit tests that need a generic resource lifecycle use
-the in-memory `fake` provider.
+created and updated. Tag Manager mutations write the container draft
+only; `apply` never publishes a container version. Use
+[`agoraform publish`](publish.md) for that explicit step. Unit tests that
+need a generic resource lifecycle use the in-memory `fake` provider.
 
 ## Change model
 

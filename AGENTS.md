@@ -6,10 +6,11 @@ Agoraform is an open-source Marketing Infrastructure as Code CLI written in Go.
 
 The core workflow is:
 
-    agoraform validate
-    agoraform import
-    agoraform plan
-    agoraform apply
+ agoraform validate
+ agoraform import
+ agoraform plan
+ agoraform apply
+ agoraform publish
 
 The project should favor predictable, reviewable infrastructure changes over convenience.
 

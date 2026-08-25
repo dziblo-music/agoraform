@@ -1,0 +1,158 @@
+package client
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/url"
+	"strings"
+)
+
+// Environment is a Tag Manager publish target as returned by
+// TagManager.getAvailableEnvironments.
+type Environment struct {
+	ID   string
+	Name string
+}
+
+type rawEnvironment struct {
+	ID   flexibleString `json:"id"`
+	Name flexibleString `json:"name"`
+}
+
+// GetAvailableEnvironments lists Tag Manager environments that can receive
+// a published container version.
+func (t *TagManager) GetAvailableEnvironments(ctx context.Context) ([]Environment, error) {
+	if t == nil || t.c == nil {
+		return nil, fmt.Errorf("matomo: tag manager client is nil")
+	}
+	raw, err := t.Call(ctx, "getAvailableEnvironments", nil)
+	if err != nil {
+		return nil, err
+	}
+	envs, err := decodeEnvironments(raw)
+	if err != nil {
+		return nil, malformedResponseError("TagManager.getAvailableEnvironments", 0)
+	}
+	return envs, nil
+}
+
+// CreateContainerVersion snapshots the current draft into a named version
+// and returns the provider-native version id.
+func (t *TagManager) CreateContainerVersion(ctx context.Context, name, description string) (string, error) {
+	if t == nil || t.c == nil {
+		return "", fmt.Errorf("matomo: tag manager client is nil")
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", fmt.Errorf("matomo: container version name is required")
+	}
+	params := url.Values{}
+	params.Set("name", name)
+	if strings.TrimSpace(description) != "" {
+		params.Set("description", description)
+	}
+	raw, err := t.Call(ctx, "createContainerVersion", params)
+	if err != nil {
+		return "", err
+	}
+	id, err := decodeVersionID(raw, "TagManager.createContainerVersion")
+	if err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// PublishContainerVersion publishes an existing container version to
+// environment.
+func (t *TagManager) PublishContainerVersion(ctx context.Context, idContainerVersion, environment string) error {
+	if t == nil || t.c == nil {
+		return fmt.Errorf("matomo: tag manager client is nil")
+	}
+	idContainerVersion = strings.TrimSpace(idContainerVersion)
+	if idContainerVersion == "" {
+		return fmt.Errorf("matomo: idContainerVersion is required")
+	}
+	environment = strings.TrimSpace(environment)
+	if environment == "" {
+		return fmt.Errorf("matomo: environment is required")
+	}
+	params := url.Values{}
+	params.Set("idContainerVersion", idContainerVersion)
+	params.Set("environment", environment)
+	raw, err := t.Call(ctx, "publishContainerVersion", params)
+	if err != nil {
+		return err
+	}
+	if _, err := decodeVersionID(raw, "TagManager.publishContainerVersion"); err != nil {
+		// Matomo typically returns the release id. A JSON null is also
+		// treated as success when the HTTP call itself succeeded.
+		if isEmptyJSON(raw) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+func decodeEnvironments(raw json.RawMessage) ([]Environment, error) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+	if raw[0] != '[' {
+		return nil, fmt.Errorf("unexpected TagManager.getAvailableEnvironments payload")
+	}
+	var items []rawEnvironment
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil, err
+	}
+	out := make([]Environment, 0, len(items))
+	for _, item := range items {
+		env := Environment{
+			ID:   strings.TrimSpace(string(item.ID)),
+			Name: strings.TrimSpace(string(item.Name)),
+		}
+		if env.ID == "" {
+			continue
+		}
+		out = append(out, env)
+	}
+	return out, nil
+}
+
+func decodeVersionID(raw json.RawMessage, method string) (string, error) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return "", fmt.Errorf("matomo: %s returned no version id", method)
+	}
+
+	var direct flexibleString
+	if err := json.Unmarshal(raw, &direct); err == nil {
+		id := strings.TrimSpace(string(direct))
+		if id != "" {
+			return id, nil
+		}
+	}
+
+	var wrapped struct {
+		Value json.RawMessage `json:"value"`
+	}
+	if err := json.Unmarshal(raw, &wrapped); err == nil && len(bytes.TrimSpace(wrapped.Value)) > 0 {
+		var inner flexibleString
+		if err := json.Unmarshal(wrapped.Value, &inner); err == nil {
+			id := strings.TrimSpace(string(inner))
+			if id != "" {
+				return id, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("matomo: unexpected %s payload", method)
+}
+
+func isEmptyJSON(raw json.RawMessage) bool {
+	raw = bytes.TrimSpace(raw)
+	return len(raw) == 0 || string(raw) == "null"
+}
