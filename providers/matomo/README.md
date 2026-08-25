@@ -167,8 +167,9 @@ scope.
 Remote fields such as `idtrigger`, `idcontainerversion`, `status`,
 `description`, `conditions`, and `typeMetadata` are computed. Do not set
 them in configuration. Updates re-read the live trigger and send unmanaged
-conditions back because `TagManager.updateContainerTrigger` otherwise
-resets omitted conditions. `type` is immutable after create.
+`description` and `conditions` back because `TagManager.updateContainerTrigger`
+otherwise resets omitted description to an empty string and omitted conditions
+to an empty list. `type` is immutable after create.
 
 `agoraform import matomo.trigger.NAME ID` reads an existing draft trigger
 by numeric id. It does not recreate the trigger or emit `idTrigger` as a
