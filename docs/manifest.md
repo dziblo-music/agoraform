@@ -109,9 +109,8 @@ provider-native identities and computed outputs at execution time and
 passes them to providers as runtime bindings. Those identities belong in
 [local state](state.md), not in the manifest.
 
-`matomo.variable` and `matomo.trigger` are managed Tag Manager resource
-types. `matomo.tag` is shown here as the intended reference syntax and still
-fails provider validation until that type is implemented.
+`matomo.variable`, `matomo.trigger`, and `matomo.tag` are managed Tag Manager
+resource types.
 
 ## Attributes
 
@@ -233,6 +232,54 @@ A missing unbound remote trigger plans as a create. A changed `event` or
 `name` plans as an update. Existing v0.1.0 goal-only manifests remain
 valid and do not require `MATOMO_CONTAINER_ID`.
 
+## Matomo Tag (`matomo.tag`)
+
+v0.2 manages a Matomo Tag Manager Matomo Analytics event tag in the
+configured container draft. On initial discovery, Agoraform may find a tag
+by `name`. Once the resource is managed, persist Matomo's `idtag` in
+[local state](state.md). Do not copy it into attributes.
+
+```yaml
+resources:
+  - address: matomo.trigger.trial_started
+    attributes:
+      type: customEvent
+      event: trialStarted
+
+  - address: matomo.tag.trial_started
+    attributes:
+      type: matomoAnalytics
+      trigger:
+        $ref: matomo.trigger.trial_started
+      eventCategory: signup
+      eventAction: trialStarted
+```
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `type` | yes | Tag template. v0.2 supports `matomoAnalytics` only (event tracking). |
+| `trigger` | yes | `$ref` to a `matomo.trigger` resource. Never a Matomo-native trigger id. |
+| `eventCategory` | yes | Event category string, or `$ref` to a `matomo.variable`. No leading or trailing whitespace. At most 500 characters when a string. |
+| `eventAction` | yes | Event action string, or `$ref` to a `matomo.variable`. If `name` is omitted and this is a string, it is also the Matomo tag name and must be at most 255 characters. |
+| `eventName` | no | Event name string, or `$ref` to a `matomo.variable`. |
+| `eventValue` | no | Event value string, or `$ref` to a `matomo.variable`. |
+| `name` | no | Tag Manager display name. Defaults to `eventAction` when that attribute is a string. No leading or trailing whitespace. At most 255 characters. |
+
+`type` is immutable after create. Remote response fields such as `idtag`,
+`idcontainerversion`, `status`, `description`, `fireLimit`,
+`blockTriggerIds`, and `matomoConfig` remain computed/unmanaged.
+
+Because Matomo's `TagManager.updateContainerTag` endpoint writes a complete
+tag record, Agoraform re-reads the tag immediately before an update and
+carries forward unmanaged values. Create selects the container's Matomo
+Configuration variable for `matomoConfig`. Apply resolves the referenced
+trigger (and any variable `$ref`s) to provider-native identities at
+runtime.
+
+A missing unbound remote tag plans as a create. A changed configurable
+field plans as an update. Existing v0.1.0 goal-only manifests remain valid
+and do not require `MATOMO_CONTAINER_ID`.
+
 ## Validation
 
 ```bash
@@ -255,13 +302,13 @@ directory.
 - provider-specific required-field failures, when a provider is registered
 
 The CLI registers the Matomo provider. `matomo.goal`, `matomo.variable`,
-and `matomo.trigger` are supported resource types. `validate` and `plan`
+`matomo.trigger`, and `matomo.tag` are supported resource types. `validate` and `plan`
 check provider connection settings, then resource-specific required
 fields. Provider/type checks for other providers (including the test-only
 `fake` provider) run when those providers are registered.
 
 Matomo credentials come from `MATOMO_URL`, `MATOMO_TOKEN_AUTH`, and
-`MATOMO_SITE_ID`. Tag Manager variables and triggers also require
+`MATOMO_SITE_ID`. Tag Manager variables, triggers, and tags also require
 `MATOMO_CONTAINER_ID`. See [the Matomo provider README](../providers/matomo/README.md).
 
 `agoraform plan` uses the same manifest. See [plan.md](plan.md) for

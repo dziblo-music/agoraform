@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 
 	"github.com/dziblo-music/agoraform/internal/graph"
 	"github.com/dziblo-music/agoraform/internal/provider"
@@ -30,8 +29,11 @@ type Identities interface {
 // Build compares desired resources with provider-reported live state.
 //
 // Missing remote resources become creates. Configurable differences become
-// updates. Computed/read-only fields are ignored. Resources are planned in
-// address order. Build never invokes Create, Update, or Import.
+// updates. Computed/read-only fields are ignored. Resources are read in
+// deterministic dependency order (prerequisites first) so providers can
+// observe prerequisite identities while normalizing dependents. Display
+// order remains address order in Format. Build never invokes Create,
+// Update, or Import.
 func Build(ctx context.Context, desired []resource.Resource, lookup Lookup) (*Plan, error) {
 	return BuildWithState(ctx, desired, lookup, nil)
 }
@@ -39,30 +41,33 @@ func Build(ctx context.Context, desired []resource.Resource, lookup Lookup) (*Pl
 // BuildWithState is Build plus persisted identity bindings.
 //
 // Resource references are validated as a dependency graph before any
-// remote read. When identities contains a binding, that identity is
-// attached to the desired resource before Validate/Read. A bound identity
-// that is missing remotely is a stale-state error, not a create. A
-// provider must also return the same identity it was asked to resolve;
-// core rejects mismatches rather than allowing a mutable discovery field
-// to rebind the logical resource.
+// remote read. Reads then follow that graph's prerequisite-first order.
+// When identities contains a binding, that identity is attached to the
+// desired resource before Validate/Read. A bound identity that is missing
+// remotely is a stale-state error, not a create. A provider must also
+// return the same identity it was asked to resolve; core rejects
+// mismatches rather than allowing a mutable discovery field to rebind the
+// logical resource.
 func BuildWithState(ctx context.Context, desired []resource.Resource, lookup Lookup, identities Identities) (*Plan, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if _, err := graph.Build(desired); err != nil {
+	g, err := graph.Build(desired)
+	if err != nil {
 		return nil, fmt.Errorf("plan: %w", err)
 	}
 	if lookup == nil && len(desired) > 0 {
 		return nil, fmt.Errorf("plan: provider lookup is required")
 	}
 
-	resources := append([]resource.Resource(nil), desired...)
-	sort.SliceStable(resources, func(i, j int) bool {
-		return resources[i].Address.String() < resources[j].Address.String()
-	})
+	byAddr := make(map[string]resource.Resource, len(desired))
+	for _, res := range desired {
+		byAddr[res.Address.String()] = res
+	}
 
-	changes := make([]Change, 0, len(resources))
-	for _, res := range resources {
+	changes := make([]Change, 0, len(desired))
+	for _, addr := range g.Order() {
+		res := byAddr[addr.String()]
 		change, err := planResource(ctx, res, lookup, identities)
 		if err != nil {
 			return nil, err

@@ -19,6 +19,11 @@ prints the SemVer identifier without the prefix (`0.1.0`).
 - Plans and import YAML keep logical addresses; provider-native identities stay out of configuration
 - Matomo Tag Manager `matomo.variable` for Data Layer variables in the configured container draft (read, create, update, import)
 - Matomo Tag Manager `matomo.trigger` for Custom Event triggers in the configured container draft (read, create, update, import)
+- Matomo Tag Manager `matomo.tag` for Matomo Analytics event tags that reference triggers and variables by logical address (read, create, update, import)
+
+### Changed
+
+- `plan` reads resources in deterministic dependency order (prerequisites first) so Tag Manager tags can compare trigger and variable `$ref`s without leaking provider-native ids
 
 ## [0.1.0] - 2026-08-24
 

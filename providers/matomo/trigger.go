@@ -144,7 +144,11 @@ func (p *Provider) readTrigger(ctx context.Context, res resource.Resource) (reso
 	case 0:
 		return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: %w", res.Address, provider.ErrNotFound)
 	case 1:
-		return remoteTrigger(res.Address, matches[0])
+		live, err := remoteTrigger(res.Address, matches[0])
+		if err == nil {
+			p.rememberBinding(res.Address, live.Identity.ID, matches[0].Name)
+		}
+		return live, err
 	default:
 		return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: multiple remote triggers named %q (ids %s); names must be unique", res.Address, name, joinTriggerIDs(matches))
 	}
@@ -173,6 +177,7 @@ func (p *Provider) createTrigger(ctx context.Context, res resource.Resource) (re
 	if err == nil {
 		return live, nil
 	}
+	p.rememberBinding(res.Address, id, triggerName(res.Attributes))
 	return remoteTrigger(res.Address, client.Trigger{
 		IDTrigger:          id,
 		IDContainerVersion: version,
@@ -232,7 +237,11 @@ func (p *Provider) readTriggerByID(ctx context.Context, addr resource.Address, i
 			continue
 		}
 		if tr.IDTrigger == id {
-			return remoteTrigger(addr, tr)
+			live, err := remoteTrigger(addr, tr)
+			if err == nil {
+				p.rememberBinding(addr, live.Identity.ID, tr.Name)
+			}
+			return live, err
 		}
 	}
 	return resource.RemoteResource{}, provider.ErrNotFound

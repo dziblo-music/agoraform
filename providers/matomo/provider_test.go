@@ -40,6 +40,9 @@ func TestProviderRegisterAndLookup(t *testing.T) {
 	if !provider.Supports(got, matomo.TypeTrigger) {
 		t.Fatal("matomo.trigger must be registered")
 	}
+	if !provider.Supports(got, matomo.TypeTag) {
+		t.Fatal("matomo.tag must be registered")
+	}
 
 	addr, err := resource.ParseAddress("matomo.goal.trial_started")
 	if err != nil {
@@ -63,6 +66,14 @@ func TestProviderRegisterAndLookup(t *testing.T) {
 	}
 	if _, err := reg.LookupFor(triggerAddr); err != nil {
 		t.Fatalf("LookupFor trigger: %v", err)
+	}
+
+	tagAddr, err := resource.ParseAddress("matomo.tag.trial_started")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.LookupFor(tagAddr); err != nil {
+		t.Fatalf("LookupFor tag: %v", err)
 	}
 }
 
@@ -124,7 +135,7 @@ func TestProviderValidateUnknownType(t *testing.T) {
 	t.Parallel()
 
 	p := matomo.New(client.Config{BaseURL: "https://matomo.example.com", TokenAuth: providerToken})
-	addr, err := resource.ParseAddress("matomo.tag.pageview")
+	addr, err := resource.ParseAddress("matomo.version.draft")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +152,7 @@ func TestProviderLifecycleNotImplemented(t *testing.T) {
 	t.Parallel()
 
 	p := matomo.New(client.Config{BaseURL: "https://matomo.example.com", TokenAuth: providerToken})
-	addr, err := resource.ParseAddress("matomo.tag.pageview")
+	addr, err := resource.ParseAddress("matomo.version.draft")
 	if err != nil {
 		t.Fatal(err)
 	}
