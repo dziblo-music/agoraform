@@ -87,6 +87,38 @@ func (s *Store) Identity(addr resource.Address) (resource.Identity, bool, error)
 	return resource.Identity{ID: rec.RemoteID}, true, nil
 }
 
+// AddressByRemoteID finds the logical address bound to a provider-native
+// identity for the given resource type. Ownership is scoped the same way as
+// validateRecords: provider + resource type + remote id.
+func (s *Store) AddressByRemoteID(provider, resourceType, remoteID string) (resource.Address, bool, error) {
+	if s == nil {
+		return resource.Address{}, false, nil
+	}
+	provider = strings.TrimSpace(provider)
+	resourceType = strings.TrimSpace(resourceType)
+	remoteID = strings.TrimSpace(remoteID)
+	if provider == "" || resourceType == "" || remoteID == "" {
+		return resource.Address{}, false, nil
+	}
+	for addrStr, rec := range s.records {
+		if strings.TrimSpace(rec.Provider) != provider || strings.TrimSpace(rec.RemoteID) != remoteID {
+			continue
+		}
+		addr, err := resource.ParseAddress(addrStr)
+		if err != nil {
+			return resource.Address{}, false, fmt.Errorf("state: %w", err)
+		}
+		if addr.Type != resourceType {
+			continue
+		}
+		if err := validateRecord(addr, rec); err != nil {
+			return resource.Address{}, true, fmt.Errorf("state: %w", err)
+		}
+		return addr, true, nil
+	}
+	return resource.Address{}, false, nil
+}
+
 // Lookup returns the stored record for addr.
 func (s *Store) Lookup(addr resource.Address) (Record, bool) {
 	if s == nil {

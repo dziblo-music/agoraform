@@ -9,6 +9,7 @@ import (
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/resource"
 	"github.com/dziblo-music/agoraform/internal/state"
+	"github.com/dziblo-music/agoraform/providers/matomo"
 	"github.com/spf13/cobra"
 )
 
@@ -45,10 +46,7 @@ Exit codes:
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path, err := importManifestPath(fileFlag)
-			if err != nil {
-				return usageError{err: err}
-			}
+			path := importManifestPath(fileFlag)
 
 			addr, err := resource.ParseAddress(args[0])
 			if err != nil {
@@ -65,7 +63,12 @@ Exit codes:
 			}
 
 			result, err := importer.Run(cmd.Context(), addr, args[1], func(a resource.Address) (provider.Provider, error) {
-				return reg.LookupFor(a)
+				p, err := reg.LookupFor(a)
+				if err != nil {
+					return nil, err
+				}
+				attachImportIdentityCatalog(p, st)
+				return p, nil
 			}, st)
 			if err != nil {
 				return err
@@ -80,10 +83,19 @@ Exit codes:
 	return cmd
 }
 
-func importManifestPath(fileFlag string) (string, error) {
+func attachImportIdentityCatalog(p provider.Provider, st *state.Store) {
+	type catalogSetter interface {
+		SetIdentityCatalog(matomo.IdentityCatalog)
+	}
+	if s, ok := p.(catalogSetter); ok {
+		s.SetIdentityCatalog(st)
+	}
+}
+
+func importManifestPath(fileFlag string) string {
 	fileFlag = strings.TrimSpace(fileFlag)
 	if fileFlag != "" {
-		return fileFlag, nil
+		return fileFlag
 	}
-	return manifest.DefaultFilename, nil
+	return manifest.DefaultFilename
 }

@@ -526,13 +526,15 @@ func TestCreateTagValidatesBeforeMutation(t *testing.T) {
 	}
 }
 
-func TestImportTagOmitsNativeTriggerID(t *testing.T) {
+func TestImportTagReconstructsTriggerRef(t *testing.T) {
 	t.Parallel()
 
 	srv := newTagServer(t)
 	srv.seedTrigger(apiTagTrigger{ID: 4, Name: "trialStarted", Event: "trialStarted"})
 	srv.seedTag(apiTag{ID: 1, Name: "trialStarted", Type: "Matomo", FireTriggerID: 4, Category: "signup", Action: "trialStarted"})
 	p := testTagProvider(t, srv)
+	p.SetIdentityCatalog(boundIdentityCatalog(t, "matomo.trigger.trial_started", "4"))
+
 	live, err := p.Import(context.Background(), mustTagAddress(t, "trial_started"), "1")
 	if err != nil {
 		t.Fatalf("Import: %v", err)
@@ -540,14 +542,188 @@ func TestImportTagOmitsNativeTriggerID(t *testing.T) {
 	if live.Identity.ID != "1" {
 		t.Fatalf("identity = %q, want 1", live.Identity.ID)
 	}
+	ref, ok := resource.AsRef(live.Attributes[matomo.AttrTrigger])
+	if !ok || ref.Address.String() != "matomo.trigger.trial_started" {
+		t.Fatalf("trigger = %v, want $ref matomo.trigger.trial_started", live.Attributes[matomo.AttrTrigger])
+	}
 	if live.Attributes[matomo.AttrEventCategory] != "signup" {
 		t.Fatalf("eventCategory = %v", live.Attributes[matomo.AttrEventCategory])
 	}
-	if _, ok := live.Attributes[matomo.AttrTrigger]; ok {
-		t.Fatalf("imported attributes leaked trigger %v", live.Attributes[matomo.AttrTrigger])
-	}
 	if _, ok := live.Attributes["idtag"]; ok {
 		t.Fatal("imported attributes must omit computed identity")
+	}
+	if _, ok := live.Computed["fire_trigger_ids"]; !ok {
+		t.Fatal("computed fire_trigger_ids missing")
+	}
+	if err := p.Validate(context.Background(), resource.Resource{Address: live.Address, Attributes: live.Attributes.Clone()}); err != nil {
+		t.Fatalf("imported attributes must validate: %v", err)
+	}
+}
+
+func TestImportTagReconstructsVariableRefs(t *testing.T) {
+	t.Parallel()
+
+	srv := newTagServer(t)
+	srv.seedTrigger(apiTagTrigger{ID: 4, Name: "trialStarted", Event: "trialStarted"})
+	srv.seedVariable(apiTagVariable{ID: 2, Name: "userId", Type: "DataLayer", Key: "userId"})
+	srv.seedTag(apiTag{
+		ID:            1,
+		Name:          "trialStarted",
+		Type:          "Matomo",
+		FireTriggerID: 4,
+		Category:      "{{userId}}",
+		Action:        "trialStarted",
+		EventName:     "{{userId}}",
+	})
+	p := testTagProvider(t, srv)
+	st, err := state.New(filepath.Join(t.TempDir(), state.DefaultFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Bind(mustTriggerAddress(t, "trial_started"), resource.Identity{ID: "4"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Bind(mustVariableAddress(t, "user_id"), resource.Identity{ID: "2"}); err != nil {
+		t.Fatal(err)
+	}
+	p.SetIdentityCatalog(st)
+
+	live, err := p.Import(context.Background(), mustTagAddress(t, "trial_started"), "1")
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	category, ok := resource.AsRef(live.Attributes[matomo.AttrEventCategory])
+	if !ok || category.Address.String() != "matomo.variable.user_id" {
+		t.Fatalf("eventCategory = %v, want $ref matomo.variable.user_id", live.Attributes[matomo.AttrEventCategory])
+	}
+	eventName, ok := resource.AsRef(live.Attributes[matomo.AttrEventName])
+	if !ok || eventName.Address.String() != "matomo.variable.user_id" {
+		t.Fatalf("eventName = %v, want $ref matomo.variable.user_id", live.Attributes[matomo.AttrEventName])
+	}
+	if live.Attributes[matomo.AttrEventAction] != "trialStarted" {
+		t.Fatalf("eventAction = %v, want literal trialStarted", live.Attributes[matomo.AttrEventAction])
+	}
+}
+
+func TestImportTagKeepsUnboundVariableTemplate(t *testing.T) {
+	t.Parallel()
+
+	srv := newTagServer(t)
+	srv.seedTrigger(apiTagTrigger{ID: 4, Name: "trialStarted", Event: "trialStarted"})
+	srv.seedVariable(apiTagVariable{ID: 2, Name: "userId", Type: "DataLayer", Key: "userId"})
+	srv.seedTag(apiTag{
+		ID:            1,
+		Name:          "trialStarted",
+		Type:          "Matomo",
+		FireTriggerID: 4,
+		Category:      "{{userId}}",
+		Action:        "trialStarted",
+	})
+	p := testTagProvider(t, srv)
+	p.SetIdentityCatalog(boundIdentityCatalog(t, "matomo.trigger.trial_started", "4"))
+
+	live, err := p.Import(context.Background(), mustTagAddress(t, "trial_started"), "1")
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	if live.Attributes[matomo.AttrEventCategory] != "{{userId}}" {
+		t.Fatalf("eventCategory = %v, want unbound template literal", live.Attributes[matomo.AttrEventCategory])
+	}
+}
+
+func TestImportTagRequiresBoundTrigger(t *testing.T) {
+	t.Parallel()
+
+	srv := newTagServer(t)
+	srv.seedTrigger(apiTagTrigger{ID: 4, Name: "trialStarted", Event: "trialStarted"})
+	srv.seedTag(apiTag{ID: 1, Name: "trialStarted", Type: "Matomo", FireTriggerID: 4, Category: "signup", Action: "trialStarted"})
+	p := testTagProvider(t, srv)
+
+	_, err := p.Import(context.Background(), mustTagAddress(t, "trial_started"), "1")
+	if err == nil {
+		t.Fatal("expected unbound trigger error")
+	}
+	if !strings.Contains(err.Error(), `fire trigger id "4"`) || !strings.Contains(err.Error(), "not bound") {
+		t.Fatalf("error = %q, want unbound trigger guidance", err)
+	}
+	assertNoProviderSecret(t, err.Error())
+}
+
+func TestImportTagRejectsMultipleFireTriggers(t *testing.T) {
+	t.Parallel()
+
+	srv := newTagServer(t)
+	srv.fail("TagManager.getContainerTags", `[{"idtag":"1","idcontainerversion":"9","idsite":"3","type":"Matomo","name":"trialStarted","status":"active","fire_trigger_ids":["4","5"],"block_trigger_ids":[],"parameters":{"trackingType":"event","eventCategory":"signup","eventAction":"trialStarted","matomoConfig":"{{Matomo Configuration}}"}}]`)
+
+	p := testTagProvider(t, srv)
+	p.SetIdentityCatalog(boundIdentityCatalog(t, "matomo.trigger.trial_started", "4"))
+	_, err := p.Import(context.Background(), mustTagAddress(t, "trial_started"), "1")
+	if err == nil {
+		t.Fatal("expected multi-trigger error")
+	}
+	if !strings.Contains(err.Error(), "exactly one fire trigger") {
+		t.Fatalf("error = %q, want multi-trigger guidance", err)
+	}
+}
+
+func TestImportTagInvalidID(t *testing.T) {
+	t.Parallel()
+
+	p := testTagProvider(t, newTagServer(t))
+	_, err := p.Import(context.Background(), mustTagAddress(t, "trial_started"), "abc")
+	if err == nil {
+		t.Fatal("expected invalid id error")
+	}
+	if !strings.Contains(err.Error(), "valid Matomo tag id") {
+		t.Fatalf("error = %q, want invalid id diagnostic", err)
+	}
+}
+
+func TestImportTagNotFound(t *testing.T) {
+	t.Parallel()
+
+	p := testTagProvider(t, newTagServer(t))
+	p.SetIdentityCatalog(boundIdentityCatalog(t, "matomo.trigger.trial_started", "4"))
+	_, err := p.Import(context.Background(), mustTagAddress(t, "trial_started"), "99")
+	if !errors.Is(err, provider.ErrNotFound) {
+		t.Fatalf("Import = %v, want ErrNotFound", err)
+	}
+}
+
+func TestImportTagThenPlanUnchanged(t *testing.T) {
+	t.Parallel()
+
+	srv := newTagServer(t)
+	srv.seedTrigger(apiTagTrigger{ID: 4, Name: "trialStarted", Event: "trialStarted"})
+	srv.seedTag(apiTag{ID: 1, Name: "trialStarted", Type: "Matomo", FireTriggerID: 4, Category: "signup", Action: "trialStarted"})
+	p := testTagProvider(t, srv)
+
+	st, err := state.New(filepath.Join(t.TempDir(), state.DefaultFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Bind(mustTriggerAddress(t, "trial_started"), resource.Identity{ID: "4"}); err != nil {
+		t.Fatal(err)
+	}
+	p.SetIdentityCatalog(st)
+
+	live, err := p.Import(context.Background(), mustTagAddress(t, "trial_started"), "1")
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	if err := st.RecordImport(live.Address, live.Identity.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	trigger := trialStartedTrigger(t)
+	trigger.Identity = resource.Identity{ID: "4"}
+	tag := resource.Resource{Address: live.Address, Identity: live.Identity, Attributes: live.Attributes.Clone()}
+	got := mustPlanTag(t, p, trigger, tag)
+	if got.HasChanges() {
+		t.Fatalf("plan after import produced changes: %+v", got.Changes)
+	}
+	if srv.createCount() != 0 || srv.updateCount() != 0 {
+		t.Fatalf("import path mutated remote: creates=%d updates=%d", srv.createCount(), srv.updateCount())
 	}
 }
 
@@ -1033,6 +1209,28 @@ func (s *tagServer) createCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.creates
+}
+
+func (s *tagServer) updateCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.updates
+}
+
+func boundIdentityCatalog(t *testing.T, address, remoteID string) matomo.IdentityCatalog {
+	t.Helper()
+	st, err := state.New(filepath.Join(t.TempDir(), state.DefaultFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr, err := resource.ParseAddress(address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Bind(addr, resource.Identity{ID: remoteID}); err != nil {
+		t.Fatal(err)
+	}
+	return st
 }
 
 func testTagProvider(t *testing.T, srv *tagServer) *matomo.Provider {

@@ -97,6 +97,46 @@ func TestSaveLoadRoundTripAndDeterministic(t *testing.T) {
 	}
 }
 
+func TestAddressByRemoteID(t *testing.T) {
+	t.Parallel()
+
+	st, err := New(filepath.Join(t.TempDir(), DefaultFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	goal := mustAddr(t, "matomo.goal.trial_started")
+	tag := mustAddr(t, "matomo.tag.trial_started")
+	trigger := mustAddr(t, "matomo.trigger.trial_started")
+	if err := st.Bind(goal, resource.Identity{ID: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Bind(tag, resource.Identity{ID: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Bind(trigger, resource.Identity{ID: "4"}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok, err := st.AddressByRemoteID("matomo", "tag", "1")
+	if err != nil || !ok || got != tag {
+		t.Fatalf("AddressByRemoteID(tag,1) = (%v,%v,%v), want %s", got, ok, err, tag)
+	}
+	got, ok, err = st.AddressByRemoteID("matomo", "goal", "1")
+	if err != nil || !ok || got != goal {
+		t.Fatalf("AddressByRemoteID(goal,1) = (%v,%v,%v), want %s", got, ok, err, goal)
+	}
+	if _, ok, err := st.AddressByRemoteID("matomo", "trigger", "1"); err != nil || ok {
+		t.Fatalf("AddressByRemoteID(trigger,1) = ok=%v err=%v, want missing", ok, err)
+	}
+	got, ok, err = st.AddressByRemoteID("matomo", "trigger", "4")
+	if err != nil || !ok || got != trigger {
+		t.Fatalf("AddressByRemoteID(trigger,4) = (%v,%v,%v), want %s", got, ok, err, trigger)
+	}
+	if _, ok, err := st.AddressByRemoteID("matomo", "tag", "99"); err != nil || ok {
+		t.Fatalf("missing remote id: ok=%v err=%v", ok, err)
+	}
+}
+
 func TestSaveReplacesFileAtomically(t *testing.T) {
 	t.Parallel()
 
