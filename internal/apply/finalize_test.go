@@ -200,6 +200,47 @@ func TestRunFinalizationFailurePreservesDetailsAndDoesNotClaimSuccess(t *testing
 	}
 }
 
+type uncertainFinalizeError struct{}
+
+func (uncertainFinalizeError) Error() string {
+	return "publication outcome is uncertain: empty response"
+}
+
+func (uncertainFinalizeError) UncertainOutcome() {}
+
+func TestRunFinalizationUncertainOutcomeDoesNotEncourageRetry(t *testing.T) {
+	t.Parallel()
+
+	p := &finalizingProvider{
+		Provider:     fake.New(),
+		alwaysPlan:   true,
+		finalizeErr:  uncertainFinalizeError{},
+		finalDetails: []string{"version 10 created"},
+		finalChanged: true,
+	}
+	reg := registerProvider(t, p)
+	st := newStateStore(t)
+	var out bytes.Buffer
+
+	_, err := apply.Run(context.Background(), nil, nil, st, &out, reg)
+	if err == nil {
+		t.Fatal("Run succeeded, want uncertain finalization failure")
+	}
+	partial := requirePartial(t, err)
+	if partial.Stage != apply.StageFinalize {
+		t.Fatalf("partial = %+v, want finalize stage", partial)
+	}
+	if !strings.Contains(err.Error(), "do not create another version") {
+		t.Fatalf("error = %q, want guidance against creating another version", err)
+	}
+	if strings.Contains(err.Error(), "rerun agoraform plan and agoraform apply") {
+		t.Fatalf("error = %q, uncertain outcome should not encourage blind retry", err)
+	}
+	if !strings.Contains(out.String(), "version 10 created") {
+		t.Fatalf("created-version detail missing:\n%s", out.String())
+	}
+}
+
 func TestRunFinalizationDetailsWithoutMutationAreNotPartial(t *testing.T) {
 	t.Parallel()
 

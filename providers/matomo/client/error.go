@@ -1,6 +1,7 @@
 package client
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -77,4 +78,58 @@ func malformedResponseError(method string, status int) *Error {
 
 func unexpectedStatusError(method string, status int) *Error {
 	return &Error{Method: method, StatusCode: status, Message: fmt.Sprintf("unexpected HTTP status %d", status)}
+}
+
+func isMalformedJSONResponse(err error) bool {
+	var apiErr *Error
+	return errors.As(err, &apiErr) && apiErr != nil && apiErr.Message == "malformed JSON response"
+}
+
+// UncertainOutcomeError reports that a mutating request was sent but the
+// response did not confirm whether Matomo completed the operation.
+type UncertainOutcomeError struct {
+	Method string
+	Reason string
+	err    error
+}
+
+func (e *UncertainOutcomeError) Error() string {
+	if e == nil {
+		return "matomo: publication outcome is uncertain"
+	}
+
+	var b strings.Builder
+	b.WriteString("matomo")
+	if e.Method != "" {
+		b.WriteString(": ")
+		b.WriteString(e.Method)
+	}
+	b.WriteString(": publication outcome is uncertain")
+	if e.Reason != "" {
+		b.WriteString(": ")
+		b.WriteString(e.Reason)
+	}
+	b.WriteString("; inspect the remote container before retrying and do not create another version until publication status is known")
+	return b.String()
+}
+
+func (e *UncertainOutcomeError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
+}
+
+// UncertainOutcome marks post-request failures whose remote result is unknown.
+// apply uses this to distinguish them from pre-request errors.
+func (e *UncertainOutcomeError) UncertainOutcome() {}
+
+// IsUncertainOutcome reports whether err is a post-request uncertain outcome.
+func IsUncertainOutcome(err error) bool {
+	var uncertain *UncertainOutcomeError
+	return errors.As(err, &uncertain)
+}
+
+func uncertainOutcomeError(method, reason string, err error) error {
+	return &UncertainOutcomeError{Method: method, Reason: reason, err: err}
 }

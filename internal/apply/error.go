@@ -118,8 +118,21 @@ func (e *PartialApplyError) finalizeMessage() string {
 	} else {
 		b.WriteString("Remote provider state may already have changed; it was not rolled back.")
 	}
-	b.WriteString("\nFix the provider error, then rerun agoraform plan and agoraform apply.")
+	if isUncertainOutcome(e.Err) {
+		b.WriteString("\nInspect the remote provider state to determine whether the operation completed before retrying; do not create another version until that status is known.")
+	} else {
+		b.WriteString("\nFix the provider error, then rerun agoraform plan and agoraform apply.")
+	}
 	return b.String()
+}
+
+type uncertainOutcome interface {
+	UncertainOutcome()
+}
+
+func isUncertainOutcome(err error) bool {
+	var uncertain uncertainOutcome
+	return errors.As(err, &uncertain)
 }
 
 // IsPartial reports whether err is a post-mutation apply failure.
