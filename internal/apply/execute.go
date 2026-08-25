@@ -15,6 +15,24 @@ import (
 // Lookup resolves the mutating provider for a resource address.
 type Lookup func(addr resource.Address) (provider.Provider, error)
 
+// LookupFor lets a Lookup participate in the high-level Run lifecycle. Run
+// records providers resolved through this method so provider finalizations are
+// not silently omitted for lookup-based callers that manage resources.
+func (l Lookup) LookupFor(addr resource.Address) (provider.Provider, error) {
+	if l == nil {
+		return nil, fmt.Errorf("provider lookup is required")
+	}
+	return l(addr)
+}
+
+// ProviderSource resolves providers for resource addresses. A full
+// *provider.Registry is preferred because it can also enumerate providers for
+// finalization-only applies, while Lookup remains supported for resource-based
+// internal callers.
+type ProviderSource interface {
+	LookupFor(addr resource.Address) (provider.Provider, error)
+}
+
 // Store persists provider-native identities after successful mutations.
 //
 // Implementations must not write a new identity for a failed mutation.
@@ -49,7 +67,7 @@ type Result struct {
 // creates and updates persist identities through st. Provider finalization
 // planning is non-mutating and happens before resource execution. On success,
 // Run writes human-readable progress and Format(result) to out.
-func Run(ctx context.Context, desired []resource.Resource, providers ProviderSet, st Persistence, out io.Writer) (Result, error) {
+func Run(ctx context.Context, desired []resource.Resource, providers ProviderSource, st Persistence, out io.Writer) (Result, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -59,25 +77,29 @@ func Run(ctx context.Context, desired []resource.Resource, providers ProviderSet
 	if providers == nil && len(desired) > 0 {
 		return Result{}, fmt.Errorf("apply: provider registry is required")
 	}
+	if providers != nil && len(desired) == 0 && !canEnumerateProviders(providers) {
+		return Result{}, fmt.Errorf("apply: provider enumeration is required for a finalization-only apply")
+	}
 	if st == nil {
 		return Result{}, fmt.Errorf("apply: state store is required")
 	}
 
+	catalog := newProviderCatalog(providers)
 	var lookup Lookup
 	if providers != nil {
-		lookup = providers.LookupFor
+		lookup = catalog.LookupFor
 	}
 
 	planned, err := plan.BuildWithState(ctx, desired, func(addr resource.Address) (provider.Reader, error) {
 		if providers == nil {
 			return nil, fmt.Errorf("provider registry is required")
 		}
-		return providers.LookupFor(addr)
+		return catalog.LookupFor(addr)
 	}, st)
 	if err != nil {
 		return Result{}, err
 	}
-	if err := AttachFinalizations(ctx, providers, planned); err != nil {
+	if err := AttachFinalizations(ctx, catalog, planned); err != nil {
 		return Result{}, err
 	}
 
@@ -85,7 +107,7 @@ func Run(ctx context.Context, desired []resource.Resource, providers ProviderSet
 	if err != nil {
 		return result, err
 	}
-	result.Finalized, err = ExecuteFinalizations(ctx, providers, planned.Finalizations, out)
+	result.Finalized, err = ExecuteFinalizations(ctx, catalog, planned.Finalizations, out)
 	if err != nil {
 		return result, err
 	}
