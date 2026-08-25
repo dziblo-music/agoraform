@@ -142,10 +142,10 @@ func rejectEdgeWhitespace(addr resource.Address, attr, value string) error {
 
 func (p *Provider) requireTagManagerConfig() error {
 	if err := p.requireSiteID(); err != nil {
-		return fmt.Errorf("%s is required to manage Tag Manager variables", EnvSiteID)
+		return fmt.Errorf("%s is required to manage Tag Manager resources", EnvSiteID)
 	}
 	if p == nil || strings.TrimSpace(p.cfg.ContainerID) == "" {
-		return fmt.Errorf("%s is required to manage Tag Manager variables", EnvContainerID)
+		return fmt.Errorf("%s is required to manage Tag Manager resources", EnvContainerID)
 	}
 	return nil
 }

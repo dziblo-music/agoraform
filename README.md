@@ -18,14 +18,14 @@ local state are unchanged.
 | Included | Not included |
 | --- | --- |
 | `validate`, `plan`, `apply`, `import` | Google Ads, Meta Ads |
-| `matomo.goal` and `matomo.variable` | Matomo Tag Manager triggers, tags, versions, or publish |
+| `matomo.goal`, `matomo.variable`, and `matomo.trigger` | Matomo Tag Manager tags, versions, or publish |
 | Local `agoraform.state.json` | Remote state, workspaces, locking, encryption |
 | Create and update | Destroy / delete of remote objects |
 | Environment-variable Matomo auth | Credentials in manifests |
 | Reviewable `plan` before `apply` | Budget safeguards, approval prompts, automatic rollback |
 
 Later work may add other providers and remaining Tag Manager resources.
-Triggers, tags, and container publishing are not implemented yet.
+Tags and container publishing are not implemented yet.
 
 Agoraform is licensed under the [Apache License 2.0](LICENSE).
 
@@ -133,7 +133,7 @@ You need a Matomo site you are allowed to change, plus:
 MATOMO_URL            Matomo base URL, for example https://matomo.example.com
 MATOMO_TOKEN_AUTH     API token
 MATOMO_SITE_ID        numeric site id
-MATOMO_CONTAINER_ID   Tag Manager container id (required for matomo.variable)
+MATOMO_CONTAINER_ID   Tag Manager container id (required for matomo.variable and matomo.trigger)
 ```
 
 `validate`, `plan`, `apply`, and `import` call Matomo. They fail without

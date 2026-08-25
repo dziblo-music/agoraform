@@ -65,6 +65,14 @@ resources:
       key: userId
 `
 
+const matomoTriggerManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: matomo.trigger.trial_started
+    attributes:
+      type: customEvent
+      event: trialStarted
+`
+
 const invalidManifest = `apiVersion: agoraform.io/v1alpha1
 resources:
   - address: not-an-address
@@ -321,6 +329,64 @@ func TestValidateMatomoVariableWithProvider(t *testing.T) {
 	}
 }
 
+func TestValidateMatomoTriggerMissingCredentials(t *testing.T) {
+	t.Parallel()
+
+	path := writeManifest(t, "agoraform.yaml", matomoTriggerManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWith(streams, []string{"validate", "-f", path})
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	errOut := stderr.String()
+	if strings.Contains(errOut, "unknown resource type") {
+		t.Fatalf("stderr = %q, matomo.trigger should be registered", errOut)
+	}
+	if !strings.Contains(errOut, "MATOMO_URL") && !strings.Contains(errOut, "required") {
+		t.Fatalf("stderr = %q, want missing credential error", errOut)
+	}
+}
+
+func TestValidateMatomoTriggerMissingContainer(t *testing.T) {
+	t.Parallel()
+
+	p, _ := matomoGoalTestProvider(t, `[]`)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", matomoTriggerManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), matomo.EnvContainerID) {
+		t.Fatalf("stderr = %q, want %s", stderr.String(), matomo.EnvContainerID)
+	}
+}
+
+func TestValidateMatomoTriggerWithProvider(t *testing.T) {
+	t.Parallel()
+
+	p, _ := matomoVariableTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", matomoTriggerManifest)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitOK, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "1 resource") {
+		t.Fatalf("stdout = %q, want 1 resource", stdout.String())
+	}
+}
+
 func TestValidateMixedGoalAndVariableManifest(t *testing.T) {
 	t.Parallel()
 
@@ -369,6 +435,8 @@ func matomoVariableTestProvider(t *testing.T) (*matomo.Provider, *httptest.Serve
 		case strings.Contains(string(body), "API.getMatomoVersion"):
 			_, _ = io.WriteString(w, `"5.2.0"`)
 		case strings.Contains(string(body), "TagManager.getContainerVariables"):
+			_, _ = io.WriteString(w, `[]`)
+		case strings.Contains(string(body), "TagManager.getContainerTriggers"):
 			_, _ = io.WriteString(w, `[]`)
 		case strings.Contains(string(body), "TagManager.getContainer"):
 			_, _ = io.WriteString(w, `{"idcontainer":"6OMh6taM","idsite":3,"draft":{"idcontainerversion":9}}`)

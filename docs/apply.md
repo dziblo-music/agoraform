@@ -69,9 +69,10 @@ user-authored configuration. If a prerequisite has no identity after it has
 been applied (or skipped as unchanged), apply fails with an actionable
 diagnostic and does not mutate the dependent.
 
-The Matomo provider is registered with the CLI. `matomo.goal` and
-`matomo.variable` resources can be created and updated. Unit tests that
-need a generic resource lifecycle use the in-memory `fake` provider.
+The Matomo provider is registered with the CLI. `matomo.goal`,
+`matomo.variable`, and `matomo.trigger` resources can be created and
+updated. Unit tests that need a generic resource lifecycle use the
+in-memory `fake` provider.
 
 ## Change model
 

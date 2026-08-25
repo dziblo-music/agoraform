@@ -3,9 +3,9 @@
 The Matomo provider is Agoraform's first production provider. It loads
 credentials from the environment, talks to Matomo through
 `providers/matomo/client`, and manages `matomo.goal` plus Tag Manager
-`matomo.variable`.
+`matomo.variable` and `matomo.trigger`.
 
-Tag Manager triggers, tags, and versions remain out of scope.
+Tag Manager tags and versions remain out of scope.
 
 ## Configuration
 
@@ -16,12 +16,12 @@ environment:
 MATOMO_URL            required   Matomo base URL, for example https://matomo.example.com
 MATOMO_TOKEN_AUTH     required   API token
 MATOMO_SITE_ID        required for goals and Tag Manager resources
-MATOMO_CONTAINER_ID   required for Tag Manager variables   container id such as 6OMh6taM
+MATOMO_CONTAINER_ID   required for Tag Manager resources   container id such as 6OMh6taM
 ```
 
 `MATOMO_CONTAINER_ID` is the Tag Manager container Agoraform manages. Variable
-create, read, and update operate on that container's draft version. It is not
-used by `matomo.goal`.
+and trigger create, read, and update operate on that container's draft
+version. It is not used by `matomo.goal`.
 
 ### Precedence
 
@@ -136,6 +136,47 @@ manifest attribute. See [import.md](../../docs/import.md).
 
 Other Tag Manager variable templates are not managed in v0.2.
 
+### `matomo.trigger`
+
+Declares a Matomo Tag Manager trigger in the configured container draft.
+v0.2 starts with Custom Event triggers. Initial discovery looks up a trigger
+by `name` (defaulting to `event` when `name` is omitted). Once Agoraform
+manages the resource, persist Matomo's trigger ID in
+[local state](../../docs/state.md), not in the manifest:
+
+```yaml
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: matomo.trigger.trial_started
+    attributes:
+      type: customEvent
+      event: trialStarted
+```
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `type` | yes | Trigger template. v0.2 supports `customEvent`. |
+| `event` | yes for `customEvent` | Data Layer event name, sent to Matomo as `eventName`. No leading or trailing whitespace. At most 300 characters. If `name` is omitted, `event` is also the Matomo trigger name and must be at most 255 characters. |
+| `name` | no | Tag Manager display name. Defaults to `event`. No leading or trailing whitespace. At most 255 characters. Internal spaces such as `Trial Started` are allowed. |
+
+A missing unbound remote trigger plans as a create. A changed `event` or
+`name` plans as an update. Equivalent configuration, including an omitted
+`name` that matches `event`, produces a zero-change plan. Deletion is out of
+scope.
+
+Remote fields such as `idtrigger`, `idcontainerversion`, `status`,
+`description`, `conditions`, and `typeMetadata` are computed. Do not set
+them in configuration. Updates re-read the live trigger and send unmanaged
+conditions back because `TagManager.updateContainerTrigger` otherwise
+resets omitted conditions. `type` is immutable after create.
+
+`agoraform import matomo.trigger.NAME ID` reads an existing draft trigger
+by numeric id. It does not recreate the trigger or emit `idTrigger` as a
+manifest attribute. See [import.md](../../docs/import.md).
+
+Other Tag Manager trigger templates and condition/expression builders are
+not managed in v0.2.
+
 ## HTTP client
 
 `providers/matomo/client` provides:
@@ -147,7 +188,7 @@ Other Tag Manager variable templates are not managed in v0.2.
 - JSON decoding and Matomo `{"result":"error"}` mapping
 - secret redaction in returned errors
 - Goals helpers: `GetGoals`, `AddGoal`, `UpdateGoal`, and preservation-safe updates
-- Tag Manager helpers: `GetContainer`, draft version resolution, `GetContainerVariables`, `AddContainerVariable`, and preservation-safe `UpdateContainerVariable`
+- Tag Manager helpers: `GetContainer`, draft version resolution, `GetContainerVariables`, `AddContainerVariable`, preservation-safe `UpdateContainerVariable`, `GetContainerTriggers`, `AddContainerTrigger`, and preservation-safe `UpdateContainerTrigger`
 
 Two API surfaces share that client:
 
@@ -159,10 +200,11 @@ Two API surfaces share that client:
 ## CLI
 
 The CLI composition root registers the Matomo provider. Manifests may
-use addresses such as `matomo.goal.trial_started` and
-`matomo.variable.user_id`. `validate`, `plan`, `apply`, and `import` call
-`CheckConnection` once after the provider and resource type resolve, then
-validate resource attributes and (for `plan`) read live objects.
+use addresses such as `matomo.goal.trial_started`,
+`matomo.variable.user_id`, and `matomo.trigger.trial_started`. `validate`,
+`plan`, `apply`, and `import` call `CheckConnection` once after the provider
+and resource type resolve, then validate resource attributes and (for
+`plan`) read live objects.
 
 ## Safety
 
