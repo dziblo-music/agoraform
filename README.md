@@ -2,56 +2,98 @@
 
 Marketing Infrastructure as Code.
 
-Agoraform **0.1.0** is a CLI that declares Matomo analytics goals in YAML,
-shows a non-mutating plan, applies creates and updates, and imports existing
-goals into local management.
+Agoraform is an open-source Go CLI for declaring marketing-platform
+configuration in YAML, reviewing changes with a non-mutating plan, and
+reconciling those changes through provider APIs.
+
+The CLI stays provider-neutral:
 
 ```text
 validate -> plan -> apply -> plan
 ```
 
-The last `plan` in that sequence reports no changes when the remote goal and
-local state are unchanged.
+`import` brings an existing remote object under management. Destructive
+`destroy` behavior is not implemented yet.
 
-## 0.1.0 status
+## Releases
 
-| Included | Not included |
+### v0.1.0 — current stable release
+
+The first public release manages Matomo analytics goals only.
+
+| Area | v0.1.0 |
 | --- | --- |
-| `validate`, `plan`, `apply`, `import` | Google Ads, Meta Ads |
-| `matomo.goal`, `matomo.variable`, `matomo.trigger`, and `matomo.tag` | Matomo Tag Manager versions or publish |
-| Local `agoraform.state.json` | Remote state, workspaces, locking, encryption |
-| Create and update | Destroy / delete of remote objects |
-| Environment-variable Matomo auth | Credentials in manifests |
-| Reviewable `plan` before `apply` | Budget safeguards, approval prompts, automatic rollback |
+| Commands | `validate`, `plan`, `apply`, `import` |
+| Provider | Matomo |
+| Resource | `matomo.goal` |
+| State | local `agoraform.state.json` |
+| Mutations | create and update |
 
-Later work may add other providers and remaining Tag Manager publishing.
-Container versions are not implemented yet.
+The `v0.1.0` binaries do **not** contain Matomo Tag Manager resource
+management or container publication.
 
-Agoraform is licensed under the [Apache License 2.0](LICENSE).
+### v0.2.0 — unreleased work on `main`
 
-## Install
+Current unreleased development adds:
 
-Requires no runtime besides the binary. Official release artifacts are built
-with Go 1.26.7 and `CGO_ENABLED=0`.
+- `matomo.variable` for Data Layer variables;
+- `matomo.trigger` for Custom Event triggers;
+- `matomo.tag` for Matomo Analytics event tags;
+- explicit `$ref` dependencies between managed resources;
+- Tag Manager import with logical-reference reconstruction;
+- declarative Tag Manager container publication through `plan` and `apply`.
+
+Publication does **not** add an `agoraform publish` command. Provider-specific
+behavior is desired state in the manifest while the command surface remains
+portable across providers.
+
+```yaml
+apiVersion: agoraform.io/v1alpha1
+providers:
+  matomo:
+    publish: true
+    environment: live
+resources:
+  - address: matomo.variable.user_id
+    attributes:
+      type: dataLayer
+      key: userId
+```
+
+When publication is enabled, `plan` makes the action visible before any
+mutation:
+
+```text
+> matomo.container.main: publish -> live
+```
+
+`apply` performs that provider action only after all planned Tag Manager draft
+resource mutations succeed. Repeated unchanged applies do not create duplicate
+container versions.
+
+See [Matomo Tag Manager publication](docs/matomo-publishing.md).
+
+## Install v0.1.0
+
+Official release artifacts require no runtime besides the binary. They are
+built with Go 1.26.7 and `CGO_ENABLED=0`.
 
 ### GitHub Releases
 
-1. Download the archive for your OS and architecture from
-   [GitHub Releases](https://github.com/dziblo-music/agoraform/releases)
-   (tag `v0.1.0` for this version).
+1. Download the archive for your OS and architecture from GitHub Releases
+   (tag `v0.1.0`).
 2. Download `checksums.txt` from the same release and verify the archive.
-3. Extract `agoraform` (Windows: `agoraform.exe`) and place it on `PATH`.
-4. Confirm the SemVer 2.0 version string:
+3. Extract `agoraform` (`agoraform.exe` on Windows) and place it on `PATH`.
+4. Confirm the version:
 
 ```bash
 agoraform --version
 ```
 
-A 0.1.0 release binary prints `0.1.0`. Git tags use the Go convention with a
-`v` prefix (`v0.1.0`); the CLI version string does not. Untagged local builds
-print `0.0.0-dev`.
+A v0.1.0 binary prints `0.1.0`. Git tags use the Go convention with a `v`
+prefix. Untagged local builds print `0.0.0-dev`.
 
-Archives:
+Release archives:
 
 | File | Platform |
 | --- | --- |
@@ -61,48 +103,18 @@ Archives:
 | `agoraform_0.1.0_darwin_arm64.tar.gz` | macOS arm64 |
 | `agoraform_0.1.0_windows_amd64.zip` | Windows amd64 |
 
-Release archives also contain `README.md`, `CHANGELOG.md`, license files, and
-the `examples/agoraform.yaml` quickstart manifest.
-
-#### Verify checksums
-
-Linux example:
-
-```bash
-sha256sum -c checksums.txt --ignore-missing
-```
-
-macOS example (replace the archive name for Intel Macs):
-
-```bash
-shasum -a 256 agoraform_0.1.0_darwin_arm64.tar.gz
-grep 'agoraform_0.1.0_darwin_arm64.tar.gz' checksums.txt
-```
-
-The two SHA-256 values must match.
-
-Windows PowerShell:
-
-```powershell
-Get-FileHash .\agoraform_0.1.0_windows_amd64.zip -Algorithm SHA256
-Select-String 'agoraform_0.1.0_windows_amd64.zip' .\checksums.txt
-```
-
-The two SHA-256 values must match before you run the binary.
+Release archives also contain the README, changelog, license files, and the
+example manifest.
 
 ### go install
 
-Requires Go 1.26.7 or newer.
+Requires Go 1.26.7 or newer:
 
 ```bash
 go install github.com/dziblo-music/agoraform/cmd/agoraform@v0.1.0
 ```
 
-The module version in the tag is `v0.1.0`. The CLI still prints `0.1.0`.
-
-### Build from source
-
-Requires Go 1.26.7 or newer.
+### Build current source
 
 ```bash
 git clone https://github.com/dziblo-music/agoraform.git
@@ -113,55 +125,57 @@ go build -o agoraform ./cmd/agoraform
 
 On Windows:
 
-```bash
+```powershell
 go build -o agoraform.exe ./cmd/agoraform
 ```
 
-A plain untagged `go build` reports `0.0.0-dev`. Release builds inject the
-version rather than hard-coding it in source. To reproduce a 0.1.0 version
-stamp locally:
+## Runtime configuration
 
-```bash
-go build -ldflags "-X github.com/dziblo-music/agoraform/internal/cli.Version=0.1.0" -o agoraform ./cmd/agoraform
-```
-
-## Quickstart
-
-You need a Matomo site you are allowed to change, plus:
+Matomo credentials and connection details stay outside the manifest:
 
 ```text
 MATOMO_URL            Matomo base URL, for example https://matomo.example.com
 MATOMO_TOKEN_AUTH     API token
 MATOMO_SITE_ID        numeric site id
-MATOMO_CONTAINER_ID   Tag Manager container id (required for matomo.variable, matomo.trigger, and matomo.tag)
+MATOMO_CONTAINER_ID   Tag Manager container id for v0.2 Tag Manager resources
 ```
 
-`validate`, `plan`, `apply`, and `import` call Matomo. They fail without
-those variables and a reachable instance. Credentials never belong in YAML.
+Credentials never belong in YAML, plan output, logs, or local state.
 
-From an extracted release archive or a source checkout, copy the included
-example manifest:
+Non-secret provider desired state belongs in the manifest. For v0.2 Matomo
+publication:
+
+```yaml
+providers:
+  matomo:
+    publish: true
+    environment: live
+```
+
+`publish` defaults to `false`; `environment` defaults to `live` when
+publication is enabled.
+
+## Quickstart
+
+Copy the included example manifest:
 
 ```bash
 cp examples/agoraform.yaml agoraform.yaml
 ```
 
-On Windows PowerShell:
-
-```powershell
-Copy-Item .\examples\agoraform.yaml .\agoraform.yaml
-```
-
-Then:
+Then run:
 
 ```bash
 agoraform validate
-agoraform plan      # expect a create; exit code 2 when changes exist
+agoraform plan
 agoraform apply
-agoraform plan      # no changes; exit code 0
+agoraform plan
 ```
 
-The example declares one `matomo.goal`:
+The last plan should report no changes when desired configuration, local state,
+and remote state are unchanged.
+
+A v0.1.0 goal looks like:
 
 ```yaml
 apiVersion: agoraform.io/v1alpha1
@@ -173,61 +187,54 @@ resources:
       pattern: trialStarted
 ```
 
-Successful apply writes the Matomo goal id to `agoraform.state.json` next to
-the manifest. That file is local management metadata; do not put tokens in it,
-and do not commit it unless you have an explicit sharing workflow.
-
-### Import an existing goal
-
-```bash
-agoraform import matomo.goal.trial_started 12
-```
-
-Import prints YAML for configurable fields and records the remote id in local
-state. It does not rewrite `agoraform.yaml` and does not change Matomo.
-Paste the printed resource into the manifest, then `agoraform plan` should
-report no changes if the live goal still matches.
+Successful creates write provider-native identities to
+`agoraform.state.json` beside the manifest. Do not put credentials in that
+file.
 
 ## Commands
 
 Default manifest path: `agoraform.yaml`.
 
 ```bash
-agoraform validate
-agoraform validate -f path/to/manifest.yaml
-
-agoraform plan
-agoraform plan -f path/to/manifest.yaml
-
-agoraform apply
-agoraform apply -f path/to/manifest.yaml
-
-agoraform import ADDRESS REMOTE-ID
-agoraform import -f path/to/manifest.yaml ADDRESS REMOTE-ID
+agoraform validate [-f path/to/manifest.yaml]
+agoraform plan [-f path/to/manifest.yaml]
+agoraform apply [-f path/to/manifest.yaml]
+agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
 ```
 
-| Command | 0.1.0 behavior |
+| Command | Purpose |
 | --- | --- |
-| `validate` | Schema, addresses, duplicates, provider type, Matomo connectivity, goal fields |
-| `plan` | Diff vs live Matomo; never mutates; reads `agoraform.state.json` |
-| `apply` | Executes planned creates and updates; persists identities; no destroy |
-| `import` | Binds one existing remote id; prints YAML; no remote mutation |
+| `validate` | Validate manifest, provider configuration, dependencies, connectivity, and resource schemas |
+| `plan` | Read remote state and show all resource/provider actions; never mutate |
+| `apply` | Execute the reviewed resource/provider convergence actions |
+| `import` | Bind an existing remote identity and print configurable YAML; no remote mutation |
 
-Details: [docs/manifest.md](docs/manifest.md), [docs/plan.md](docs/plan.md),
-[docs/apply.md](docs/apply.md), [docs/import.md](docs/import.md),
-[docs/state.md](docs/state.md), [providers/matomo/README.md](providers/matomo/README.md).
+Provider-specific lifecycle verbs are intentionally not top-level commands.
 
 ### Exit codes
 
 | Code | Meaning |
 | --- | --- |
-| `0` | Success. For `plan`, no changes. For `apply`, planned mutations finished |
-| `1` | Command failure (plan, apply, or import error) |
+| `0` | Success; for `plan`, no changes |
+| `1` | Runtime/validation/provider failure |
 | `2` | `plan` succeeded and changes are present |
-| `3` | Invalid usage |
+| `3` | Invalid CLI usage |
+
+## Documentation
+
+- [Manifest format](docs/manifest.md)
+- [Plan engine](docs/plan.md)
+- [Apply execution](docs/apply.md)
+- [Import](docs/import.md)
+- [Matomo Tag Manager publication](docs/matomo-publishing.md)
+- [Local state](docs/state.md)
+- [Matomo provider](providers/matomo/README.md)
+- [Release process](docs/release.md)
+- [Changelog](CHANGELOG.md)
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Release tagging and artifact
-verification are in [docs/release.md](docs/release.md). Changes by version
-are in [CHANGELOG.md](CHANGELOG.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the build, test, branch, and pull
+request workflow.
+
+Agoraform is licensed under the [Apache License 2.0](LICENSE).

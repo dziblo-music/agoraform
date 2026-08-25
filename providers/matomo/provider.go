@@ -35,15 +35,19 @@ type Provider struct {
 	client *client.Client
 	err    error
 
-	mu         sync.Mutex
-	known      map[string]remoteBinding
-	identities IdentityCatalog
+	mu                 sync.Mutex
+	known              map[string]remoteBinding
+	identities         IdentityCatalog
+	publishEnabled     bool
+	publishEnvironment string
 }
 
 var (
 	_ provider.Provider          = (*Provider)(nil)
 	_ provider.ConnectionChecker = (*Provider)(nil)
 	_ provider.Normalizer        = (*Provider)(nil)
+	_ provider.Configurator      = (*Provider)(nil)
+	_ provider.Finalizer         = (*Provider)(nil)
 )
 
 // New returns a Matomo provider using cfg.
@@ -51,7 +55,10 @@ var (
 // Construction does not contact Matomo. Missing or invalid settings are
 // reported by Client or CheckConnection.
 func New(cfg Config) *Provider {
-	return &Provider{cfg: cfg.WithDefaults()}
+	return &Provider{
+		cfg:                cfg.WithDefaults(),
+		publishEnvironment: client.DefaultEnvironment,
+	}
 }
 
 // NewFromEnv returns a provider configured from MATOMO_* environment
@@ -107,7 +114,12 @@ func (p *Provider) Client() (*client.Client, error) {
 
 // CheckConnection implements provider.ConnectionChecker.
 func (p *Provider) CheckConnection(ctx context.Context) error {
-	if err := missingConfigError(p.cfg); err != nil {
+	enabled, _ := p.publicationSettings()
+	if enabled {
+		if err := p.requirePublishConfig(); err != nil {
+			return err
+		}
+	} else if err := missingConfigError(p.cfg); err != nil {
 		return err
 	}
 	c, err := p.Client()

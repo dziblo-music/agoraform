@@ -15,20 +15,33 @@ type Container struct {
 	IDSite       string
 	Name         string
 	DraftVersion string
+	Releases     []ContainerRelease
+}
+
+// ContainerRelease is a published container version in one environment.
+type ContainerRelease struct {
+	IDContainerVersion string
+	Environment        string
 }
 
 type rawContainer struct {
-	IDContainer flexibleString `json:"idcontainer"`
-	IDSite      flexibleString `json:"idsite"`
-	Name        flexibleString `json:"name"`
-	Draft       *rawDraft      `json:"draft"`
+	IDContainer flexibleString  `json:"idcontainer"`
+	IDSite      flexibleString  `json:"idsite"`
+	Name        flexibleString  `json:"name"`
+	Draft       *rawDraft       `json:"draft"`
+	Releases    json.RawMessage `json:"releases"`
 }
 
 type rawDraft struct {
 	IDContainerVersion flexibleString `json:"idcontainerversion"`
 }
 
-func (c rawContainer) container() Container {
+type rawRelease struct {
+	IDContainerVersion flexibleString `json:"idcontainerversion"`
+	Environment        flexibleString `json:"environment"`
+}
+
+func (c rawContainer) container() (Container, error) {
 	out := Container{
 		IDContainer: string(c.IDContainer),
 		IDSite:      string(c.IDSite),
@@ -37,7 +50,23 @@ func (c rawContainer) container() Container {
 	if c.Draft != nil {
 		out.DraftVersion = string(c.Draft.IDContainerVersion)
 	}
-	return out
+	releases, err := decodeReleases(c.Releases)
+	if err != nil {
+		return Container{}, err
+	}
+	out.Releases = releases
+	return out, nil
+}
+
+// ReleaseFor returns the published version for environment, if any.
+func (c Container) ReleaseFor(environment string) (ContainerRelease, bool) {
+	environment = strings.TrimSpace(environment)
+	for _, rel := range c.Releases {
+		if rel.Environment == environment && strings.TrimSpace(rel.IDContainerVersion) != "" {
+			return rel, true
+		}
+	}
+	return ContainerRelease{}, false
 }
 
 // GetContainer returns the configured Tag Manager container.
@@ -81,9 +110,38 @@ func decodeContainer(raw json.RawMessage) (Container, error) {
 	if err := json.Unmarshal(raw, &item); err != nil {
 		return Container{}, err
 	}
-	c := item.container()
+	c, err := item.container()
+	if err != nil {
+		return Container{}, err
+	}
 	if strings.TrimSpace(c.IDContainer) == "" && strings.TrimSpace(c.DraftVersion) == "" {
 		return Container{}, fmt.Errorf("unexpected TagManager.getContainer payload")
 	}
 	return c, nil
+}
+
+func decodeReleases(raw json.RawMessage) ([]ContainerRelease, error) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+	if raw[0] != '[' {
+		return nil, fmt.Errorf("unexpected TagManager.getContainer releases payload")
+	}
+	var items []rawRelease
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil, err
+	}
+	out := make([]ContainerRelease, 0, len(items))
+	for _, item := range items {
+		rel := ContainerRelease{
+			IDContainerVersion: strings.TrimSpace(string(item.IDContainerVersion)),
+			Environment:        strings.TrimSpace(string(item.Environment)),
+		}
+		if rel.IDContainerVersion == "" && rel.Environment == "" {
+			continue
+		}
+		out = append(out, rel)
+	}
+	return out, nil
 }

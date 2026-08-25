@@ -17,7 +17,7 @@ const (
 	DefaultFilename = "agoraform.yaml"
 )
 
-// Manifest is a parsed v0.1 Agoraform configuration document.
+// Manifest is a parsed Agoraform configuration document.
 type Manifest struct {
 	// Origin is the source path or label used in diagnostics.
 	Origin string
@@ -25,13 +25,18 @@ type Manifest struct {
 	// APIVersion is the schema version declared in the file.
 	APIVersion string
 
+	// Providers contains non-secret, declarative provider-specific desired
+	// state. Credentials and connection settings do not belong here.
+	Providers map[string]resource.Attributes
+
 	// Resources are the desired resources from configuration.
 	Resources []resource.Resource
 }
 
 type rawManifest struct {
-	APIVersion string        `yaml:"apiVersion"`
-	Resources  []rawResource `yaml:"resources"`
+	APIVersion string                    `yaml:"apiVersion"`
+	Providers  map[string]map[string]any `yaml:"providers"`
+	Resources  []rawResource             `yaml:"resources"`
 }
 
 type rawResource struct {
@@ -58,6 +63,19 @@ func Parse(data []byte, origin string) (*Manifest, error) {
 	}
 	if raw.APIVersion != APIVersion {
 		return nil, fmt.Errorf("%s: unsupported apiVersion %q (want %s)", origin, raw.APIVersion, APIVersion)
+	}
+
+	providers := make(map[string]resource.Attributes, len(raw.Providers))
+	for name, attrs := range raw.Providers {
+		addr := resource.Address{Provider: name, Type: "config", Name: "main"}
+		if err := addr.Validate(); err != nil {
+			return nil, fmt.Errorf("%s: providers.%s: invalid provider name", origin, name)
+		}
+		normalized, err := normalizeAttributes(attrs)
+		if err != nil {
+			return nil, fmt.Errorf("%s: providers.%s: %w", origin, name, err)
+		}
+		providers[name] = normalized
 	}
 
 	seen := make(map[string]int, len(raw.Resources))
@@ -97,6 +115,7 @@ func Parse(data []byte, origin string) (*Manifest, error) {
 	return &Manifest{
 		Origin:     origin,
 		APIVersion: raw.APIVersion,
+		Providers:  providers,
 		Resources:  resources,
 	}, nil
 }

@@ -45,11 +45,52 @@ type Normalizer interface {
 // credential and endpoint validation.
 //
 // When a Provider also implements ConnectionChecker, validate and plan
-// call CheckConnection once per provider after the provider and a
-// supported resource type are resolved. Implementations must not mutate
-// remote state or include credentials in returned errors.
+// call CheckConnection once per provider after provider configuration has
+// been applied. Implementations must not mutate remote state or include
+// credentials in returned errors.
 type ConnectionChecker interface {
 	CheckConnection(ctx context.Context) error
+}
+
+// Configurator is an optional provider hook for non-secret declarative
+// configuration from the manifest's providers block. Credentials and other
+// sensitive connection settings must remain outside the manifest.
+type Configurator interface {
+	Configure(config resource.Attributes) error
+}
+
+// PendingChange is a resource mutation already visible in the core plan.
+// Providers may use this read-only view when deciding whether a provider-level
+// finalization action will be required after those resource mutations.
+type PendingChange struct {
+	Address resource.Address
+	Action  string
+}
+
+// FinalizationPlan is a provider-specific action that must happen after all
+// resource creates and updates succeed. The CLI stays provider-neutral while
+// still making the action visible during plan review.
+type FinalizationPlan struct {
+	Address resource.Address
+	Action  string
+	Target  string
+}
+
+// FinalizationResult reports provider-specific progress. Details are safe,
+// human-readable fragments; the CLI prefixes each with Address.
+type FinalizationResult struct {
+	Address resource.Address
+	Details []string
+	Changed bool
+}
+
+// Finalizer is an optional provider hook for declarative post-resource
+// convergence such as publishing an already-applied container draft.
+// PlanFinalization must be non-mutating. Finalize is called only after every
+// planned resource mutation succeeds.
+type Finalizer interface {
+	PlanFinalization(ctx context.Context, pending []PendingChange) (*FinalizationPlan, error)
+	Finalize(ctx context.Context, planned FinalizationPlan) (FinalizationResult, error)
 }
 
 // Provider is the v0.1 contract between Agoraform's core and a provider.

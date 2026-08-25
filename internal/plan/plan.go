@@ -1,6 +1,9 @@
 package plan
 
-import "github.com/dziblo-music/agoraform/internal/resource"
+import (
+	"github.com/dziblo-music/agoraform/internal/provider"
+	"github.com/dziblo-music/agoraform/internal/resource"
+)
 
 // Action is a planned change kind.
 type Action string
@@ -48,18 +51,19 @@ type Change struct {
 	Computed resource.Attributes
 }
 
-// Plan is a deterministic, machine-usable set of resource changes.
-//
-// It is independent of terminal rendering. Destructive deletion is out of
-// scope for v0.1; Counts always reports zero destroys.
+// Plan is a deterministic, machine-usable set of resource changes plus any
+// provider-level finalization actions that must happen after resource
+// mutations succeed.
 type Plan struct {
-	Changes []Change
+	Changes       []Change
+	Finalizations []provider.FinalizationPlan
 }
 
-// HasChanges reports whether the plan contains any create or update.
+// HasChanges reports whether the plan contains any create, update, or
+// provider finalization action.
 func (p Plan) HasChanges() bool {
 	create, update, _ := p.Counts()
-	return create+update > 0
+	return create+update > 0 || len(p.Finalizations) > 0
 }
 
 // Counts returns how many resources would be created, updated, or destroyed.

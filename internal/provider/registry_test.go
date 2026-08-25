@@ -90,6 +90,22 @@ func TestRegistryUnknownProviderAndType(t *testing.T) {
 	}
 }
 
+func TestRegistryListStableOrder(t *testing.T) {
+	t.Parallel()
+
+	reg := provider.NewRegistry()
+	if err := reg.Register(fake.New()); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Register(namedProvider{name: "alpha", Provider: fake.New()}); err != nil {
+		t.Fatal(err)
+	}
+	got := reg.List()
+	if len(got) != 2 || got[0].Name() != "alpha" || got[1].Name() != "fake" {
+		t.Fatalf("List names = %q %q, want alpha then fake", got[0].Name(), got[1].Name())
+	}
+}
+
 func TestSupports(t *testing.T) {
 	t.Parallel()
 
