@@ -23,6 +23,7 @@ type finalizingProvider struct {
 	finalized    bool
 	planned      provider.FinalizationPlan
 	finalDetails []string
+	finalChanged bool
 }
 
 func (p *finalizingProvider) Create(ctx context.Context, res resource.Resource) (resource.RemoteResource, error) {
@@ -55,7 +56,7 @@ func (p *finalizingProvider) Finalize(_ context.Context, planned provider.Finali
 	return provider.FinalizationResult{
 		Address: planned.Address,
 		Details: details,
-		Changed: p.finalizeErr == nil,
+		Changed: p.finalizeErr == nil || p.finalChanged,
 	}, p.finalizeErr
 }
 
@@ -167,10 +168,11 @@ func TestRunFinalizationFailurePreservesDetailsAndDoesNotClaimSuccess(t *testing
 	t.Parallel()
 
 	p := &finalizingProvider{
-		Provider:     fake.New(),
-		alwaysPlan:   true,
-		finalizeErr:  errors.New("activation rejected"),
+		Provider:      fake.New(),
+		alwaysPlan:    true,
+		finalizeErr:   errors.New("activation rejected"),
 		finalDetails: []string{"prepared deployment"},
+		finalChanged: true,
 	}
 	reg := registerProvider(t, p)
 	st := newStateStore(t)
@@ -195,6 +197,31 @@ func TestRunFinalizationFailurePreservesDetailsAndDoesNotClaimSuccess(t *testing
 	}
 	if strings.Contains(out.String(), "Apply complete!") {
 		t.Fatalf("failed finalization claimed apply complete:\n%s", out.String())
+	}
+}
+
+func TestRunFinalizationDetailsWithoutMutationAreNotPartial(t *testing.T) {
+	t.Parallel()
+
+	p := &finalizingProvider{
+		Provider:      fake.New(),
+		alwaysPlan:    true,
+		finalizeErr:   errors.New("activation rejected"),
+		finalDetails: []string{"validated deployment"},
+	}
+	reg := registerProvider(t, p)
+	st := newStateStore(t)
+	var out bytes.Buffer
+
+	_, err := apply.Run(context.Background(), nil, nil, st, &out, reg)
+	if err == nil {
+		t.Fatal("Run succeeded, want finalization failure")
+	}
+	if apply.IsPartial(err) {
+		t.Fatalf("non-mutating finalization failure classified as partial: %v", err)
+	}
+	if !strings.Contains(out.String(), "fake.deployment.main: validated deployment") {
+		t.Fatalf("finalization detail missing:\n%s", out.String())
 	}
 }
 
