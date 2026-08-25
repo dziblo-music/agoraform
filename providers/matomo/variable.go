@@ -166,7 +166,11 @@ func (p *Provider) readVariable(ctx context.Context, res resource.Resource) (res
 	case 0:
 		return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: %w", res.Address, provider.ErrNotFound)
 	case 1:
-		return remoteVariable(res.Address, matches[0])
+		live, err := remoteVariable(res.Address, matches[0])
+		if err == nil {
+			p.rememberBinding(res.Address, live.Identity.ID, matches[0].Name)
+		}
+		return live, err
 	default:
 		return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: multiple remote variables named %q (ids %s); names must be unique", res.Address, name, joinVariableIDs(matches))
 	}
@@ -195,6 +199,7 @@ func (p *Provider) createVariable(ctx context.Context, res resource.Resource) (r
 	if err == nil {
 		return live, nil
 	}
+	p.rememberBinding(res.Address, id, variableName(res.Attributes))
 	return remoteVariable(res.Address, client.Variable{
 		IDVariable:         id,
 		IDContainerVersion: version,
@@ -255,7 +260,11 @@ func (p *Provider) readVariableByID(ctx context.Context, addr resource.Address, 
 			continue
 		}
 		if v.IDVariable == id {
-			return remoteVariable(addr, v)
+			live, err := remoteVariable(addr, v)
+			if err == nil {
+				p.rememberBinding(addr, live.Identity.ID, v.Name)
+			}
+			return live, err
 		}
 	}
 	return resource.RemoteResource{}, provider.ErrNotFound

@@ -103,6 +103,14 @@ Import a Tag Manager trigger by its numeric `idtrigger` in the configured
 container draft. That id is stored in local state as `remoteId`. Do not
 copy it into YAML. `type` remains immutable for a managed trigger.
 
+## Matomo tags
+
+Import a Tag Manager tag by its numeric `idtag` in the configured
+container draft. That id is stored in local state as `remoteId`. Do not
+copy it into YAML. `type` remains immutable for a managed tag. Generated
+YAML omits `trigger`; add a `$ref` to the fire-trigger resource before
+planning.
+
 ## Exit codes
 
 | Code | Meaning |

@@ -14,7 +14,8 @@ guides lives here.
 - [Matomo provider](../providers/matomo/README.md)
 
 The 0.1.0 product release manages `matomo.goal` only. Unreleased work on
-main also manages Tag Manager `matomo.variable` and `matomo.trigger`.
+main also manages Tag Manager `matomo.variable`, `matomo.trigger`, and
+`matomo.tag`.
 Changelog: [CHANGELOG.md](../CHANGELOG.md).
 
 ## Local development

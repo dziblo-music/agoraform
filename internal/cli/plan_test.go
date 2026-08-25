@@ -121,6 +121,30 @@ func TestPlanMatomoTriggerCreate(t *testing.T) {
 	}
 }
 
+func TestPlanMatomoTagCreate(t *testing.T) {
+	t.Parallel()
+
+	p, _ := matomoVariableTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", matomoTagManifest)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"plan", "-f", path}, reg)
+	if code != cli.ExitChanges {
+		t.Fatalf("exit code = %d, want %d; stderr=%q stdout=%q", code, cli.ExitChanges, stderr.String(), stdout.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "+ matomo.tag.trial_started") {
+		t.Fatalf("stdout missing tag create:\n%s", out)
+	}
+	if !strings.Contains(out, `trigger: "matomo.trigger.trial_started"`) {
+		t.Fatalf("stdout missing logical trigger reference:\n%s", out)
+	}
+}
+
 func TestPlanMatomoGoalNoChanges(t *testing.T) {
 	t.Parallel()
 

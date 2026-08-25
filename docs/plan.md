@@ -34,7 +34,8 @@ directory.
 `plan` loads and validates the manifest, including resource references and
 the dependency graph, reads local identity state from
 `agoraform.state.json` next to the manifest, then reads each desired
-resource through the registered provider. Missing references, self-references,
+resource through the registered provider in prerequisite-first order.
+Missing references, self-references,
 and cycles fail before any remote read. A remote miss
 (`provider.ErrNotFound`) is a create when the resource is unbound. A
 persisted identity that is missing remotely is a stale-state error, not a
@@ -47,13 +48,15 @@ address order. Repeated plans against unchanged desired and live state stay
 stable.
 
 The Matomo provider is registered with the CLI. `matomo.goal` resources
-are planned against the configured Matomo site. `matomo.variable` and
-`matomo.trigger` resources are planned against the configured Tag Manager
-container draft: a missing remote object is a create, a changed supported
-field is an update, and an equivalent remote object (including an omitted
-`name` that defaults to `key` or `event`, and computed fields such as
-`idvariable` or `idtrigger`) is unchanged. Unit tests that need a generic
-resource lifecycle use the in-memory `fake` provider.
+are planned against the configured Matomo site. `matomo.variable`,
+`matomo.trigger`, and `matomo.tag` resources are planned against the
+configured Tag Manager container draft: a missing remote object is a
+create, a changed supported field is an update, and an equivalent remote
+object (including an omitted `name` that defaults to `key`, `event`, or
+`eventAction`, and computed fields such as `idvariable`, `idtrigger`, or
+`idtag`) is unchanged. Tags keep trigger and variable `$ref`s as logical
+addresses in plan output. Unit tests that need a generic resource
+lifecycle use the in-memory `fake` provider.
 
 ## Change model
 

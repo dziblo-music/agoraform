@@ -73,6 +73,21 @@ resources:
       event: trialStarted
 `
 
+const matomoTagManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: matomo.trigger.trial_started
+    attributes:
+      type: customEvent
+      event: trialStarted
+  - address: matomo.tag.trial_started
+    attributes:
+      type: matomoAnalytics
+      trigger:
+        $ref: matomo.trigger.trial_started
+      eventCategory: signup
+      eventAction: trialStarted
+`
+
 const invalidManifest = `apiVersion: agoraform.io/v1alpha1
 resources:
   - address: not-an-address
@@ -387,6 +402,44 @@ func TestValidateMatomoTriggerWithProvider(t *testing.T) {
 	}
 }
 
+func TestValidateMatomoTagMissingCredentials(t *testing.T) {
+	t.Parallel()
+
+	path := writeManifest(t, "agoraform.yaml", matomoTagManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWith(streams, []string{"validate", "-f", path})
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	errOut := stderr.String()
+	if strings.Contains(errOut, "unknown resource type") {
+		t.Fatalf("stderr = %q, matomo.tag should be registered", errOut)
+	}
+	if !strings.Contains(errOut, "MATOMO_URL") && !strings.Contains(errOut, "required") {
+		t.Fatalf("stderr = %q, want missing credential error", errOut)
+	}
+}
+
+func TestValidateMatomoTagWithProvider(t *testing.T) {
+	t.Parallel()
+
+	p, _ := matomoVariableTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", matomoTagManifest)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitOK, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "2 resources") {
+		t.Fatalf("stdout = %q, want 2 resources", stdout.String())
+	}
+}
+
 func TestValidateMixedGoalAndVariableManifest(t *testing.T) {
 	t.Parallel()
 
@@ -437,6 +490,8 @@ func matomoVariableTestProvider(t *testing.T) (*matomo.Provider, *httptest.Serve
 		case strings.Contains(string(body), "TagManager.getContainerVariables"):
 			_, _ = io.WriteString(w, `[]`)
 		case strings.Contains(string(body), "TagManager.getContainerTriggers"):
+			_, _ = io.WriteString(w, `[]`)
+		case strings.Contains(string(body), "TagManager.getContainerTags"):
 			_, _ = io.WriteString(w, `[]`)
 		case strings.Contains(string(body), "TagManager.getContainer"):
 			_, _ = io.WriteString(w, `{"idcontainer":"6OMh6taM","idsite":3,"draft":{"idcontainerversion":9}}`)

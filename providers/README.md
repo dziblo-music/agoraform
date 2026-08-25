@@ -32,9 +32,9 @@ Matomo or other vendor API types.
 [`matomo/`](matomo/) is the first production provider. It registers as
 `matomo`, loads `MATOMO_URL`, `MATOMO_TOKEN_AUTH`, `MATOMO_SITE_ID`, and
 `MATOMO_CONTAINER_ID` from the environment, and implements `matomo.goal`
-and Tag Manager `matomo.variable` and `matomo.trigger`.
+and Tag Manager `matomo.variable`, `matomo.trigger`, and `matomo.tag`.
 
-Tag Manager tags and versions are not implemented yet. See
+Tag Manager versions are not implemented yet. See
 [matomo/README.md](matomo/README.md).
 
 ## Test provider

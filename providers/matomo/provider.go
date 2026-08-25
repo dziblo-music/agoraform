@@ -19,14 +19,17 @@ const (
 
 // Provider is the Agoraform Matomo provider.
 //
-// It registers matomo.goal, matomo.variable, and matomo.trigger and
-// shares a single HTTP client across analytics and Tag Manager resource
-// types.
+// It registers matomo.goal, matomo.variable, matomo.trigger, and
+// matomo.tag and shares a single HTTP client across analytics and Tag
+// Manager resource types.
 type Provider struct {
 	cfg    Config
 	once   sync.Once
 	client *client.Client
 	err    error
+
+	mu    sync.Mutex
+	known map[string]remoteBinding
 }
 
 var (
@@ -66,7 +69,7 @@ func (p *Provider) Name() string { return Name }
 
 // ResourceTypes implements provider.Provider.
 func (p *Provider) ResourceTypes() []string {
-	return []string{TypeGoal, TypeVariable, TypeTrigger}
+	return []string{TypeGoal, TypeVariable, TypeTrigger, TypeTag}
 }
 
 // Client returns the reusable Matomo HTTP client, creating it on first use.
@@ -110,6 +113,8 @@ func (p *Provider) Validate(_ context.Context, res resource.Resource) error {
 		return p.validateVariableSafe(res)
 	case TypeTrigger:
 		return p.validateTriggerSafe(res)
+	case TypeTag:
+		return p.validateTagSafe(res)
 	default:
 		return nil
 	}
@@ -124,6 +129,8 @@ func (p *Provider) Read(ctx context.Context, res resource.Resource) (resource.Re
 		return p.readVariableSafe(ctx, res)
 	case TypeTrigger:
 		return p.readTriggerSafe(ctx, res)
+	case TypeTag:
+		return p.readTagSafe(ctx, res)
 	default:
 		return resource.RemoteResource{}, notImplemented("read", res.Address)
 	}
@@ -138,6 +145,8 @@ func (p *Provider) Create(ctx context.Context, res resource.Resource) (resource.
 		return p.createVariableSafe(ctx, res)
 	case TypeTrigger:
 		return p.createTriggerSafe(ctx, res)
+	case TypeTag:
+		return p.createTagSafe(ctx, res)
 	default:
 		return resource.RemoteResource{}, notImplemented("create", res.Address)
 	}
@@ -152,6 +161,8 @@ func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual
 		return p.updateVariableSafe(ctx, desired, actual)
 	case TypeTrigger:
 		return p.updateTriggerSafe(ctx, desired, actual)
+	case TypeTag:
+		return p.updateTagSafe(ctx, desired, actual)
 	default:
 		return resource.RemoteResource{}, notImplemented("update", desired.Address)
 	}
@@ -166,6 +177,8 @@ func (p *Provider) Import(ctx context.Context, addr resource.Address, id string)
 		return p.importVariable(ctx, addr, id)
 	case TypeTrigger:
 		return p.importTrigger(ctx, addr, id)
+	case TypeTag:
+		return p.importTag(ctx, addr, id)
 	default:
 		return resource.RemoteResource{}, notImplemented("import", addr)
 	}
@@ -180,6 +193,8 @@ func (p *Provider) NormalizeComparable(desired resource.Resource, live *resource
 		return p.normalizeVariableComparableSafe(desired, live)
 	case TypeTrigger:
 		return p.normalizeTriggerComparableSafe(desired, live)
+	case TypeTag:
+		return p.normalizeTagComparableSafe(desired, live)
 	default:
 		want := desired.Attributes.Clone()
 		if live == nil {
