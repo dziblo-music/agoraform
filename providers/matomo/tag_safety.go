@@ -22,7 +22,10 @@ func (p *Provider) validateTagSafe(res resource.Resource) error {
 	if err := rejectManifestTagIdentity(res); err != nil {
 		return err
 	}
-	return p.validateTag(res)
+	if err := p.validateTag(res); err != nil {
+		return err
+	}
+	return optionalEventValue(res)
 }
 
 func (p *Provider) readTagSafe(ctx context.Context, res resource.Resource) (resource.RemoteResource, error) {
@@ -34,7 +37,11 @@ func (p *Provider) readTagSafe(ctx context.Context, res resource.Resource) (reso
 		return resource.RemoteResource{}, err
 	}
 	if !bound {
-		return p.readTag(ctx, res)
+		live, err := p.readTag(ctx, res)
+		if err != nil {
+			return resource.RemoteResource{}, err
+		}
+		return p.reconcileTagVariableRefs(ctx, res, live)
 	}
 
 	live, err := p.readTagByID(ctx, res.Address, id, res.Attributes)
@@ -47,7 +54,7 @@ func (p *Provider) readTagSafe(ctx context.Context, res resource.Resource) (reso
 	if err := ensureImmutableTagType(res, live); err != nil {
 		return resource.RemoteResource{}, err
 	}
-	return live, nil
+	return p.reconcileTagVariableRefs(ctx, res, live)
 }
 
 func (p *Provider) createTagSafe(ctx context.Context, res resource.Resource) (resource.RemoteResource, error) {
