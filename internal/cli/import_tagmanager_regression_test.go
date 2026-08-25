@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/dziblo-music/agoraform/internal/cli"
+	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/state"
 )
 
@@ -23,7 +24,10 @@ func TestImportMatomoTagRejectsWhitespaceAroundManagedVariableTemplate(t *testin
 		Action:        "trialStarted",
 	})
 
-	reg := testRegistry(t, p)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
 	manifestPath := filepath.Join(t.TempDir(), "agoraform.yaml")
 	importDependency(t, reg, manifestPath, "matomo.variable.user_id", "2")
 	importDependency(t, reg, manifestPath, "matomo.trigger.trial_started", "4")
@@ -57,7 +61,10 @@ func TestImportMatomoTagRejectsDuplicateVariableNames(t *testing.T) {
 		Action:        "trialStarted",
 	})
 
-	reg := testRegistry(t, p)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
 	manifestPath := filepath.Join(t.TempDir(), "agoraform.yaml")
 	importDependency(t, reg, manifestPath, "matomo.variable.user_id", "2")
 	importDependency(t, reg, manifestPath, "matomo.trigger.trial_started", "4")
@@ -79,10 +86,10 @@ func TestImportMatomoTagRejectsDuplicateVariableNames(t *testing.T) {
 	}
 }
 
-func importDependency(t *testing.T, reg interfaceRegistry, manifestPath, address, remoteID string) {
+func importDependency(t *testing.T, reg *provider.Registry, manifestPath, address, remoteID string) {
 	t.Helper()
 	streams, stdout, stderr := testStreams()
-	code := cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, address, remoteID}, reg.registry())
+	code := cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, address, remoteID}, reg)
 	if code != cli.ExitOK {
 		t.Fatalf("import %s exit = %d, want %d; stderr=%q stdout=%q", address, code, cli.ExitOK, stderr.String(), stdout.String())
 	}
