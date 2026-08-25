@@ -159,7 +159,9 @@ func AttachFinalizations(ctx context.Context, providers ProviderSet, p *plan.Pla
 
 // ExecuteFinalizations runs provider finalizations after all resource
 // mutations and required state writes have succeeded. The returned count is
-// the number of finalizers that reported a provider-side state change.
+// the number of planned finalization actions that completed successfully,
+// including conditional actions that rechecked converged state and became
+// no-ops.
 func ExecuteFinalizations(ctx context.Context, providers ProviderSet, plans []provider.FinalizationPlan, out io.Writer) (int, error) {
 	if len(plans) == 0 {
 		return 0, nil
@@ -174,15 +176,15 @@ func ExecuteFinalizations(ctx context.Context, providers ProviderSet, plans []pr
 		return 0, fmt.Errorf("apply: provider registry is required for finalization")
 	}
 
-	changed := 0
+	completed := 0
 	for _, planned := range plans {
 		registered, ok := providers.Lookup(planned.Address.Provider)
 		if !ok {
-			return changed, fmt.Errorf("apply %s: provider %q is not registered", planned.Address, planned.Address.Provider)
+			return completed, fmt.Errorf("apply %s: provider %q is not registered", planned.Address, planned.Address.Provider)
 		}
 		finalizer, ok := registered.(provider.Finalizer)
 		if !ok {
-			return changed, fmt.Errorf("apply %s: provider %q does not support finalization", planned.Address, registered.Name())
+			return completed, fmt.Errorf("apply %s: provider %q does not support finalization", planned.Address, registered.Name())
 		}
 
 		result, err := finalizer.Finalize(ctx, planned)
@@ -198,11 +200,9 @@ func ExecuteFinalizations(ctx context.Context, providers ProviderSet, plans []pr
 			if action == "" {
 				action = "finalize"
 			}
-			return changed, fmt.Errorf("apply %s: %s: %w", planned.Address, action, err)
+			return completed, fmt.Errorf("apply %s: %s: %w", planned.Address, action, err)
 		}
-		if result.Changed {
-			changed++
-		}
+		completed++
 	}
-	return changed, nil
+	return completed, nil
 }
