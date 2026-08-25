@@ -1,38 +1,29 @@
-# Apply execution (0.1.0)
+# Apply execution
 
-`agoraform apply` turns a validated execution plan into remote creates and
-updates. It never diffs desired and live state itself: the [plan
-engine](plan.md) is the source of truth for what to execute, and [local
-state](state.md) is the source of truth for which provider-native object a
-managed resource owns.
+`agoraform apply` builds the same reviewed convergence plan as `agoraform plan`
+and executes it in deterministic order.
 
 ```text
-manifest
-   │
-   ▼
-load local state
-   │
-   ▼
-validate (including dependency graph)
-   │
-   ▼
-read remote resources
-   │
-   ▼
-build plan
-   │
-   ▼
-order by dependency graph
-   │
-   ▼
-resolve refs, then create / update
-(prerequisites first, sequential)
-   │
-   ▼
+manifest + local state
+        │
+        ▼
+validate / configure providers
+        │
+        ▼
+build resource + provider-action plan
+        │
+        ▼
+apply resource creates/updates
+(prerequisites first)
+        │
+        ▼
 persist identities
-   │
-   ▼
-report result
+        │
+        ▼
+provider finalization actions
+        │
+        ▼
+Apply complete
 ```
 
 ## Command
@@ -43,74 +34,53 @@ agoraform apply -f path/to/manifest.yaml
 agoraform apply path/to/manifest.yaml
 ```
 
-If no path is given, Agoraform reads `agoraform.yaml` in the current
-directory.
+The default manifest is `agoraform.yaml`.
 
-`apply` loads and validates the manifest, including resource references and
-the dependency graph, loads local identity state from
-`agoraform.state.json` next to the manifest, then builds the same plan as
-`agoraform plan`. Missing references, self-references, and cycles fail
-before any mutation. Only after that plan is produced does it call provider
-`Create` or `Update`. For an update, apply keeps the planned action, binds
-the desired resource to the planned identity, reads that exact remote
-object, and passes the full live resource to `Update`. It does not
-reconstruct live state from the plan's comparable `Before` attributes.
-There is no interactive approval prompt in v0.1.
+## Resource execution
 
-Apply executes sequentially in deterministic dependency order: prerequisite
-resources run before dependents, and unrelated resources keep address order
-as the tie-breaker. Immediately before each create or update, apply replaces
-explicit `$ref` values with runtime bindings that carry the prerequisite's
-provider-native identity and computed outputs. For unchanged prerequisites,
-those bindings come from the live resource observed while planning rather
-than a second apply-time read. Providers translate the bindings into native
-API values. The bindings are not written into the manifest, plan output, or
-user-authored configuration. If a prerequisite has no identity after it has
-been applied (or skipped as unchanged), apply fails with an actionable
-diagnostic and does not mutate the dependent.
+Creates and updates run sequentially in dependency order. `$ref` values are
+resolved immediately before mutation to runtime bindings containing the
+provider-native identity and computed outputs of prerequisites.
 
-The Matomo provider is registered with the CLI. `matomo.goal`,
-`matomo.variable`, `matomo.trigger`, and `matomo.tag` resources can be
-created and updated. Unit tests that need a generic resource lifecycle use
-the in-memory `fake` provider.
+For updates, apply re-reads the exact identity-bound remote object immediately
+before mutation so providers receive the complete live record needed to
+preserve unmanaged fields.
 
-## Change model
+Successful creates/updates persist identity bindings to
+`agoraform.state.json`. Failed mutations do not create new bindings.
 
-v0.1 executes:
+## Provider finalization
 
-| Action | Meaning |
-| --- | --- |
-| create | provision a missing unbound resource |
-| update | reconcile configurable attributes on a bound resource |
+Provider-specific convergence is not represented by provider-specific CLI
+verbs. Instead, optional finalization actions that appeared in the plan execute
+only after **all** planned resource mutations succeed.
 
-Unchanged resources are skipped. Destructive deletion is out of scope.
-Unsupported action types are rejected before any mutation.
+For Matomo:
 
-Execution is sequential and follows deterministic dependency order.
-Prerequisites execute before dependents. Apply stops at the first provider
-or state-write failure, so a failed prerequisite never executes its
-dependents. Failure diagnostics include the resource address and attempted
-operation.
+```yaml
+providers:
+  matomo:
+    publish: true
+    environment: live
+```
 
-## State and identity
+can cause apply to create and publish a Tag Manager container version after
+variable/trigger/tag draft changes are complete.
 
-After a successful create, apply persists the provider-native identity
-returned by the provider. After a successful update, it retains or refreshes
-the existing binding. Failed mutations do not write a new identity.
+If any preceding Tag Manager resource mutation fails, no version is created and
+nothing is published.
 
-If a mutation succeeds but the identity cannot be written to local state,
-apply reports that clearly and does not print a successful apply summary.
+Immediately before mutation, the Matomo provider rechecks publication
+idempotency and publish permissions. This protects against duplicate versions
+and stale plans.
 
-A successful apply followed by `agoraform plan` against unchanged
-configuration, local state, and remote resources produces no changes. The
-next plan resolves the resource through the persisted identity rather than
-rediscovering it by a mutable field such as name.
-
-State never contains provider credentials.
+If version creation succeeds but publication fails, apply prints the created
+version detail before returning the publication error. It does not print a
+successful `Apply complete` summary.
 
 ## Output
 
-Creates and updates print progress, then a summary:
+Resource-only apply:
 
 ```text
 matomo.goal.trial_started: creating...
@@ -119,29 +89,48 @@ matomo.goal.trial_started: created
 Apply complete! 1 created, 0 updated.
 ```
 
-A zero-change apply performs no mutations and prints:
+With declarative Matomo publication:
+
+```text
+matomo.tag.trial_started: updating...
+matomo.tag.trial_started: updated
+matomo.container.main: version 12 created
+matomo.container.main: published to live
+
+Apply complete! 0 created, 1 updated.
+```
+
+A zero-action apply prints:
 
 ```text
 Apply complete! 0 created, 0 updated.
 ```
 
-The rendering is deterministic and independent of provider-specific types.
+## Failure behavior
+
+Apply stops at the first resource/state-write failure. Provider finalization is
+not attempted after a resource failure.
+
+A provider finalization failure is returned as an apply failure. Earlier
+successful resource mutations are not rolled back; rollback and transactions
+are out of scope.
 
 ## Exit codes
 
 | Code | Meaning |
 | --- | --- |
 | `0` | Apply succeeded |
-| `1` | Apply failed (invalid manifest, planning error, provider error, or state write failure) |
-| `3` | Invalid invocation (unknown flag or conflicting file arguments) |
-
-Unlike `plan`, a successful apply that made changes still exits `0`.
+| `1` | Apply failed |
+| `3` | Invalid invocation |
 
 ## Safety
 
-- Configuration and local state are validated before any mutation.
-- Invalid dependency graphs produce zero mutations.
-- Apply reuses the plan engine; it does not reimplement reconciliation.
-- Provider secrets are never printed in apply output or persisted in state.
-- v0.1 does not delete remote resources, run mutations in parallel, or
-  roll back earlier successes when a later resource fails.
+- Manifest/provider configuration is validated before mutation.
+- Dependency graph errors fail before mutation.
+- Publication permission/environment preflight happens before resource
+  mutations when publication is planned.
+- Provider secrets are not written to output or local state.
+- Destructive deletion, rollback, and parallel mutation are not implemented.
+
+See [plan.md](plan.md), [state.md](state.md), and
+[Matomo Tag Manager publication](matomo-publishing.md).

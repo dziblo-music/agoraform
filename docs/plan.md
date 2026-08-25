@@ -1,23 +1,25 @@
-# Plan engine (0.1.0)
+# Plan engine
 
-`agoraform plan` compares desired manifest resources with provider-reported
-live state and prints a deterministic execution plan. It never mutates
-remote resources.
+`agoraform plan` compares desired manifest state with provider-reported remote
+state and prints deterministic actions. It is non-mutating.
 
 ```text
 manifest
    │
-   ▼
-desired resources
-
-provider.Reader
-   │
-   ▼
-live resources
-
- desired ─────┐
-              ├── diff ──► plan
- live    ─────┘
+   ├─ provider desired state
+   └─ resources + dependencies
+              │
+              ▼
+        provider reads
+              │
+              ▼
+        resource diffs
+              │
+              ▼
+   provider finalization planning
+              │
+              ▼
+             plan
 ```
 
 ## Command
@@ -28,69 +30,50 @@ agoraform plan -f path/to/manifest.yaml
 agoraform plan path/to/manifest.yaml
 ```
 
-If no path is given, Agoraform reads `agoraform.yaml` in the current
-directory.
+The default manifest is `agoraform.yaml`.
 
-`plan` loads and validates the manifest, including resource references and
-the dependency graph, reads local identity state from
-`agoraform.state.json` next to the manifest, then reads each desired
-resource through the registered provider in prerequisite-first order.
-Missing references, self-references,
-and cycles fail before any remote read. A remote miss
-(`provider.ErrNotFound`) is a create when the resource is unbound. A
-persisted identity that is missing remotely is a stale-state error, not a
-create.
+Plan loads and validates the manifest, configures registered providers with
+non-secret provider desired state, validates connectivity, reads local identity
+state, and then reads desired resources in dependency order.
 
-Referenced resources participate in the same validation and planning as
-independent resources. Plan output uses logical resource addresses; it does
-not require provider-native IDs in configuration. Display order remains
-address order. Repeated plans against unchanged desired and live state stay
-stable.
+A missing unbound remote resource becomes a create. A bound identity missing
+remotely is a stale-state error rather than an implicit replacement. Provider
+normalizers may remove computed/default noise before diffing.
 
-The Matomo provider is registered with the CLI. `matomo.goal` resources
-are planned against the configured Matomo site. `matomo.variable`,
-`matomo.trigger`, and `matomo.tag` resources are planned against the
-configured Tag Manager container draft: a missing remote object is a
-create, a changed supported field is an update, and an equivalent remote
-object (including an omitted `name` that defaults to `key`, `event`, or
-`eventAction`, and computed fields such as `idvariable`, `idtrigger`, or
-`idtag`) is unchanged. Tags keep trigger and variable `$ref`s as logical
-addresses in plan output. Unit tests that need a generic resource
-lifecycle use the in-memory `fake` provider.
+## Provider actions
 
-## Change model
+Some desired states require provider-level convergence after resource CRUD.
+These actions are still part of the reviewed plan and do not become new
+provider-specific CLI commands.
 
-v0.1 supports:
+For example, Matomo Tag Manager publication can appear as:
+
+```text
+> matomo.container.main: publish -> live
+```
+
+The provider decides whether that finalization is required using only
+non-mutating reads. If managed Tag Manager draft resources already have planned
+changes and `providers.matomo.publish` is enabled, the publication consequence
+is shown in the same plan before apply.
+
+A plan containing only a provider action still exits with code `2` because
+`apply` has work to do.
+
+## Resource actions
 
 | Action | Meaning |
 | --- | --- |
 | create | desired resource is absent remotely |
 | update | configurable attributes differ |
-| unchanged | configurable attributes match |
+| unchanged | desired and comparable remote state match |
 
-Destructive deletion is out of scope. Resources that exist remotely but are
-not in the manifest are ignored.
-
-The machine-usable plan (`internal/plan.Plan`) is independent of terminal
-output. Rendering is a separate `Format` step. Live computed outputs are
-retained for apply-time reference resolution and are not included in
-`Before`, `After`, diffs, or printed plan text. `agoraform apply` consumes
-the same plan representation and executes only its create and update
-actions. See [apply.md](apply.md).
-
-## Normalization
-
-The generic diff compares configurable attributes only. Computed/read-only
-fields on `RemoteResource.Computed` never produce changes.
-
-Omitted and nil attribute values are treated as absent. Providers may
-implement `provider.Normalizer` to fill or drop defaults so semantically
-equivalent values do not diff.
+Destructive deletion is not implemented yet. Unmanaged remote objects are
+ignored.
 
 ## Output
 
-Creates and updates are listed in address order. Attribute paths are sorted.
-Unchanged resources are omitted from the action list.
+Example resource changes:
 
 ```text
 Agoraform will perform the following actions:
@@ -101,15 +84,25 @@ Agoraform will perform the following actions:
     matchAttribute: "event_action"
     pattern: "trialStarted"
 
-~ matomo.goal.signup
-
-    pattern:
-      "signUp" -> "signup"
-
-Plan: 1 to create, 1 to update, 0 to destroy.
+Plan: 1 to create, 0 to update, 0 to destroy.
 ```
 
-A zero-change plan prints:
+Example with Matomo publication:
+
+```text
+Agoraform will perform the following actions:
+
+~ matomo.tag.trial_started
+
+    eventAction:
+      "trialStart" -> "trialStarted"
+
+> matomo.container.main: publish -> live
+
+Plan: 0 to create, 1 to update, 0 to destroy, 1 provider action.
+```
+
+Zero change:
 
 ```text
 No changes. Desired configuration matches live resources.
@@ -117,28 +110,22 @@ No changes. Desired configuration matches live resources.
 Plan: 0 to create, 0 to update, 0 to destroy.
 ```
 
-Re-running `plan` against unchanged desired and live state produces the same
-text.
-
 ## Exit codes
 
 | Code | Meaning |
 | --- | --- |
-| `0` | Plan succeeded and no changes are required |
-| `1` | Planning failed (invalid manifest, unknown provider, read error) |
-| `2` | Plan succeeded and changes are present |
-| `3` | Invalid invocation (unknown flag or conflicting file arguments) |
-
-Code `2` is a successful plan, not a command failure. CI/GitOps jobs that
-want to fail when infrastructure would change can treat `2` as actionable.
+| `0` | Plan succeeded and no actions are required |
+| `1` | Planning failed |
+| `2` | Plan succeeded and resource/provider actions are present |
+| `3` | Invalid invocation |
 
 ## Safety
 
-`plan` accepts `provider.Reader` only: `Name`, `ResourceTypes`, `Validate`,
-and `Read`. It cannot call `Create`, `Update`, or `Import`.
+Plan never calls provider mutation methods. Resource reconciliation uses the
+read-only `provider.Reader` contract. Optional provider finalization planning
+is also required to be non-mutating.
 
-## Local state
+For Matomo publication, permission/environment checks and draft-versus-published
+comparison happen during planning without creating a version.
 
-`plan` reads [local state](state.md) so managed resources keep a stable
-provider-native identity. The default file is `agoraform.state.json` beside
-the manifest. `plan` never writes that file.
+See [Matomo Tag Manager publication](matomo-publishing.md).

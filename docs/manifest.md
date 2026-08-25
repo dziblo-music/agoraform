@@ -1,12 +1,14 @@
 # Manifest format (`v1alpha1`)
 
-Agoraform configuration is a versioned YAML document that lists desired
-marketing-infrastructure resources by logical address.
-
-## Document shape
+Agoraform configuration is a versioned YAML document containing declarative
+provider configuration and desired resources.
 
 ```yaml
 apiVersion: agoraform.io/v1alpha1
+providers:
+  matomo:
+    publish: true
+    environment: live
 resources:
   - address: matomo.goal.trial_started
     attributes:
@@ -15,20 +17,36 @@ resources:
       pattern: trialStarted
 ```
 
-The `v1alpha1` schema is intentionally small. It describes desired resources
-only. Provider credentials, modules, and expressions are out of scope.
+## Top-level fields
 
 | Field | Required | Description |
 | --- | --- | --- |
 | `apiVersion` | yes | Must be `agoraform.io/v1alpha1`. |
-| `resources` | no | List of desired resources. Omitted or empty is valid. |
-| `resources[].address` | yes | Logical address of the form `provider.type.name`. |
-| `resources[].attributes` | no | Configurable attributes for the resource. Provider-native identities do not belong here. |
+| `providers` | no | Non-secret provider-specific desired state. |
+| `resources` | no | Desired managed resources. Omitted/empty is valid. |
 
-Do not put API tokens, passwords, or other secrets in a manifest. Provider
-authentication belongs in environment or runtime configuration, not in Git.
+Provider credentials, tokens, passwords, and other secrets must never be put
+in the manifest. They belong in runtime configuration such as environment
+variables.
 
-Existing v0.1.0 manifests that do not use resource references remain valid.
+Provider configuration is intentionally separate from credentials. For
+example, these are desired state and belong in Git:
+
+```yaml
+providers:
+  matomo:
+    publish: true
+    environment: live
+```
+
+These do not:
+
+```text
+MATOMO_TOKEN_AUTH
+MATOMO_URL
+```
+
+See [Matomo Tag Manager publication](matomo-publishing.md).
 
 ## Resource addresses
 
@@ -38,206 +56,18 @@ A resource address is three lowercase identifiers separated by dots:
 provider.type.name
 ```
 
-Examples:
+Example:
 
 ```text
 matomo.goal.trial_started
 ```
 
-`fake.widget` exists only in unit tests. It is not a user-facing provider.
-
-Each segment must start with a letter (`a-z`) and may then contain letters,
-digits, or underscores. Addresses are compared exactly; duplicates are
-rejected.
-
-Addresses are used in validation errors, plans, imports, and any later
-identity mapping. Parsing an address and rendering it with `String()` must
-round-trip.
+Each segment starts with a letter and may then contain lowercase letters,
+digits, or underscores. Duplicate addresses are rejected.
 
 ## Resource references
 
-References are explicit attribute values using a single-key `$ref` mapping.
-The `$ref` value is the full logical `provider.type.name` address of another
-desired resource, never a provider-native id.
-
-```yaml
-apiVersion: agoraform.io/v1alpha1
-resources:
-  - address: matomo.trigger.trial_started
-    attributes:
-      type: customEvent
-      event: trialStarted
-
-  - address: matomo.tag.trial_started
-    attributes:
-      type: matomoAnalytics
-      trigger:
-        $ref: matomo.trigger.trial_started
-```
-
-A reference object must contain exactly one key, `$ref`, whose value must be a
-valid logical resource address. References can appear in nested maps and lists.
-There is no expression language, interpolation, or attribute path selection.
-
-Plain strings always remain plain provider-owned values, even when they happen
-to look like a logical resource address. For example, this is a literal string,
-not a dependency:
-
-```yaml
-attributes:
-  pattern: checkout.step.complete
-```
-
-Agoraform walks explicit references and builds a directed dependency graph. A
-resource that references another depends on it. Equivalent graphs have a stable
-prerequisite-first order; unrelated resources keep address order as the
-tie-breaker.
-
-`validate`, `plan`, and `apply` reject:
-
-- a reference to a resource that is not in the manifest
-- a resource that references itself
-- a dependency cycle
-
-Diagnostics include the referring resource, the attribute path, and the
-missing or cyclic addresses. Graph checks run during manifest load, before
-provider reads or mutations.
-
-Plans keep logical resource addresses. Generated import YAML serializes a
-`resource.Ref` back into the same explicit `$ref` form. Apply resolves
-provider-native identities and computed outputs at execution time and
-passes them to providers as runtime bindings. Those identities belong in
-[local state](state.md), not in the manifest.
-
-`matomo.variable`, `matomo.trigger`, and `matomo.tag` are managed Tag Manager
-resource types.
-
-## Attributes
-
-`attributes` is a YAML mapping of configurable provider fields. Except for the
-explicit `$ref` form described above, the core treats attribute values as opaque
-and providers own their schemas. Provider-native identities are stored in
-[local state](state.md), not in the manifest.
-
-Computed (read-only) fields belong to the live/remote resource a provider
-returns and must not be copied into configuration as mutable attributes.
-
-## Matomo Goal (`matomo.goal`)
-
-v0.1 manages a Matomo analytics goal. On initial discovery, Agoraform may
-find a goal by `name`. Once the resource is managed, persist Matomo's
-`idGoal` in [local state](state.md). Do not copy it into attributes.
-
-```yaml
-resources:
-  - address: matomo.goal.trial_started
-    attributes:
-      name: Trial Started
-      matchAttribute: event_action
-      pattern: trialStarted
-```
-
-| Attribute | Required | Description |
-| --- | --- | --- |
-| `name` | yes | Goal name. Immutable once local state binds the logical resource to a remote goal. |
-| `matchAttribute` | yes | How the goal matches. One of `url`, `title`, `file`, `external_website`, `manually`, `visit_duration`, `visit_total_actions`, `visit_total_pageviews`, `event_action`, `event_category`, `event_name`. |
-| `pattern` | unless `manually` | Value to match. Numeric match attributes require a number. |
-| `patternType` | no | `contains` (default), `exact`, or `regex`. Numeric match attributes default to `greater_than`. |
-
-`pattern` and `patternType` must be omitted when `matchAttribute` is
-`manually`. Remote response fields such as lowercase `idgoal`, `idsite`,
-`revenue`, `description`, `case_sensitive`, and `allow_multiple` remain
-computed/unmanaged in v0.1 and cannot be configured as mutable Goal fields.
-
-Because Matomo's `Goals.updateGoal` endpoint writes a complete goal record,
-Agoraform re-reads the goal immediately before an update and carries forward
-unmanaged values such as description, revenue, case sensitivity, multiple-
-conversion behavior, and event-value-as-revenue. A managed-field update must
-not reset those settings.
-
-For `patternType: exact`, Agoraform mirrors Matomo's validation requirement:
-`url`, `file`, and `external_website` patterns must start with `http://` or
-`https://`; event attributes and `title` are exempt.
-
-Omitted `patternType` is treated as the Matomo default, so an equivalent
-remote goal produces a zero-change plan.
-
-## Matomo Variable (`matomo.variable`)
-
-v0.2 manages a Matomo Tag Manager Data Layer variable in the configured
-container draft. On initial discovery, Agoraform may find a variable by
-`name`. Once the resource is managed, persist Matomo's `idvariable` in
-[local state](state.md). Do not copy it into attributes.
-
-```yaml
-resources:
-  - address: matomo.variable.user_id
-    attributes:
-      type: dataLayer
-      key: userId
-```
-
-| Attribute | Required | Description |
-| --- | --- | --- |
-| `type` | yes | Variable template. v0.2 supports `dataLayer` only. |
-| `key` | yes for `dataLayer` | Data Layer property name (`userId` in `_mtm.push({ userId: "..." })`). No leading or trailing whitespace. At most 300 characters. If `name` is omitted, `key` is also the Matomo variable name and must be at most 255 characters. |
-| `name` | no | Tag Manager display name. Defaults to `key`. No leading or trailing whitespace. At most 255 characters. Internal spaces such as `User ID` are allowed. |
-
-`type` is immutable after create. Remote response fields such as
-`idvariable`, `idcontainerversion`, `status`, `description`,
-`default_value`, and `lookup_table` remain computed/unmanaged and cannot
-be configured as mutable Variable fields.
-
-Because Matomo's `TagManager.updateContainerVariable` endpoint writes a
-complete variable record, Agoraform re-reads the variable immediately
-before an update and carries forward unmanaged values such as description,
-default value, and lookup table.
-
-A missing unbound remote variable plans as a create. A changed `key` or
-`name` plans as an update. Existing v0.1.0 goal-only manifests remain
-valid and do not require `MATOMO_CONTAINER_ID`.
-
-## Matomo Trigger (`matomo.trigger`)
-
-v0.2 manages a Matomo Tag Manager Custom Event trigger in the configured
-container draft. On initial discovery, Agoraform may find a trigger by
-`name`. Once the resource is managed, persist Matomo's `idtrigger` in
-[local state](state.md). Do not copy it into attributes.
-
-```yaml
-resources:
-  - address: matomo.trigger.trial_started
-    attributes:
-      type: customEvent
-      event: trialStarted
-```
-
-| Attribute | Required | Description |
-| --- | --- | --- |
-| `type` | yes | Trigger template. v0.2 supports `customEvent` only. |
-| `event` | yes for `customEvent` | Data Layer event name (`trialStarted` in `_mtm.push({ event: "trialStarted" })`). No leading or trailing whitespace. At most 300 characters. If `name` is omitted, `event` is also the Matomo trigger name and must be at most 255 characters. |
-| `name` | no | Tag Manager display name. Defaults to `event`. No leading or trailing whitespace. At most 255 characters. Internal spaces such as `Trial Started` are allowed. |
-
-`type` is immutable after create. Remote response fields such as
-`idtrigger`, `idcontainerversion`, `status`, `description`, and
-`conditions` remain computed/unmanaged and cannot be configured as
-mutable Trigger fields.
-
-Because Matomo's `TagManager.updateContainerTrigger` endpoint writes a
-complete trigger record, Agoraform re-reads the trigger immediately
-before an update and carries forward unmanaged `description` and
-`conditions`, preventing Matomo's empty defaults from erasing those values.
-
-A missing unbound remote trigger plans as a create. A changed `event` or
-`name` plans as an update. Existing v0.1.0 goal-only manifests remain
-valid and do not require `MATOMO_CONTAINER_ID`.
-
-## Matomo Tag (`matomo.tag`)
-
-v0.2 manages a Matomo Tag Manager Matomo Analytics event tag in the
-configured container draft. On initial discovery, Agoraform may find a tag
-by `name`. Once the resource is managed, persist Matomo's `idtag` in
-[local state](state.md). Do not copy it into attributes.
+Provider-neutral dependencies use a single-key `$ref` object:
 
 ```yaml
 resources:
@@ -255,30 +85,101 @@ resources:
       eventAction: trialStarted
 ```
 
+The `$ref` value is always a logical Agoraform address, never a provider-native
+ID. Ordinary strings remain provider-owned values even if they happen to look
+like an address.
+
+Agoraform validates references and builds a directed dependency graph. Missing
+references, self-references, and cycles fail before remote mutations.
+
+At apply time, logical references are resolved to provider-native identities
+and computed outputs in dependency order. Those provider-native values are not
+written back into the manifest.
+
+## Resource attributes
+
+`resources[].attributes` is provider-owned configuration. The core normalizes
+YAML types and understands `$ref`; providers validate the actual schema.
+Computed/read-only provider fields do not belong in configuration and must not
+produce changes merely because provider-native IDs differ.
+
+## Matomo resources
+
+### `matomo.goal`
+
+v0.1.0 manages Matomo analytics goals. Common attributes:
+
 | Attribute | Required | Description |
 | --- | --- | --- |
-| `type` | yes | Tag template. v0.2 supports `matomoAnalytics` only (event tracking). |
-| `trigger` | yes | `$ref` to a `matomo.trigger` resource. Never a Matomo-native trigger id. |
-| `eventCategory` | yes | Event category string, or `$ref` to a `matomo.variable`. No leading or trailing whitespace. At most 500 characters when a string. |
-| `eventAction` | yes | Event action string, or `$ref` to a `matomo.variable`. If `name` is omitted and this is a string, it is also the Matomo tag name and must be at most 255 characters. |
-| `eventName` | no | Event name string, or `$ref` to a `matomo.variable`. |
-| `eventValue` | no | Numeric event value (number or numeric string), or `$ref` to a `matomo.variable`. Non-numeric literal strings are rejected before mutation. |
-| `name` | no | Tag Manager display name. Defaults to `eventAction` when that attribute is a string. No leading or trailing whitespace. At most 255 characters. |
+| `name` | yes | Goal name; immutable once local state binds the resource. |
+| `matchAttribute` | yes | Goal matching mode such as `event_action`, `url`, or `manually`. |
+| `pattern` | unless `manually` | Value to match. |
+| `patternType` | no | `contains` (default), `exact`, or `regex`; numeric modes use provider defaults. |
 
-`type` is immutable after create. Remote response fields such as `idtag`,
-`idcontainerversion`, `status`, `description`, `fireLimit`,
-`blockTriggerIds`, and `matomoConfig` remain computed/unmanaged.
+Provider-native goal IDs live in local state, not attributes.
 
-Because Matomo's `TagManager.updateContainerTag` endpoint writes a complete
-tag record, Agoraform re-reads the tag immediately before an update and
-carries forward unmanaged values. Create selects the container's Matomo
-Configuration variable for `matomoConfig`. Apply resolves the referenced
-trigger (and any variable `$ref`s) to provider-native identities at
-runtime.
+### `matomo.variable`
 
-A missing unbound remote tag plans as a create. A changed configurable
-field plans as an update. Existing v0.1.0 goal-only manifests remain valid
-and do not require `MATOMO_CONTAINER_ID`.
+Unreleased v0.2.0 supports Tag Manager Data Layer variables:
+
+```yaml
+- address: matomo.variable.user_id
+  attributes:
+    type: dataLayer
+    key: userId
+    name: User ID
+```
+
+`type` and `key` are required; `name` is optional and defaults to `key`.
+
+### `matomo.trigger`
+
+Unreleased v0.2.0 supports Custom Event triggers:
+
+```yaml
+- address: matomo.trigger.trial_started
+  attributes:
+    type: customEvent
+    event: trialStarted
+```
+
+`type` and `event` are required; `name` is optional and defaults to `event`.
+
+### `matomo.tag`
+
+Unreleased v0.2.0 supports Matomo Analytics event tags:
+
+```yaml
+- address: matomo.tag.trial_started
+  attributes:
+    type: matomoAnalytics
+    trigger:
+      $ref: matomo.trigger.trial_started
+    eventCategory: signup
+    eventAction: trialStarted
+```
+
+Supported event fields may be literals or, where documented, references to
+managed variables. See the [Matomo provider reference](../providers/matomo/README.md)
+for the complete resource-specific schema and preservation behavior.
+
+## Matomo provider desired state
+
+Unreleased v0.2.0 recognizes:
+
+```yaml
+providers:
+  matomo:
+    publish: true
+    environment: live
+```
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `publish` | no | Boolean; default `false`. When true, converge the configured Tag Manager container into the target environment through normal `plan`/`apply`. |
+| `environment` | no | Tag Manager environment; default `live`. |
+
+Unknown provider configuration fields are rejected.
 
 ## Validation
 
@@ -288,30 +189,19 @@ agoraform validate -f path/to/manifest.yaml
 agoraform validate path/to/manifest.yaml
 ```
 
-If no path is given, Agoraform reads `agoraform.yaml` in the current
-directory.
+Validation covers:
 
-`validate` reports actionable errors for:
+- YAML and `apiVersion`;
+- provider names and provider-specific configuration;
+- resource address syntax and duplicates;
+- `$ref` validity and dependency cycles;
+- registered provider/resource support;
+- provider connectivity;
+- provider-specific resource fields.
 
-- malformed YAML
-- unsupported or missing `apiVersion`
-- missing resource addresses
-- invalid or duplicate addresses
-- malformed or missing resource references, self-references, and dependency cycles
-- unknown providers or resource types, when a provider is registered
-- provider-specific required-field failures, when a provider is registered
+Matomo runtime connection settings come from `MATOMO_URL`,
+`MATOMO_TOKEN_AUTH`, and `MATOMO_SITE_ID`; Tag Manager resource/publication
+work also requires `MATOMO_CONTAINER_ID`.
 
-The CLI registers the Matomo provider. `matomo.goal`, `matomo.variable`,
-`matomo.trigger`, and `matomo.tag` are supported resource types. `validate` and `plan`
-check provider connection settings, then resource-specific required
-fields. Provider/type checks for other providers (including the test-only
-`fake` provider) run when those providers are registered.
-
-Matomo credentials come from `MATOMO_URL`, `MATOMO_TOKEN_AUTH`, and
-`MATOMO_SITE_ID`. Tag Manager variables, triggers, and tags also require
-`MATOMO_CONTAINER_ID`. See [the Matomo provider README](../providers/matomo/README.md).
-
-`agoraform plan` uses the same manifest. See [plan.md](plan.md) for
-reconciliation, output, and exit codes. See [import.md](import.md) to bring
-an existing remote resource under management. See [state.md](state.md) for
-the local identity file.
+See [plan.md](plan.md), [apply.md](apply.md), [import.md](import.md), and
+[state.md](state.md).
