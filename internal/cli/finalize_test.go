@@ -104,6 +104,32 @@ func TestPlanSurfacesProviderFinalization(t *testing.T) {
 	}
 }
 
+func TestApplyUsesCanonicalFinalizationLifecycle(t *testing.T) {
+	t.Parallel()
+
+	path := writeFinalizationManifest(t)
+	p := &finalizingFake{Provider: fake.New()}
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := ExecuteWithRegistry(IOStreams{Out: &stdout, ErrOut: &stderr}, []string{"apply", "-f", path}, reg)
+	if code != ExitOK {
+		t.Fatalf("exit code = %d, want %d; stdout=%q stderr=%q", code, ExitOK, stdout.String(), stderr.String())
+	}
+	if !p.finalized {
+		t.Fatal("apply did not execute provider finalization")
+	}
+	if !strings.Contains(stdout.String(), "fake.deployment.main: activated test") {
+		t.Fatalf("apply output missing finalization detail:\n%s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "Apply complete! 1 created, 0 updated, 1 provider action completed.") {
+		t.Fatalf("apply summary missing provider action:\n%s", stdout.String())
+	}
+}
+
 func TestApplyResourceFailurePreventsFinalization(t *testing.T) {
 	t.Parallel()
 
