@@ -1,13 +1,16 @@
-// Package apply executes a plan through provider mutation methods.
+// Package apply owns Agoraform's provider-neutral apply lifecycle.
 //
-// Apply never diffs desired and live state itself. It consumes the
-// machine-usable Plan from package plan and dispatches only the create
-// and update actions that plan produced, in deterministic dependency
-// order. Plan and apply both validate the resource dependency graph
-// before any mutation. After each successful mutation, apply records
-// provider-native identities and computed outputs so later dependents
-// receive resource.Resolved bindings in place of configuration Refs.
-// Local state from package state is the source of truth for
-// provider-native identities after a successful mutation. Apply never
-// deletes remote resources.
+// Run is the canonical high-level entry point: it builds the reconciliation
+// plan, attaches provider finalization actions, executes resource creates and
+// updates in deterministic dependency order, persists provider-native
+// identities, and finally executes planned provider finalizations. A resource
+// or required state-write failure prevents finalization.
+//
+// Execute is the lower-level resource-CRUD primitive. It consumes an existing
+// machine-usable plan and dispatches create/update actions only; callers that
+// need complete apply semantics should use Run.
+//
+// Local state from package state remains the source of truth for
+// provider-native identities after successful mutations. Apply never deletes
+// remote resources.
 package apply
