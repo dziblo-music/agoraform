@@ -1,9 +1,12 @@
 # Examples
 
-Example manifests live here. They are structurally valid 0.1.0 documents and
-contain no credentials or personal data.
+Example manifests live here. They are validated automatically by the Go test
+suite and contain no credentials or private deployment values.
 
-- [agoraform.yaml](agoraform.yaml) — minimal `matomo.goal` manifest.
+- [agoraform.yaml](agoraform.yaml) — minimal v0.1.0 `matomo.goal` manifest.
+- [matomo-conversion](matomo-conversion/README.md) — complete v0.2.0 Matomo Tag
+  Manager conversion workflow with a variable, trigger, tag, and declarative
+  publication.
 
 Managed identities belong in `agoraform.state.json` beside the manifest,
 not in resource attributes. See [docs/state.md](../docs/state.md).
