@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/dziblo-music/agoraform/internal/apply"
 	"github.com/dziblo-music/agoraform/internal/manifest"
 	"github.com/dziblo-music/agoraform/internal/plan"
 	"github.com/dziblo-music/agoraform/internal/provider"
@@ -70,7 +71,7 @@ The default manifest path is agoraform.yaml.`,
 			if err != nil {
 				return err
 			}
-			if err := attachFinalizations(cmd.Context(), reg, result); err != nil {
+			if err := apply.AttachFinalizations(cmd.Context(), reg, result); err != nil {
 				return err
 			}
 

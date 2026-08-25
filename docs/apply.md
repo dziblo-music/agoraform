@@ -3,6 +3,11 @@
 `agoraform apply` builds the same reviewed convergence plan as `agoraform plan`
 and executes it in deterministic order.
 
+The high-level apply lifecycle is owned by the core apply package. The CLI is a
+thin adapter around that lifecycle, so resource mutations and provider
+finalizations follow the same ordering and failure rules for every canonical
+apply entry point.
+
 ```text
 manifest + local state
         │
@@ -49,11 +54,17 @@ preserve unmanaged fields.
 Successful creates/updates persist identity bindings to
 `agoraform.state.json`. Failed mutations do not create new bindings.
 
+The lower-level core `Execute` primitive performs resource CRUD only. The
+canonical high-level `Run` path builds the plan, attaches provider
+finalizations, calls `Execute`, and then executes finalizations after successful
+resource convergence.
+
 ## Provider finalization
 
 Provider-specific convergence is not represented by provider-specific CLI
 verbs. Instead, optional finalization actions that appeared in the plan execute
-only after **all** planned resource mutations succeed.
+only after **all** planned resource mutations and required state writes
+succeed.
 
 For Matomo:
 
@@ -67,12 +78,18 @@ providers:
 can cause apply to create and publish a Tag Manager container version after
 variable/trigger/tag draft changes are complete.
 
-If any preceding Tag Manager resource mutation fails, no version is created and
-nothing is published.
+A provider-only plan is also valid. For example, if the Matomo draft already
+differs from the published environment but no managed Tag Manager resource
+needs CRUD, apply can still execute the planned publication action.
+
+If any preceding Tag Manager resource mutation or required state write fails,
+no finalization is attempted.
 
 Immediately before mutation, the Matomo provider rechecks publication
 idempotency and publish permissions. This protects against duplicate versions
-and stale plans.
+and stale plans. A conditional publication can therefore complete as a no-op;
+when that happens the provider reports `no publication required` rather than
+creating another version.
 
 If version creation succeeds but publication fails, apply prints the created
 version detail before returning the publication error. It does not print a
@@ -97,8 +114,30 @@ matomo.tag.trial_started: updated
 matomo.container.main: version 12 created
 matomo.container.main: published to live
 
-Apply complete! 0 created, 1 updated.
+Apply complete! 0 created, 1 updated, 1 provider action completed.
 ```
+
+A publication-only apply can produce:
+
+```text
+matomo.container.main: version 13 created
+matomo.container.main: published to live
+
+Apply complete! 0 created, 0 updated, 1 provider action completed.
+```
+
+A conditional finalization that becomes unnecessary after resource convergence
+still reports that decision explicitly:
+
+```text
+matomo.container.main: no publication required
+
+Apply complete! 0 created, 1 updated, 1 provider action completed.
+```
+
+Here, "provider action completed" means the reviewed finalization was evaluated
+successfully; it does not necessarily mean that the provider performed an
+additional mutation.
 
 A zero-action apply prints:
 
@@ -109,7 +148,7 @@ Apply complete! 0 created, 0 updated.
 ## Failure behavior
 
 Apply stops at the first resource/state-write failure. Provider finalization is
-not attempted after a resource failure.
+not attempted after a resource or required state-persistence failure.
 
 A provider finalization failure is returned as an apply failure. Earlier
 successful resource mutations are not rolled back; rollback and transactions
@@ -127,6 +166,7 @@ are out of scope.
 
 - Manifest/provider configuration is validated before mutation.
 - Dependency graph errors fail before mutation.
+- Provider finalization planning happens before resource mutations.
 - Publication permission/environment preflight happens before resource
   mutations when publication is planned.
 - Provider secrets are not written to output or local state.
