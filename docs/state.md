@@ -93,7 +93,8 @@ the returned identity in state.
 - after an update, keep or refresh the same identity
 - do not write state for a failed mutation
 - if a mutation succeeds but the identity cannot be written, apply
-  reports the write failure and does not claim full success
+  reports a partial-convergence failure with recovery guidance and does
+  not claim full success
 
 `agoraform import ADDRESS REMOTE-ID` uses the same store:
 
@@ -105,6 +106,25 @@ the returned identity in state.
 A successful apply or import followed by plan resolves the same remote
 object from state rather than rediscovering it by a mutable field such as
 name. See [import.md](import.md).
+
+## Recovery
+
+Remote mutations and local state writes are not a distributed transaction.
+
+If a create succeeds and the state file cannot be written, the remote object
+exists without a local binding. Fix the state-file problem, then re-bind with
+`agoraform import ADDRESS REMOTE-ID`. Do not assume that a later unchanged
+plan repaired the missing identity.
+
+If that write failed because the identity is already owned by another logical
+address, resolve the conflict instead of importing the same identity twice.
+
+If an update succeeds and the state file cannot be written, the existing
+identity binding is normally still valid. Fix the file and rerun plan/apply;
+import is not required.
+
+If provider finalization fails after resource changes were persisted, those
+bindings remain. Retry plan/apply after fixing the provider error.
 
 ## Matomo goals
 
@@ -139,3 +159,8 @@ Agoraform reports actionable errors for:
 - a provider returning an identity different from the persisted binding
 - a persisted identity whose remote object no longer exists
 - a state file that cannot be written atomically
+- a create that succeeded remotely but could not persist its identity
+  (re-bind with `agoraform import` after fixing the state file, unless the
+  identity is already owned by another address)
+- an update that succeeded remotely but could not refresh local state
+  (existing identity remains valid; fix the file and rerun plan/apply)

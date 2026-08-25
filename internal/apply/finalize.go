@@ -191,10 +191,10 @@ func ExecuteFinalizations(ctx context.Context, providers ProviderSet, plans []pr
 		return 0, fmt.Errorf("apply: provider registry is required for finalization")
 	}
 	catalog := newProviderCatalog(nil, providers)
-	return executeCatalogFinalizations(ctx, catalog, plans, out)
+	return executeCatalogFinalizations(ctx, catalog, plans, out, false)
 }
 
-func executeCatalogFinalizations(ctx context.Context, catalog *providerCatalog, plans []provider.FinalizationPlan, out io.Writer) (int, error) {
+func executeCatalogFinalizations(ctx context.Context, catalog *providerCatalog, plans []provider.FinalizationPlan, out io.Writer, resourceChanges bool) (int, error) {
 	if len(plans) == 0 {
 		return 0, nil
 	}
@@ -231,6 +231,9 @@ func executeCatalogFinalizations(ctx context.Context, catalog *providerCatalog, 
 			action := planned.Action
 			if action == "" {
 				action = "finalize"
+			}
+			if resourceChanges || len(result.Details) > 0 {
+				return completed, finalizeError(planned.Address, action, result.Details, resourceChanges, err)
 			}
 			return completed, fmt.Errorf("apply %s: %s: %w", planned.Address, action, err)
 		}

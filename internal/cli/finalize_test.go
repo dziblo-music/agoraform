@@ -16,8 +16,10 @@ import (
 
 type finalizingFake struct {
 	*fake.Provider
-	finalized  bool
-	failCreate bool
+	finalized    bool
+	failCreate   bool
+	finalizeErr  error
+	finalDetails []string
 }
 
 func (p *finalizingFake) Configure(resource.Attributes) error { return nil }
@@ -42,11 +44,15 @@ func (p *finalizingFake) PlanFinalization(_ context.Context, pending []provider.
 
 func (p *finalizingFake) Finalize(_ context.Context, planned provider.FinalizationPlan) (provider.FinalizationResult, error) {
 	p.finalized = true
+	details := p.finalDetails
+	if details == nil && p.finalizeErr == nil {
+		details = []string{"activated test"}
+	}
 	return provider.FinalizationResult{
 		Address: planned.Address,
-		Changed: true,
-		Details: []string{"activated test"},
-	}, nil
+		Changed: p.finalizeErr == nil,
+		Details: details,
+	}, p.finalizeErr
 }
 
 func TestPlanSurfacesProviderFinalization(t *testing.T) {
@@ -118,6 +124,41 @@ func TestApplyResourceFailurePreventsFinalization(t *testing.T) {
 	}
 	if strings.Contains(stdout.String(), "activated test") {
 		t.Fatalf("finalization output appeared after failure: %q", stdout.String())
+	}
+	if strings.Contains(stderr.String(), "remain applied") {
+		t.Fatalf("pre-mutation failure reported partial convergence: %q", stderr.String())
+	}
+}
+
+func TestApplyFinalizationFailureReportsPartialConvergence(t *testing.T) {
+	t.Parallel()
+
+	path := writeFinalizationManifest(t)
+	p := &finalizingFake{Provider: fake.New(), finalizeErr: errors.New("activation rejected")}
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := ExecuteWithRegistry(IOStreams{Out: &stdout, ErrOut: &stderr}, []string{"apply", "-f", path}, reg)
+	if code != ExitError {
+		t.Fatalf("exit code = %d, want %d; stdout=%q stderr=%q", code, ExitError, stdout.String(), stderr.String())
+	}
+	if !p.finalized {
+		t.Fatal("apply did not attempt provider finalization")
+	}
+	if !strings.Contains(stdout.String(), "fake.widget.one: created") {
+		t.Fatalf("stdout missing successful resource mutation:\n%s", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "Apply complete!") {
+		t.Fatalf("partial apply claimed complete:\n%s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "Earlier resource changes remain applied") {
+		t.Fatalf("stderr = %q, want partial resource convergence", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "agoraform apply") {
+		t.Fatalf("stderr = %q, want retry guidance", stderr.String())
 	}
 }
 

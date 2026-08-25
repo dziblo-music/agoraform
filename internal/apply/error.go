@@ -1,0 +1,145 @@
+package apply
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/dziblo-music/agoraform/internal/resource"
+	"github.com/dziblo-music/agoraform/internal/state"
+)
+
+// Partial-apply failure stages. These distinguish a state-write failure after
+// a successful resource mutation from a provider finalization failure after
+// successful resource convergence.
+const (
+	StagePersist  = "persist"
+	StageFinalize = "finalize"
+)
+
+// PartialApplyError reports that apply failed after remote provider state may
+// already have changed. Failures that occur before any remote mutation are
+// ordinary errors and must not use this type.
+type PartialApplyError struct {
+	Address         resource.Address
+	Operation       string
+	RemoteMutation  bool
+	RemoteIdentity  resource.Identity
+	Stage           string
+	ResourceChanges bool
+	Details         []string
+	Err             error
+}
+
+func (e *PartialApplyError) Error() string {
+	if e == nil {
+		return "partial apply failure"
+	}
+	switch e.Stage {
+	case StagePersist:
+		return e.persistMessage()
+	case StageFinalize:
+		return e.finalizeMessage()
+	default:
+		if e.Err != nil {
+			return e.Err.Error()
+		}
+		return "partial apply failure"
+	}
+}
+
+func (e *PartialApplyError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+func (e *PartialApplyError) persistMessage() string {
+	cause := e.Err
+	if cause == nil {
+		cause = errors.New("unknown error")
+	}
+
+	if e.Operation == "update" {
+		return fmt.Sprintf("%s was updated remotely, but the local state write failed: %v\nThe existing identity binding remains valid. Fix the state-file problem, then rerun agoraform plan and agoraform apply.", e.Address, cause)
+	}
+
+	id := e.RemoteIdentity.ID
+	var conflict *state.DuplicateIdentityError
+	if errors.As(cause, &conflict) {
+		if id == "" {
+			id = conflict.RemoteID
+		}
+		owner := conflict.OwnerOtherThan(e.Address)
+		if owner == "" {
+			owner = conflict.Existing
+		}
+		return fmt.Sprintf("%s was created remotely with id %s, but its state binding could not be saved: %v\nIdentity %q is already bound to %s. Resolve that ownership conflict before retrying; importing the same identity onto %s will fail for the same reason.", e.Address, id, cause, id, owner, e.Address)
+	}
+
+	if id == "" {
+		return fmt.Sprintf("%s was created remotely, but its state binding could not be saved: %v\nFix the state-file problem, then bind the remote identity with agoraform import.", e.Address, cause)
+	}
+	return fmt.Sprintf("%s was created remotely with id %s, but its state binding could not be saved: %v\nFix the state-file problem, then run:\n  agoraform import %s %s", e.Address, id, cause, e.Address, id)
+}
+
+func (e *PartialApplyError) finalizeMessage() string {
+	var b strings.Builder
+	op := e.Operation
+	if op == "" {
+		op = "finalize"
+	}
+	fmt.Fprintf(&b, "apply %s: %s: %v", e.Address, op, e.Err)
+	b.WriteByte('\n')
+	if e.ResourceChanges {
+		b.WriteString("Earlier resource changes remain applied; they were not rolled back.")
+	} else {
+		b.WriteString("Remote provider state may already have changed; it was not rolled back.")
+	}
+	b.WriteString("\nFix the provider error, then rerun agoraform plan and agoraform apply.")
+	return b.String()
+}
+
+// IsPartial reports whether err is a post-mutation apply failure.
+func IsPartial(err error) bool {
+	var partial *PartialApplyError
+	return errors.As(err, &partial)
+}
+
+func persistCreateError(addr resource.Address, id resource.Identity, err error) error {
+	return &PartialApplyError{
+		Address:         addr,
+		Operation:       "create",
+		RemoteMutation:  true,
+		RemoteIdentity:  id,
+		Stage:           StagePersist,
+		ResourceChanges: true,
+		Err:             err,
+	}
+}
+
+func persistUpdateError(addr resource.Address, id resource.Identity, err error) error {
+	return &PartialApplyError{
+		Address:         addr,
+		Operation:       "update",
+		RemoteMutation:  true,
+		RemoteIdentity:  id,
+		Stage:           StagePersist,
+		ResourceChanges: true,
+		Err:             err,
+	}
+}
+
+func finalizeError(addr resource.Address, operation string, details []string, resourceChanges bool, err error) error {
+	copied := append([]string(nil), details...)
+	return &PartialApplyError{
+		Address:         addr,
+		Operation:       operation,
+		RemoteMutation:  true,
+		Stage:           StageFinalize,
+		ResourceChanges: resourceChanges,
+		Details:         copied,
+		Err:             err,
+	}
+}
