@@ -337,7 +337,7 @@ func executeCreate(ctx context.Context, change plan.Change, desired resource.Res
 		return resource.RemoteResource{}, applyError(addr, "create", err)
 	}
 	if live.Identity.IsZero() {
-		return resource.RemoteResource{}, applyError(addr, "create", fmt.Errorf("provider returned no identity"))
+		return resource.RemoteResource{}, postMutationError(addr, "create", live.Identity, fmt.Errorf("provider returned no identity"))
 	}
 
 	fmt.Fprintf(out, "%s: created\n", addr)
@@ -383,7 +383,7 @@ func executeUpdate(ctx context.Context, change plan.Change, desired resource.Res
 		return resource.RemoteResource{}, applyError(addr, "update", err)
 	}
 	if !live.Identity.IsZero() && live.Identity.ID != change.Identity.ID {
-		return resource.RemoteResource{}, fmt.Errorf("apply %s: update: provider returned identity %q for persisted identity %q; refusing to rebind managed resource", addr, live.Identity.ID, change.Identity.ID)
+		return resource.RemoteResource{}, postMutationError(addr, "update", live.Identity, fmt.Errorf("provider returned identity %q for persisted identity %q; refusing to rebind managed resource", live.Identity.ID, change.Identity.ID))
 	}
 
 	fmt.Fprintf(out, "%s: updated\n", addr)
