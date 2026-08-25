@@ -91,6 +91,12 @@ state as `remoteId`. Do not copy it into YAML.
 
 `name` remains immutable for a state-bound v0.1 Matomo goal.
 
+## Matomo variables
+
+Import a Tag Manager variable by its numeric `idvariable` in the configured
+container draft. That id is stored in local state as `remoteId`. Do not
+copy it into YAML. `type` remains immutable for a managed variable.
+
 ## Exit codes
 
 | Code | Meaning |
