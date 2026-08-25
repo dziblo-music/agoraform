@@ -46,6 +46,9 @@ func Format(p *Plan) string {
 			if f.Target != "" {
 				fmt.Fprintf(&b, " -> %s", f.Target)
 			}
+			if f.Conditional {
+				b.WriteString(" [conditional]")
+			}
 			b.WriteString("\n\n")
 		}
 	}
@@ -62,9 +65,10 @@ func Format(p *Plan) string {
 }
 
 type providerFinalization struct {
-	Address string
-	Action  string
-	Target  string
+	Address     string
+	Action      string
+	Target      string
+	Conditional bool
 }
 
 func normalizedFinalizations(p *Plan) []providerFinalization {
@@ -75,9 +79,10 @@ func normalizedFinalizations(p *Plan) []providerFinalization {
 			action = "finalize"
 		}
 		out = append(out, providerFinalization{
-			Address: f.Address.String(),
-			Action:  action,
-			Target:  strings.TrimSpace(f.Target),
+			Address:     f.Address.String(),
+			Action:      action,
+			Target:      strings.TrimSpace(f.Target),
+			Conditional: f.Conditional,
 		})
 	}
 	return out

@@ -377,6 +377,24 @@ func TestFormatNilPlan(t *testing.T) {
 	}
 }
 
+func TestFormatConditionalProviderFinalization(t *testing.T) {
+	t.Parallel()
+
+	p := &plan.Plan{Finalizations: []provider.FinalizationPlan{{
+		Address:     resource.Address{Provider: "matomo", Type: "container", Name: "main"},
+		Action:      "publish",
+		Target:      "live",
+		Conditional: true,
+	}}}
+	out := plan.Format(p)
+	if !strings.Contains(out, "> matomo.container.main: publish -> live [conditional]") {
+		t.Fatalf("conditional finalization not rendered:\n%s", out)
+	}
+	if !p.HasChanges() || !strings.Contains(out, "1 provider action") {
+		t.Fatalf("conditional finalization did not count as planned work:\n%s", out)
+	}
+}
+
 type staticReader struct {
 	live resource.RemoteResource
 	err  error

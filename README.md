@@ -64,12 +64,13 @@ When publication is enabled, `plan` makes the action visible before any
 mutation:
 
 ```text
-> matomo.container.main: publish -> live
+> matomo.container.main: publish -> live [conditional]
 ```
 
 `apply` performs that provider action only after all planned Tag Manager draft
-resource mutations succeed. Repeated unchanged applies do not create duplicate
-container versions.
+resource mutations succeed. Conditional publication may be skipped when those
+mutations converge the draft to the already-published configuration. Repeated
+unchanged applies do not create duplicate container versions.
 
 See [Matomo Tag Manager publication](docs/matomo-publishing.md).
 

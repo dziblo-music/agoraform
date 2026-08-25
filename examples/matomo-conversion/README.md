@@ -74,10 +74,10 @@ agoraform plan
 
 Review the first plan before applying it. Because publication is declarative,
 there is no separate `agoraform publish` command: the plan shows
-`matomo.container.main: publish -> live`, and `apply` creates a container
-version and publishes it after all three draft resources converge. The final
-plan must report `No changes.` when the manifest and remote configuration are
-unchanged.
+`matomo.container.main: publish -> live [conditional]`. After all three draft
+resources converge, `apply` creates and publishes a container version only if
+the resulting draft differs from live. The final plan must report `No changes.`
+when the manifest and remote configuration are unchanged.
 
 In Matomo, open Tag Manager for `MATOMO_CONTAINER_ID` and verify that the draft
 contains the **Trial user ID** variable, **Trial started** trigger, and
