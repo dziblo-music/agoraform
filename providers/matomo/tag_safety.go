@@ -99,7 +99,7 @@ func (p *Provider) importTag(ctx context.Context, addr resource.Address, id stri
 		}
 		return resource.RemoteResource{}, fmt.Errorf("matomo: import %s: %w", addr, err)
 	}
-	return live, nil
+	return p.reconstructTagImportRefs(ctx, addr, live)
 }
 
 func (p *Provider) normalizeTagComparableSafe(desired resource.Resource, live *resource.RemoteResource) (resource.Attributes, resource.Attributes, error) {

@@ -228,9 +228,10 @@ Updates re-read the live tag and send unmanaged values back because
 
 `agoraform import matomo.tag.NAME ID` reads an existing draft tag by numeric
 id. It does not recreate the tag or emit `idTag` as a manifest attribute.
-Import YAML omits `trigger` because that field must be a logical `$ref`,
-not a Matomo trigger id. Add the `$ref` before planning. See
-[import.md](../../docs/import.md).
+When the fire trigger is already bound in local state, import reconstructs
+`trigger` as a logical `$ref`. Event fields that use `{{Variable Name}}`
+become `$ref`s when those variables are managed. Import the related trigger
+(and any referenced variables) first. See [import.md](../../docs/import.md).
 
 Other Tag Manager tag templates (including pageview, goal, and custom HTML)
 are not managed in v0.2.

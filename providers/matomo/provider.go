@@ -17,6 +17,13 @@ const (
 	Name = "matomo"
 )
 
+// IdentityCatalog looks up logical addresses for provider-native identities
+// already bound in local state. Import uses it to reconstruct `$ref`
+// relationships without embedding Matomo-native ids in configuration.
+type IdentityCatalog interface {
+	AddressByRemoteID(provider, resourceType, remoteID string) (resource.Address, bool, error)
+}
+
 // Provider is the Agoraform Matomo provider.
 //
 // It registers matomo.goal, matomo.variable, matomo.trigger, and
@@ -28,8 +35,9 @@ type Provider struct {
 	client *client.Client
 	err    error
 
-	mu    sync.Mutex
-	known map[string]remoteBinding
+	mu         sync.Mutex
+	known      map[string]remoteBinding
+	identities IdentityCatalog
 }
 
 var (
@@ -62,6 +70,17 @@ func NewWithHTTPClient(cfg Config, httpClient *http.Client) *Provider {
 		p.err = err
 	}
 	return p
+}
+
+// SetIdentityCatalog supplies local-state reverse lookups for import
+// reference reconstruction. Passing nil clears the catalog.
+func (p *Provider) SetIdentityCatalog(c IdentityCatalog) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.identities = c
 }
 
 // Name implements provider.Provider.
