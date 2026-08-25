@@ -71,7 +71,7 @@ func TestRunPlansAndExecutesProviderFinalization(t *testing.T) {
 	}
 	var out bytes.Buffer
 
-	result, err := apply.Run(context.Background(), []resource.Resource{res}, reg, st, &out)
+	result, err := apply.Run(context.Background(), []resource.Resource{res}, nil, st, &out, reg)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestRunSupportsFinalizationOnlyApply(t *testing.T) {
 	st := newStateStore(t)
 	var out bytes.Buffer
 
-	result, err := apply.Run(context.Background(), nil, reg, st, &out)
+	result, err := apply.Run(context.Background(), nil, nil, st, &out, reg)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestRunResourceFailurePreventsProviderFinalization(t *testing.T) {
 		Attributes: resource.Attributes{fake.AttrTitle: "One"},
 	}
 
-	_, err := apply.Run(context.Background(), []resource.Resource{res}, reg, st, &bytes.Buffer{})
+	_, err := apply.Run(context.Background(), []resource.Resource{res}, nil, st, &bytes.Buffer{}, reg)
 	if err == nil {
 		t.Fatal("Run succeeded, want create failure")
 	}
@@ -147,7 +147,7 @@ func TestRunStateWriteFailurePreventsProviderFinalization(t *testing.T) {
 		Attributes: resource.Attributes{fake.AttrTitle: "One"},
 	}
 
-	_, err := apply.Run(context.Background(), []resource.Resource{res}, reg, st, &bytes.Buffer{})
+	_, err := apply.Run(context.Background(), []resource.Resource{res}, nil, st, &bytes.Buffer{}, reg)
 	if err == nil {
 		t.Fatal("Run succeeded, want state write failure")
 	}
@@ -169,7 +169,7 @@ func TestRunFinalizationFailurePreservesDetailsAndDoesNotClaimSuccess(t *testing
 	st := newStateStore(t)
 	var out bytes.Buffer
 
-	_, err := apply.Run(context.Background(), nil, reg, st, &out)
+	_, err := apply.Run(context.Background(), nil, nil, st, &out, reg)
 	if err == nil {
 		t.Fatal("Run succeeded, want finalization failure")
 	}
