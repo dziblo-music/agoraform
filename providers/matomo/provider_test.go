@@ -37,6 +37,9 @@ func TestProviderRegisterAndLookup(t *testing.T) {
 	if !provider.Supports(got, matomo.TypeVariable) {
 		t.Fatal("matomo.variable must be registered")
 	}
+	if !provider.Supports(got, matomo.TypeTrigger) {
+		t.Fatal("matomo.trigger must be registered")
+	}
 
 	addr, err := resource.ParseAddress("matomo.goal.trial_started")
 	if err != nil {
@@ -52,6 +55,14 @@ func TestProviderRegisterAndLookup(t *testing.T) {
 	}
 	if _, err := reg.LookupFor(variableAddr); err != nil {
 		t.Fatalf("LookupFor variable: %v", err)
+	}
+
+	triggerAddr, err := resource.ParseAddress("matomo.trigger.trial_started")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.LookupFor(triggerAddr); err != nil {
+		t.Fatalf("LookupFor trigger: %v", err)
 	}
 }
 

@@ -144,7 +144,7 @@ func (t *TagManager) UpdateContainerVariable(ctx context.Context, idContainerVer
 	params.Set("idVariable", idVariable)
 	params.Set("description", preserved.Description)
 	params.Set("defaultValue", preserved.DefaultValue)
-	if err := setFormJSON(params, "lookupTable", preserved.LookupTable); err != nil {
+	if err := setFormJSON(params, "lookupTable", preserved.LookupTable, "TagManager.updateContainerVariable"); err != nil {
 		return err
 	}
 	_, err := t.Call(ctx, "updateContainerVariable", params)
@@ -307,14 +307,14 @@ func formatJSONFloat(n float64) string {
 	return strconv.FormatFloat(n, 'g', -1, 64)
 }
 
-func setFormJSON(params url.Values, key string, raw json.RawMessage) error {
+func setFormJSON(params url.Values, key string, raw json.RawMessage, method string) error {
 	raw = bytes.TrimSpace(raw)
 	if len(raw) == 0 || string(raw) == "null" {
 		return nil
 	}
 	var v any
 	if err := json.Unmarshal(raw, &v); err != nil {
-		return malformedResponseError("TagManager.updateContainerVariable", 0)
+		return malformedResponseError(method, 0)
 	}
 	setFormValue(params, key, v)
 	return nil

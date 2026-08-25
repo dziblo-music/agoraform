@@ -18,6 +18,7 @@ prints the SemVer identifier without the prefix (`0.1.0`).
 - `apply` executes creates and updates in dependency order and resolves provider-native identities and outputs for dependents at runtime
 - Plans and import YAML keep logical addresses; provider-native identities stay out of configuration
 - Matomo Tag Manager `matomo.variable` for Data Layer variables in the configured container draft (read, create, update, import)
+- Matomo Tag Manager `matomo.trigger` for Custom Event triggers in the configured container draft (read, create, update, import)
 
 ## [0.1.0] - 2026-08-24
 

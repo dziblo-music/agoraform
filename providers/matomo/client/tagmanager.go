@@ -10,7 +10,7 @@ import (
 
 // TagManager is the Matomo Tag Manager API surface.
 //
-// Later resources (variables, triggers, tags, versions) should call
+// Later resources (tags, versions) should call
 // through this helper rather than constructing raw HTTP requests.
 type TagManager struct {
 	c *Client
