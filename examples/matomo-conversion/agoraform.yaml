@@ -1,0 +1,31 @@
+# Matomo Tag Manager conversion tracking example for Agoraform v0.2.0.
+# Credentials and provider-native IDs are supplied outside this manifest.
+
+apiVersion: agoraform.io/v1alpha1
+providers:
+  matomo:
+    publish: true
+    environment: live
+resources:
+  - address: matomo.variable.user_id
+    attributes:
+      type: dataLayer
+      key: userId
+      name: Trial user ID
+
+  - address: matomo.trigger.trial_started
+    attributes:
+      type: customEvent
+      event: trialStarted
+      name: Trial started
+
+  - address: matomo.tag.trial_started
+    attributes:
+      type: matomoAnalytics
+      name: Track trial started
+      trigger:
+        $ref: matomo.trigger.trial_started
+      eventCategory: trial
+      eventAction: started
+      eventName:
+        $ref: matomo.variable.user_id
