@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/dziblo-music/agoraform/internal/resource"
-	"github.com/dziblo-music/agoraform/providers/matomo/client"
 )
 
 func (p *Provider) reconstructTagImportRefs(ctx context.Context, addr resource.Address, live resource.RemoteResource) (resource.RemoteResource, error) {
@@ -66,19 +65,18 @@ func (p *Provider) importVariableRefByName(ctx context.Context, tagAddr resource
 	if err != nil {
 		return resource.Ref{}, false, fmt.Errorf("matomo: import %s: list variables to reconstruct references: %w", tagAddr, err)
 	}
-	var match *client.Variable
-	for i := range vars {
-		if strings.EqualFold(vars[i].Status, "deleted") {
-			continue
-		}
-		if vars[i].Name == name {
-			match = &vars[i]
-			break
-		}
-	}
-	if match == nil {
+
+	matches := findVariablesByName(vars, name)
+	switch len(matches) {
+	case 0:
 		return resource.Ref{}, false, nil
+	case 1:
+		// continue
+	default:
+		return resource.Ref{}, false, fmt.Errorf("matomo: import %s: variable template %q matches multiple active remote variables (ids %s); variable names must be unique before Agoraform can reconstruct a logical $ref", tagAddr, "{{"+name+"}}", joinVariableIDs(matches))
 	}
+
+	match := matches[0]
 	managed, ok, err := p.lookupManagedAddress(TypeVariable, match.IDVariable)
 	if err != nil {
 		return resource.Ref{}, false, fmt.Errorf("matomo: import %s: look up variable %q: %w", tagAddr, match.IDVariable, err)
@@ -103,7 +101,9 @@ func (p *Provider) lookupManagedAddress(resourceType, remoteID string) (resource
 }
 
 func parseMatomoVariableTemplate(s string) (string, bool) {
-	s = strings.TrimSpace(s)
+	if s != strings.TrimSpace(s) {
+		return "", false
+	}
 	if len(s) < 5 || !strings.HasPrefix(s, "{{") || !strings.HasSuffix(s, "}}") {
 		return "", false
 	}
