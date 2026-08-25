@@ -30,12 +30,35 @@ func TestValidateVariableValid(t *testing.T) {
 	t.Parallel()
 
 	p := testVariableProvider(t, newVariableServer(t))
-	res := variableResource(t, "user_id", resource.Attributes{
-		matomo.AttrType: "dataLayer",
-		matomo.AttrKey:  "userId",
-	})
-	if err := p.Validate(context.Background(), res); err != nil {
-		t.Fatalf("Validate: %v", err)
+	cases := []struct {
+		name  string
+		attrs resource.Attributes
+	}{
+		{
+			name: "key only",
+			attrs: resource.Attributes{
+				matomo.AttrType: "dataLayer",
+				matomo.AttrKey:  "userId",
+			},
+		},
+		{
+			name: "display name with internal space",
+			attrs: resource.Attributes{
+				matomo.AttrType: "dataLayer",
+				matomo.AttrKey:  "userId",
+				matomo.AttrName: "User ID",
+			},
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			res := variableResource(t, "user_id", tc.attrs)
+			if err := p.Validate(context.Background(), res); err != nil {
+				t.Fatalf("Validate: %v", err)
+			}
+		})
 	}
 }
 
@@ -95,6 +118,39 @@ func TestValidateVariableErrors(t *testing.T) {
 			attrs: resource.Attributes{matomo.AttrType: "dataLayer", matomo.AttrKey: "userId", matomo.AttrName: ""},
 			want:  "non-empty",
 		},
+		{
+			name:  "leading whitespace key",
+			attrs: resource.Attributes{matomo.AttrType: "dataLayer", matomo.AttrKey: " userId"},
+			want:  `attribute "key" must not have leading or trailing whitespace`,
+		},
+		{
+			name:  "trailing whitespace key",
+			attrs: resource.Attributes{matomo.AttrType: "dataLayer", matomo.AttrKey: "userId "},
+			want:  `attribute "key" must not have leading or trailing whitespace`,
+		},
+		{
+			name:  "whitespace only key",
+			attrs: resource.Attributes{matomo.AttrType: "dataLayer", matomo.AttrKey: "   "},
+			want:  `attribute "key" must not have leading or trailing whitespace`,
+		},
+		{
+			name: "leading and trailing whitespace name",
+			attrs: resource.Attributes{
+				matomo.AttrType: "dataLayer",
+				matomo.AttrKey:  "userId",
+				matomo.AttrName: " User ID ",
+			},
+			want: `attribute "name" must not have leading or trailing whitespace`,
+		},
+		{
+			name: "whitespace only name",
+			attrs: resource.Attributes{
+				matomo.AttrType: "dataLayer",
+				matomo.AttrKey:  "userId",
+				matomo.AttrName: "   ",
+			},
+			want: `attribute "name" must not have leading or trailing whitespace`,
+		},
 	}
 
 	for _, tc := range cases {
@@ -110,6 +166,112 @@ func TestValidateVariableErrors(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), addr.String()) {
 				t.Fatalf("error = %q, want address", err.Error())
+			}
+			assertNoProviderSecret(t, err.Error())
+		})
+	}
+}
+
+func TestValidateVariableWhitespaceIsNotNormalized(t *testing.T) {
+	t.Parallel()
+
+	p := testVariableProvider(t, newVariableServer(t))
+	res := variableResource(t, "user_id", resource.Attributes{
+		matomo.AttrType: "dataLayer",
+		matomo.AttrKey:  " userId",
+	})
+	if err := p.Validate(context.Background(), res); err == nil {
+		t.Fatal("expected validation error; leading whitespace must not be trimmed and accepted")
+	}
+
+	_, err := p.Create(context.Background(), res)
+	if err == nil {
+		t.Fatal("expected create to fail validation")
+	}
+	if !strings.Contains(err.Error(), "leading or trailing whitespace") {
+		t.Fatalf("error = %q, want whitespace rejection", err)
+	}
+}
+
+func TestValidateVariableEffectiveNameLength(t *testing.T) {
+	t.Parallel()
+
+	p := testVariableProvider(t, newVariableServer(t))
+	key255 := strings.Repeat("k", matomo.MaxVariableNameLen)
+	key256 := strings.Repeat("k", matomo.MaxVariableNameLen+1)
+	key300 := strings.Repeat("k", matomo.MaxDataLayerKeyLen)
+	name255 := strings.Repeat("n", matomo.MaxVariableNameLen)
+	name256 := strings.Repeat("n", matomo.MaxVariableNameLen+1)
+
+	cases := []struct {
+		name    string
+		attrs   resource.Attributes
+		wantErr string
+	}{
+		{
+			name: "key length 255 without name",
+			attrs: resource.Attributes{
+				matomo.AttrType: "dataLayer",
+				matomo.AttrKey:  key255,
+			},
+		},
+		{
+			name: "key length 256 without name",
+			attrs: resource.Attributes{
+				matomo.AttrType: "dataLayer",
+				matomo.AttrKey:  key256,
+			},
+			wantErr: matomo.AttrKey,
+		},
+		{
+			name: "key length 300 with short name",
+			attrs: resource.Attributes{
+				matomo.AttrType: "dataLayer",
+				matomo.AttrKey:  key300,
+				matomo.AttrName: "User ID",
+			},
+		},
+		{
+			name: "explicit name length 256",
+			attrs: resource.Attributes{
+				matomo.AttrType: "dataLayer",
+				matomo.AttrKey:  "userId",
+				matomo.AttrName: name256,
+			},
+			wantErr: matomo.AttrName,
+		},
+		{
+			name: "explicit name length 255",
+			attrs: resource.Attributes{
+				matomo.AttrType: "dataLayer",
+				matomo.AttrKey:  "userId",
+				matomo.AttrName: name255,
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := p.Validate(context.Background(), variableResource(t, "user_id", tc.attrs))
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Validate: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			if !strings.Contains(err.Error(), "255") {
+				t.Fatalf("error = %q, want 255-character limit", err)
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("error = %q, want attribute %q", err, tc.wantErr)
+			}
+			if !strings.Contains(err.Error(), "matomo.variable.user_id") {
+				t.Fatalf("error = %q, want address", err)
 			}
 			assertNoProviderSecret(t, err.Error())
 		})
@@ -381,6 +543,30 @@ func TestPlanVariableUnchangedEquivalentRemote(t *testing.T) {
 	}
 	if got.Changes[0].Identity.ID != "2" {
 		t.Fatalf("identity = %q, want 2", got.Changes[0].Identity.ID)
+	}
+}
+
+func TestPlanVariableUnchangedWithDisplayName(t *testing.T) {
+	t.Parallel()
+
+	srv := newVariableServer(t)
+	srv.seed(apiVariable{
+		ID:     2,
+		Name:   "User ID",
+		Type:   "DataLayer",
+		Key:    "userId",
+		Status: "active",
+	})
+	p := testVariableProvider(t, srv)
+
+	res := variableResource(t, "user_id", resource.Attributes{
+		matomo.AttrType: "dataLayer",
+		matomo.AttrKey:  "userId",
+		matomo.AttrName: "User ID",
+	})
+	got := mustPlanVariable(t, p, res)
+	if got.HasChanges() {
+		t.Fatalf("equivalent display name produced changes: %+v", got.Changes)
 	}
 }
 

@@ -115,8 +115,8 @@ resources:
 | Attribute | Required | Description |
 | --- | --- | --- |
 | `type` | yes | Variable template. v0.2 supports `dataLayer`. |
-| `key` | yes for `dataLayer` | Data Layer property name, sent to Matomo as `dataLayerName`. |
-| `name` | no | Tag Manager display name. Defaults to `key`. |
+| `key` | yes for `dataLayer` | Data Layer property name, sent to Matomo as `dataLayerName`. No leading or trailing whitespace. At most 300 characters. If `name` is omitted, `key` is also the Matomo variable name and must be at most 255 characters. |
+| `name` | no | Tag Manager display name. Defaults to `key`. No leading or trailing whitespace. At most 255 characters. Internal spaces such as `User ID` are allowed. |
 
 A missing unbound remote variable plans as a create. A changed `key` or
 `name` plans as an update. Equivalent configuration, including an omitted

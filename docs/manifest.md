@@ -182,8 +182,8 @@ resources:
 | Attribute | Required | Description |
 | --- | --- | --- |
 | `type` | yes | Variable template. v0.2 supports `dataLayer` only. |
-| `key` | yes for `dataLayer` | Data Layer property name (`userId` in `_mtm.push({ userId: "..." })`). |
-| `name` | no | Tag Manager display name. Defaults to `key`, so omitting it against a remote variable named `userId` is a no-op. |
+| `key` | yes for `dataLayer` | Data Layer property name (`userId` in `_mtm.push({ userId: "..." })`). No leading or trailing whitespace. At most 300 characters. If `name` is omitted, `key` is also the Matomo variable name and must be at most 255 characters. |
+| `name` | no | Tag Manager display name. Defaults to `key`. No leading or trailing whitespace. At most 255 characters. Internal spaces such as `User ID` are allowed. |
 
 `type` is immutable after create. Remote response fields such as
 `idvariable`, `idcontainerversion`, `status`, `description`,

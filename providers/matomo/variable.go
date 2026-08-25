@@ -23,7 +23,13 @@ const (
 	variableTypeDataLayer = "dataLayer"
 	matomoTypeDataLayer   = "DataLayer"
 	paramDataLayerName    = "dataLayerName"
-	maxDataLayerKeyLen    = 300
+
+	// MaxDataLayerKeyLen is Matomo's maximum length for a Data Layer
+	// variable key (dataLayerName).
+	MaxDataLayerKeyLen = 300
+	// MaxVariableNameLen is Matomo's maximum length for a Tag Manager
+	// variable display name.
+	MaxVariableNameLen = 255
 )
 
 var (
@@ -92,18 +98,44 @@ func (p *Provider) validateVariable(res resource.Resource) error {
 	if key == "" {
 		return fmt.Errorf("resource %s: attribute %q must be a non-empty string when %s is %q", res.Address, AttrKey, AttrType, typ)
 	}
-	if len(key) > maxDataLayerKeyLen {
-		return fmt.Errorf("resource %s: attribute %q must be at most %d characters", res.Address, AttrKey, maxDataLayerKeyLen)
+	if err := rejectEdgeWhitespace(res.Address, AttrKey, key); err != nil {
+		return err
+	}
+	if len(key) > MaxDataLayerKeyLen {
+		return fmt.Errorf("resource %s: attribute %q must be at most %d characters", res.Address, AttrKey, MaxDataLayerKeyLen)
 	}
 
 	name, nameSet, err := optionalString(res, AttrName)
 	if err != nil {
 		return err
 	}
-	if nameSet && name == "" {
-		return fmt.Errorf("resource %s: attribute %q must be a non-empty string", res.Address, AttrName)
+	if nameSet {
+		if name == "" {
+			return fmt.Errorf("resource %s: attribute %q must be a non-empty string", res.Address, AttrName)
+		}
+		if err := rejectEdgeWhitespace(res.Address, AttrName, name); err != nil {
+			return err
+		}
 	}
 
+	effectiveName := key
+	if nameSet {
+		effectiveName = name
+	}
+	if len(effectiveName) > MaxVariableNameLen {
+		if nameSet {
+			return fmt.Errorf("resource %s: attribute %q must be at most %d characters", res.Address, AttrName, MaxVariableNameLen)
+		}
+		return fmt.Errorf("resource %s: attribute %q must be at most %d characters when %s is omitted because it is used as the Matomo variable name", res.Address, AttrKey, MaxVariableNameLen, AttrName)
+	}
+
+	return nil
+}
+
+func rejectEdgeWhitespace(addr resource.Address, attr, value string) error {
+	if value != strings.TrimSpace(value) {
+		return fmt.Errorf("resource %s: attribute %q must not have leading or trailing whitespace", addr, attr)
+	}
 	return nil
 }
 
