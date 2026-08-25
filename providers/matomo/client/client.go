@@ -147,9 +147,16 @@ func (c *Client) Call(ctx context.Context, method string, params url.Values) (js
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", userAgent)
 
+	// A context that is already done is a definite pre-request failure. Once
+	// Do is attempted, however, a transport error cannot prove that Matomo did
+	// not receive or execute a mutating request, so preserve that distinction
+	// for callers such as Tag Manager publication.
+	if err := ctx.Err(); err != nil {
+		return nil, c.sanitize(method, err)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, c.sanitize(method, err)
+		return nil, c.sanitizeUnconfirmed(method, err)
 	}
 	defer resp.Body.Close()
 
@@ -204,6 +211,17 @@ func (c *Client) sanitize(method string, err error) error {
 		return fmtSafe(method, "network error", err)
 	}
 	return fmtSafe(method, Redact(err.Error(), c.cfg.TokenAuth), err)
+}
+
+func (c *Client) sanitizeUnconfirmed(method string, err error) error {
+	safe := c.sanitize(method, err)
+	var apiErr *Error
+	if errors.As(safe, &apiErr) && apiErr != nil {
+		clone := *apiErr
+		clone.err = errors.Join(clone.err, unconfirmed("request did not return a response"))
+		return &clone
+	}
+	return errors.Join(safe, unconfirmed("request did not return a response"))
 }
 
 func normalizeEndpoint(raw string) (string, error) {
