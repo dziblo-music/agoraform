@@ -114,7 +114,12 @@ func (p *Provider) Client() (*client.Client, error) {
 
 // CheckConnection implements provider.ConnectionChecker.
 func (p *Provider) CheckConnection(ctx context.Context) error {
-	if err := missingConfigError(p.cfg); err != nil {
+	enabled, _ := p.publicationSettings()
+	if enabled {
+		if err := p.requirePublishConfig(); err != nil {
+			return err
+		}
+	} else if err := missingConfigError(p.cfg); err != nil {
 		return err
 	}
 	c, err := p.Client()

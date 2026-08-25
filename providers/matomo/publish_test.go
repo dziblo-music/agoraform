@@ -86,14 +86,12 @@ func TestPublicationCapabilityFailurePreventsMutation(t *testing.T) {
 		t.Fatalf("Configure: %v", err)
 	}
 
-	planned := provider.FinalizationPlan{
-		Address: resource.Address{Provider: matomo.Name, Type: "container", Name: "main"},
-		Action:  "publish",
-		Target:  "live",
-	}
-	_, err := p.Finalize(context.Background(), planned)
+	_, err := p.PlanFinalization(context.Background(), []provider.PendingChange{{
+		Address: resource.Address{Provider: matomo.Name, Type: matomo.TypeTag, Name: "trial_started"},
+		Action:  "update",
+	}})
 	if err == nil || !strings.Contains(err.Error(), "cannot publish") {
-		t.Fatalf("Finalize = %v, want capability error", err)
+		t.Fatalf("PlanFinalization = %v, want capability error", err)
 	}
 	if s.createCount() != 0 || s.publishCount() != 0 {
 		t.Fatalf("capability failure mutated: create=%d publish=%d", s.createCount(), s.publishCount())
@@ -129,6 +127,53 @@ func TestPublicationFailureReportsCreatedVersion(t *testing.T) {
 	}
 }
 
+func TestPublicationVersionCreationFailureDoesNotPublish(t *testing.T) {
+	t.Parallel()
+
+	s := newFinalizeServer(t)
+	s.failCreate = true
+	p := newFinalizeProvider(t, s)
+	if err := p.Configure(resource.Attributes{"publish": true}); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	planned := provider.FinalizationPlan{
+		Address: resource.Address{Provider: matomo.Name, Type: "container", Name: "main"},
+		Action:  "publish",
+		Target:  "live",
+	}
+	_, err := p.Finalize(context.Background(), planned)
+	if err == nil || !strings.Contains(err.Error(), "create container version") {
+		t.Fatalf("Finalize = %v, want create failure", err)
+	}
+	if strings.Contains(err.Error(), "test-secret-token") {
+		t.Fatalf("secret leaked in error %q", err.Error())
+	}
+	if s.createCount() != 1 || s.publishCount() != 0 {
+		t.Fatalf("mutations: create=%d publish=%d, want 1/0", s.createCount(), s.publishCount())
+	}
+}
+
+func TestPublicationMalformedCapabilityResponsePreventsMutation(t *testing.T) {
+	t.Parallel()
+
+	s := newFinalizeServer(t)
+	s.malformedPublishable = true
+	p := newFinalizeProvider(t, s)
+	if err := p.Configure(resource.Attributes{"publish": true}); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	_, err := p.PlanFinalization(context.Background(), []provider.PendingChange{{
+		Address: resource.Address{Provider: matomo.Name, Type: matomo.TypeTag, Name: "trial_started"},
+		Action:  "update",
+	}})
+	if err == nil || !strings.Contains(err.Error(), "malformed") {
+		t.Fatalf("PlanFinalization = %v, want malformed response", err)
+	}
+	if s.createCount() != 0 || s.publishCount() != 0 {
+		t.Fatalf("malformed preflight mutated: create=%d publish=%d", s.createCount(), s.publishCount())
+	}
+}
+
 func TestConfigurePublicationValidation(t *testing.T) {
 	t.Parallel()
 
@@ -151,13 +196,15 @@ func TestConfigurePublicationValidation(t *testing.T) {
 }
 
 type finalizeServer struct {
-	mu          sync.Mutex
-	server      *httptest.Server
-	publishable []string
-	liveVersion string
-	creates     int
-	publishes   int
-	failPublish bool
+	mu                   sync.Mutex
+	server               *httptest.Server
+	publishable          []string
+	liveVersion          string
+	creates              int
+	publishes            int
+	failCreate           bool
+	failPublish          bool
+	malformedPublishable bool
 }
 
 func newFinalizeServer(t *testing.T) *finalizeServer {
@@ -188,7 +235,12 @@ func (s *finalizeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "TagManager.getAvailableEnvironmentsWithPublishCapability":
 		s.mu.Lock()
 		ids := append([]string(nil), s.publishable...)
+		malformed := s.malformedPublishable
 		s.mu.Unlock()
+		if malformed {
+			_, _ = io.WriteString(w, `"oops"`)
+			return
+		}
 		writeEnvironments(w, ids)
 	case "TagManager.getAvailableEnvironments":
 		writeEnvironments(w, []string{"live", "dev"})
@@ -225,7 +277,12 @@ func (s *finalizeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "TagManager.createContainerVersion":
 		s.mu.Lock()
 		s.creates++
+		fail := s.failCreate
 		s.mu.Unlock()
+		if fail {
+			_, _ = io.WriteString(w, `{"result":"error","message":"cannot create test-secret-token"}`)
+			return
+		}
 		_, _ = io.WriteString(w, `10`)
 	case "TagManager.publishContainerVersion":
 		s.mu.Lock()
@@ -263,4 +320,47 @@ func (s *finalizeServer) publishCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.publishes
+}
+
+func TestPublicationEnabledConnectionCheckRequiresSiteAndContainer(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		cfg  client.Config
+		want string
+	}{
+		{
+			name: "site",
+			cfg: client.Config{
+				BaseURL:     "https://matomo.example.com",
+				TokenAuth:   "secret",
+				ContainerID: "containerA",
+			},
+			want: matomo.EnvSiteID,
+		},
+		{
+			name: "container",
+			cfg: client.Config{
+				BaseURL:   "https://matomo.example.com",
+				TokenAuth: "secret",
+				SiteID:    "3",
+			},
+			want: matomo.EnvContainerID,
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			p := matomo.New(tc.cfg)
+			if err := p.Configure(resource.Attributes{"publish": true}); err != nil {
+				t.Fatalf("Configure: %v", err)
+			}
+			err := p.CheckConnection(context.Background())
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("CheckConnection = %v, want %s", err, tc.want)
+			}
+		})
+	}
 }
