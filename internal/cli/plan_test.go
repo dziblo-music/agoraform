@@ -79,6 +79,27 @@ func TestPlanMatomoGoalCreate(t *testing.T) {
 	}
 }
 
+func TestPlanMatomoVariableCreate(t *testing.T) {
+	t.Parallel()
+
+	p, _ := matomoVariableTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", matomoVariableManifest)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"plan", "-f", path}, reg)
+	if code != cli.ExitChanges {
+		t.Fatalf("exit code = %d, want %d; stderr=%q stdout=%q", code, cli.ExitChanges, stderr.String(), stdout.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "+ matomo.variable.user_id") {
+		t.Fatalf("stdout missing create:\n%s", out)
+	}
+}
+
 func TestPlanMatomoGoalNoChanges(t *testing.T) {
 	t.Parallel()
 

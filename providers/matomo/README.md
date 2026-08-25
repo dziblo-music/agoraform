@@ -2,10 +2,10 @@
 
 The Matomo provider is Agoraform's first production provider. It loads
 credentials from the environment, talks to Matomo through
-`providers/matomo/client`, and manages the 0.1.0 `matomo.goal` resource.
+`providers/matomo/client`, and manages `matomo.goal` plus Tag Manager
+`matomo.variable`.
 
-Tag Manager variables, triggers, tags, and versions are out of scope for
-0.1.0.
+Tag Manager triggers, tags, and versions remain out of scope.
 
 ## Configuration
 
@@ -13,13 +13,15 @@ Credentials are never read from manifests. Set them in the process
 environment:
 
 ```text
-MATOMO_URL           required   Matomo base URL, for example https://matomo.example.com
-MATOMO_TOKEN_AUTH    required   API token
-MATOMO_SITE_ID       required for goals   analytics site id
+MATOMO_URL            required   Matomo base URL, for example https://matomo.example.com
+MATOMO_TOKEN_AUTH     required   API token
+MATOMO_SITE_ID        required for goals and Tag Manager resources
+MATOMO_CONTAINER_ID   required for Tag Manager variables   container id such as 6OMh6taM
 ```
 
-`MATOMO_CONTAINER_ID` exists in the client for future Tag Manager work. It is
-not used by `matomo.goal` and is not part of the 0.1.0 workflow.
+`MATOMO_CONTAINER_ID` is the Tag Manager container Agoraform manages. Variable
+create, read, and update operate on that container's draft version. It is not
+used by `matomo.goal`.
 
 ### Precedence
 
@@ -93,6 +95,47 @@ configurable YAML, and stores that id in local state. It does not recreate
 the goal or emit `idGoal` as a manifest attribute. See
 [import.md](../../docs/import.md).
 
+### `matomo.variable`
+
+Declares a Matomo Tag Manager variable in the configured container draft.
+v0.2 starts with Data Layer variables. Initial discovery looks up a variable
+by `name` (defaulting to `key` when `name` is omitted). Once Agoraform
+manages the resource, persist Matomo's variable ID in
+[local state](../../docs/state.md), not in the manifest:
+
+```yaml
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: matomo.variable.user_id
+    attributes:
+      type: dataLayer
+      key: userId
+```
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `type` | yes | Variable template. v0.2 supports `dataLayer`. |
+| `key` | yes for `dataLayer` | Data Layer property name, sent to Matomo as `dataLayerName`. |
+| `name` | no | Tag Manager display name. Defaults to `key`. |
+
+A missing unbound remote variable plans as a create. A changed `key` or
+`name` plans as an update. Equivalent configuration, including an omitted
+`name` that matches `key`, produces a zero-change plan. Deletion is out of
+scope.
+
+Remote fields such as `idvariable`, `idcontainerversion`, `status`,
+`description`, `default_value`, `lookup_table`, and `typeMetadata` are
+computed. Do not set them in configuration. Updates re-read the live
+variable and send those unmanaged values back because
+`TagManager.updateContainerVariable` otherwise resets omitted parameters.
+`type` is immutable after create.
+
+`agoraform import matomo.variable.NAME ID` reads an existing draft variable
+by numeric id. It does not recreate the variable or emit `idVariable` as a
+manifest attribute. See [import.md](../../docs/import.md).
+
+Other Tag Manager variable templates are not managed in v0.2.
+
 ## HTTP client
 
 `providers/matomo/client` provides:
@@ -104,6 +147,7 @@ the goal or emit `idGoal` as a manifest attribute. See
 - JSON decoding and Matomo `{"result":"error"}` mapping
 - secret redaction in returned errors
 - Goals helpers: `GetGoals`, `AddGoal`, `UpdateGoal`, and preservation-safe updates
+- Tag Manager helpers: `GetContainer`, draft version resolution, `GetContainerVariables`, `AddContainerVariable`, and preservation-safe `UpdateContainerVariable`
 
 Two API surfaces share that client:
 
@@ -115,10 +159,10 @@ Two API surfaces share that client:
 ## CLI
 
 The CLI composition root registers the Matomo provider. Manifests may
-use addresses such as `matomo.goal.trial_started`. `validate`, `plan`,
-`apply`, and `import` call `CheckConnection` once after the provider and
-resource type resolve, then validate goal attributes and (for `plan`) read
-live goals.
+use addresses such as `matomo.goal.trial_started` and
+`matomo.variable.user_id`. `validate`, `plan`, `apply`, and `import` call
+`CheckConnection` once after the provider and resource type resolve, then
+validate resource attributes and (for `plan`) read live objects.
 
 ## Safety
 

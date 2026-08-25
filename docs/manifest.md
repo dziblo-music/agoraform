@@ -110,9 +110,9 @@ passes them to providers as runtime bindings. Those identities belong in
 [local state](state.md), not in the manifest.
 
 Matomo Tag Manager types such as `matomo.trigger` and `matomo.tag` are shown
-here as the intended reference syntax. They are not added as managed resource
-types by this change; unknown types still fail provider validation when that
-provider is registered.
+here as the intended reference syntax. `matomo.variable` is a managed
+resource type; triggers and tags still fail provider validation until those
+types are implemented.
 
 ## Attributes
 
@@ -164,6 +164,41 @@ For `patternType: exact`, Agoraform mirrors Matomo's validation requirement:
 Omitted `patternType` is treated as the Matomo default, so an equivalent
 remote goal produces a zero-change plan.
 
+## Matomo Variable (`matomo.variable`)
+
+v0.2 manages a Matomo Tag Manager Data Layer variable in the configured
+container draft. On initial discovery, Agoraform may find a variable by
+`name`. Once the resource is managed, persist Matomo's `idvariable` in
+[local state](state.md). Do not copy it into attributes.
+
+```yaml
+resources:
+  - address: matomo.variable.user_id
+    attributes:
+      type: dataLayer
+      key: userId
+```
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `type` | yes | Variable template. v0.2 supports `dataLayer` only. |
+| `key` | yes for `dataLayer` | Data Layer property name (`userId` in `_mtm.push({ userId: "..." })`). |
+| `name` | no | Tag Manager display name. Defaults to `key`, so omitting it against a remote variable named `userId` is a no-op. |
+
+`type` is immutable after create. Remote response fields such as
+`idvariable`, `idcontainerversion`, `status`, `description`,
+`default_value`, and `lookup_table` remain computed/unmanaged and cannot
+be configured as mutable Variable fields.
+
+Because Matomo's `TagManager.updateContainerVariable` endpoint writes a
+complete variable record, Agoraform re-reads the variable immediately
+before an update and carries forward unmanaged values such as description,
+default value, and lookup table.
+
+A missing unbound remote variable plans as a create. A changed `key` or
+`name` plans as an update. Existing v0.1.0 goal-only manifests remain
+valid and do not require `MATOMO_CONTAINER_ID`.
+
 ## Validation
 
 ```bash
@@ -185,14 +220,15 @@ directory.
 - unknown providers or resource types, when a provider is registered
 - provider-specific required-field failures, when a provider is registered
 
-The CLI registers the Matomo provider. `matomo.goal` is a supported resource
-type. `validate` and `plan` check provider connection settings, then
-goal-specific required fields. Provider/type checks for other providers
-(including the test-only `fake` provider) run when those providers are
-registered.
+The CLI registers the Matomo provider. `matomo.goal` and `matomo.variable`
+are supported resource types. `validate` and `plan` check provider
+connection settings, then resource-specific required fields. Provider/type
+checks for other providers (including the test-only `fake` provider) run
+when those providers are registered.
 
 Matomo credentials come from `MATOMO_URL`, `MATOMO_TOKEN_AUTH`, and
-`MATOMO_SITE_ID`. See [the Matomo provider README](../providers/matomo/README.md).
+`MATOMO_SITE_ID`. Tag Manager variables also require `MATOMO_CONTAINER_ID`.
+See [the Matomo provider README](../providers/matomo/README.md).
 
 `agoraform plan` uses the same manifest. See [plan.md](plan.md) for
 reconciliation, output, and exit codes. See [import.md](import.md) to bring

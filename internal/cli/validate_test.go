@@ -44,6 +44,27 @@ resources:
       matchAttribute: event_action
 `
 
+const matomoVariableManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: matomo.variable.user_id
+    attributes:
+      type: dataLayer
+      key: userId
+`
+
+const matomoGoalAndVariableManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: matomo.goal.trial_started
+    attributes:
+      name: Trial Started
+      matchAttribute: event_action
+      pattern: trialStarted
+  - address: matomo.variable.user_id
+    attributes:
+      type: dataLayer
+      key: userId
+`
+
 const invalidManifest = `apiVersion: agoraform.io/v1alpha1
 resources:
   - address: not-an-address
@@ -242,6 +263,84 @@ func TestValidateMatomoGoalMissingPattern(t *testing.T) {
 	}
 }
 
+func TestValidateMatomoVariableMissingCredentials(t *testing.T) {
+	t.Parallel()
+
+	path := writeManifest(t, "agoraform.yaml", matomoVariableManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWith(streams, []string{"validate", "-f", path})
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	errOut := stderr.String()
+	if strings.Contains(errOut, "unknown resource type") {
+		t.Fatalf("stderr = %q, matomo.variable should be registered", errOut)
+	}
+	if !strings.Contains(errOut, "MATOMO_URL") && !strings.Contains(errOut, "required") {
+		t.Fatalf("stderr = %q, want missing credential error", errOut)
+	}
+}
+
+func TestValidateMatomoVariableMissingContainer(t *testing.T) {
+	t.Parallel()
+
+	p, _ := matomoGoalTestProvider(t, `[]`)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", matomoVariableManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), matomo.EnvContainerID) {
+		t.Fatalf("stderr = %q, want %s", stderr.String(), matomo.EnvContainerID)
+	}
+}
+
+func TestValidateMatomoVariableWithProvider(t *testing.T) {
+	t.Parallel()
+
+	p, _ := matomoVariableTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", matomoVariableManifest)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitOK, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "1 resource") {
+		t.Fatalf("stdout = %q, want 1 resource", stdout.String())
+	}
+}
+
+func TestValidateMixedGoalAndVariableManifest(t *testing.T) {
+	t.Parallel()
+
+	p, _ := matomoVariableTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", matomoGoalAndVariableManifest)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitOK, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "2 resources") {
+		t.Fatalf("stdout = %q, want 2 resources", stdout.String())
+	}
+}
+
 func matomoGoalTestProvider(t *testing.T, getGoalsBody string) (*matomo.Provider, *httptest.Server) {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -258,6 +357,34 @@ func matomoGoalTestProvider(t *testing.T, getGoalsBody string) (*matomo.Provider
 		TokenAuth:  "cli-test-token",
 		SiteID:     "3",
 		HTTPClient: srv.Client(),
+	}, srv.Client())
+	return p, srv
+}
+
+func matomoVariableTestProvider(t *testing.T) (*matomo.Provider, *httptest.Server) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		switch {
+		case strings.Contains(string(body), "API.getMatomoVersion"):
+			_, _ = io.WriteString(w, `"5.2.0"`)
+		case strings.Contains(string(body), "TagManager.getContainerVariables"):
+			_, _ = io.WriteString(w, `[]`)
+		case strings.Contains(string(body), "TagManager.getContainer"):
+			_, _ = io.WriteString(w, `{"idcontainer":"6OMh6taM","idsite":3,"draft":{"idcontainerversion":9}}`)
+		case strings.Contains(string(body), "Goals.getGoals"):
+			_, _ = io.WriteString(w, `[]`)
+		default:
+			_, _ = io.WriteString(w, `{"result":"error","message":"unknown method"}`)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	p := matomo.NewWithHTTPClient(client.Config{
+		BaseURL:     srv.URL,
+		TokenAuth:   "cli-test-token",
+		SiteID:      "3",
+		ContainerID: "6OMh6taM",
+		HTTPClient:  srv.Client(),
 	}, srv.Client())
 	return p, srv
 }

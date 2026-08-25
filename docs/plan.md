@@ -47,11 +47,13 @@ address order. Repeated plans against unchanged desired and live state stay
 stable.
 
 The Matomo provider is registered with the CLI. `matomo.goal` resources
-are planned against the configured Matomo site: a missing remote goal is
-a create, a changed supported field is an update, and an equivalent
-remote goal (including omitted defaults and computed fields such as
-`idgoal`) is unchanged. Unit tests that need a generic resource
-lifecycle use the in-memory `fake` provider.
+are planned against the configured Matomo site. `matomo.variable`
+resources are planned against the configured Tag Manager container draft:
+a missing remote variable is a create, a changed supported field is an
+update, and an equivalent remote variable (including an omitted `name`
+that defaults to `key`, and computed fields such as `idvariable`) is
+unchanged. Unit tests that need a generic resource lifecycle use the
+in-memory `fake` provider.
 
 ## Change model
 
