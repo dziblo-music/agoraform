@@ -4,18 +4,116 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
 
 	"github.com/dziblo-music/agoraform/internal/plan"
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/resource"
 )
 
-// ProviderSet exposes the provider registry operations required by the
-// canonical apply lifecycle. *provider.Registry implements this interface.
+// ProviderSet exposes the provider registry operations required by provider
+// finalization planning and execution. *provider.Registry implements this
+// interface directly.
 type ProviderSet interface {
-	LookupFor(addr resource.Address) (provider.Provider, error)
+	ProviderSource
 	Lookup(name string) (provider.Provider, bool)
 	List() []provider.Provider
+}
+
+type providerLister interface {
+	List() []provider.Provider
+}
+
+type providerLookupByName interface {
+	Lookup(name string) (provider.Provider, bool)
+}
+
+type providerCatalog struct {
+	source ProviderSource
+	byName map[string]provider.Provider
+}
+
+func newProviderCatalog(source ProviderSource) *providerCatalog {
+	catalog := &providerCatalog{
+		source: source,
+		byName: make(map[string]provider.Provider),
+	}
+	catalog.refresh()
+	return catalog
+}
+
+func canEnumerateProviders(source ProviderSource) bool {
+	if source == nil {
+		return false
+	}
+	_, ok := source.(providerLister)
+	return ok
+}
+
+func (c *providerCatalog) LookupFor(addr resource.Address) (provider.Provider, error) {
+	if c == nil || c.source == nil {
+		return nil, fmt.Errorf("provider lookup is required")
+	}
+	p, err := c.source.LookupFor(addr)
+	if err != nil {
+		return nil, err
+	}
+	c.remember(p)
+	return p, nil
+}
+
+func (c *providerCatalog) Lookup(name string) (provider.Provider, bool) {
+	if c == nil {
+		return nil, false
+	}
+	if p, ok := c.byName[name]; ok {
+		return p, true
+	}
+	if lookup, ok := c.source.(providerLookupByName); ok {
+		p, found := lookup.Lookup(name)
+		if found {
+			c.remember(p)
+		}
+		return p, found
+	}
+	return nil, false
+}
+
+func (c *providerCatalog) List() []provider.Provider {
+	if c == nil {
+		return nil
+	}
+	c.refresh()
+	names := make([]string, 0, len(c.byName))
+	for name := range c.byName {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]provider.Provider, 0, len(names))
+	for _, name := range names {
+		out = append(out, c.byName[name])
+	}
+	return out
+}
+
+func (c *providerCatalog) refresh() {
+	if c == nil || c.source == nil {
+		return
+	}
+	lister, ok := c.source.(providerLister)
+	if !ok {
+		return
+	}
+	for _, p := range lister.List() {
+		c.remember(p)
+	}
+}
+
+func (c *providerCatalog) remember(p provider.Provider) {
+	if c == nil || p == nil {
+		return
+	}
+	c.byName[p.Name()] = p
 }
 
 // AttachFinalizations asks registered provider finalizers to append any
