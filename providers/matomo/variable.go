@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/resource"
@@ -101,7 +102,7 @@ func (p *Provider) validateVariable(res resource.Resource) error {
 	if err := rejectEdgeWhitespace(res.Address, AttrKey, key); err != nil {
 		return err
 	}
-	if len(key) > MaxDataLayerKeyLen {
+	if utf8.RuneCountInString(key) > MaxDataLayerKeyLen {
 		return fmt.Errorf("resource %s: attribute %q must be at most %d characters", res.Address, AttrKey, MaxDataLayerKeyLen)
 	}
 
@@ -122,7 +123,7 @@ func (p *Provider) validateVariable(res resource.Resource) error {
 	if nameSet {
 		effectiveName = name
 	}
-	if len(effectiveName) > MaxVariableNameLen {
+	if utf8.RuneCountInString(effectiveName) > MaxVariableNameLen {
 		if nameSet {
 			return fmt.Errorf("resource %s: attribute %q must be at most %d characters", res.Address, AttrName, MaxVariableNameLen)
 		}
