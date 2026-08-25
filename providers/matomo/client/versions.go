@@ -88,9 +88,10 @@ func (t *TagManager) CreateContainerVersion(ctx context.Context, name, descripti
 // environment.
 //
 // A successful response must carry a Matomo container release ID. Empty,
-// JSON null, and unrelated payloads are rejected. Those failures are
-// uncertain outcomes: the publish request has already been sent, so
-// callers must inspect the remote container before creating another version.
+// JSON null, unreadable, oversized, and unrelated payloads are rejected.
+// Those failures are uncertain outcomes: the publish request has already
+// been sent, so callers must inspect the remote container before creating
+// another version.
 func (t *TagManager) PublishContainerVersion(ctx context.Context, idContainerVersion, environment string) error {
 	if t == nil || t.c == nil {
 		return fmt.Errorf("matomo: tag manager client is nil")
@@ -108,8 +109,8 @@ func (t *TagManager) PublishContainerVersion(ctx context.Context, idContainerVer
 	params.Set("environment", environment)
 	raw, err := t.Call(ctx, "publishContainerVersion", params)
 	if err != nil {
-		if isMalformedJSONResponse(err) {
-			return uncertainOutcomeError("TagManager.publishContainerVersion", "malformed response", err)
+		if isUnconfirmed(err) {
+			return uncertainOutcomeError("TagManager.publishContainerVersion", unconfirmedReason(err), err)
 		}
 		return err
 	}

@@ -73,16 +73,75 @@ func unauthorizedError(method string, status int) *Error {
 }
 
 func malformedResponseError(method string, status int) *Error {
-	return &Error{Method: method, StatusCode: status, Message: "malformed JSON response"}
+	return &Error{
+		Method:     method,
+		StatusCode: status,
+		Message:    "malformed JSON response",
+		err:        unconfirmed("malformed response"),
+	}
 }
 
 func unexpectedStatusError(method string, status int) *Error {
-	return &Error{Method: method, StatusCode: status, Message: fmt.Sprintf("unexpected HTTP status %d", status)}
+	return &Error{
+		Method:     method,
+		StatusCode: status,
+		Message:    fmt.Sprintf("unexpected HTTP status %d", status),
+		err:        unconfirmed("unexpected HTTP status"),
+	}
 }
 
-func isMalformedJSONResponse(err error) bool {
-	var apiErr *Error
-	return errors.As(err, &apiErr) && apiErr != nil && apiErr.Message == "malformed JSON response"
+func responseTooLargeError(method string, status int) *Error {
+	return &Error{
+		Method:     method,
+		StatusCode: status,
+		Message:    "response exceeded size limit",
+		err:        unconfirmed("response exceeded size limit"),
+	}
+}
+
+func responseReadError(method string, status int) *Error {
+	return &Error{
+		Method:     method,
+		StatusCode: status,
+		Message:    "response could not be read",
+		err:        unconfirmed("response could not be read"),
+	}
+}
+
+// errUnconfirmed marks a response-processing failure after the HTTP request
+// may already have reached Matomo. It is distinct from an explicit Matomo
+// {result:"error"} payload.
+var errUnconfirmed = errors.New("unconfirmed response")
+
+type unconfirmedFailure struct {
+	reason string
+}
+
+func unconfirmed(reason string) error {
+	return unconfirmedFailure{reason: reason}
+}
+
+func (u unconfirmedFailure) Error() string {
+	if u.reason == "" {
+		return errUnconfirmed.Error()
+	}
+	return u.reason
+}
+
+func (u unconfirmedFailure) Unwrap() error {
+	return errUnconfirmed
+}
+
+func isUnconfirmed(err error) bool {
+	return errors.Is(err, errUnconfirmed)
+}
+
+func unconfirmedReason(err error) string {
+	var u unconfirmedFailure
+	if errors.As(err, &u) && u.reason != "" {
+		return u.reason
+	}
+	return "unconfirmed response"
 }
 
 // UncertainOutcomeError reports that a mutating request was sent but the

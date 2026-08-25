@@ -155,10 +155,10 @@ func (c *Client) Call(ctx context.Context, method string, params url.Values) (js
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody+1))
 	if err != nil {
-		return nil, c.sanitize(method, fmt.Errorf("read response: %w", err))
+		return nil, responseReadError(method, resp.StatusCode)
 	}
 	if len(body) > maxResponseBody {
-		return nil, apiError(method, resp.StatusCode, "response exceeded size limit")
+		return nil, responseTooLargeError(method, resp.StatusCode)
 	}
 
 	switch {

@@ -33,7 +33,7 @@ prints the SemVer identifier without the prefix (`0.1.0`).
 - `plan` now surfaces a Matomo container publication action when `apply` would publish the reviewed Tag Manager draft
 - `apply` performs configured Matomo container publication only after all planned draft resource mutations succeed
 - Tag Manager publication comparison treats behavioral tag status (for example active versus paused) as meaningful while ignoring provider-native IDs
-- Matomo Tag Manager publication rejects empty, JSON `null`, and other unconfirmed publish responses instead of treating them as success, and reports that publication status may be uncertain
+- Matomo Tag Manager publication rejects empty, JSON `null`, unreadable, oversized, and other unconfirmed publish responses instead of treating them as success, and reports that publication status may be uncertain
 
 ## [0.1.0] - 2026-08-24
 

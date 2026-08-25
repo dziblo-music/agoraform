@@ -202,9 +202,9 @@ draft is already published.
 
 ### Publication response did not confirm success
 
-If Matomo returns HTTP 200 but the body is empty, JSON `null`, or not a
-release ID, apply reports a partial-convergence failure whose outcome is
-uncertain. Inspect the remote container to see whether the version was
+If Matomo returns HTTP 200 but the body is empty, JSON `null`, not a
+release ID, unreadable, or larger than Agoraform will accept, apply reports
+a partial-convergence failure whose outcome is uncertain. Inspect the remote container to see whether the version was
 published. Do not create another version until that status is known;
 retrying apply immediately can snapshot another unused version.
 

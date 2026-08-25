@@ -1,13 +1,16 @@
 package client_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/dziblo-music/agoraform/providers/matomo/client"
@@ -159,16 +162,7 @@ func TestPublishContainerVersionRejectsUnconfirmedResponses(t *testing.T) {
 			if err == nil {
 				t.Fatal("PublishContainerVersion succeeded, want uncertain error")
 			}
-			if !client.IsUncertainOutcome(err) {
-				t.Fatalf("error = %v, want uncertain outcome", err)
-			}
-			if !strings.Contains(err.Error(), "uncertain") {
-				t.Fatalf("error = %q, want uncertain publication outcome", err)
-			}
-			if !strings.Contains(err.Error(), "do not create another version") {
-				t.Fatalf("error = %q, want guidance against creating another version", err)
-			}
-			assertNoSecret(t, err.Error())
+			assertUncertainPublish(t, err)
 		})
 	}
 }
@@ -197,6 +191,78 @@ func TestPublishContainerVersionAPIErrorRedactsToken(t *testing.T) {
 		t.Fatalf("error = %q, want API message", err)
 	}
 	assertNoSecret(t, err.Error())
+}
+
+func TestPublishContainerVersionMisleadingAPIErrorIsNotUncertain(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"result":"error","message":"malformed JSON response"}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	c := mustPublishClient(t, srv)
+	err := c.TagManager().PublishContainerVersion(context.Background(), "10", "live")
+	if err == nil {
+		t.Fatal("PublishContainerVersion succeeded, want API error")
+	}
+	if client.IsUncertainOutcome(err) {
+		t.Fatalf("explicit API error classified as uncertain: %v", err)
+	}
+	var apiErr *client.Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("error = %v, want matomo API error", err)
+	}
+	if !strings.Contains(err.Error(), "malformed JSON response") {
+		t.Fatalf("error = %q, want API message", err)
+	}
+	assertNoSecret(t, err.Error())
+}
+
+func TestPublishContainerVersionReadFailureIsUncertain(t *testing.T) {
+	t.Parallel()
+
+	var received atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received.Store(true)
+		_, _ = io.WriteString(w, `12`)
+	}))
+	t.Cleanup(srv.Close)
+
+	c := mustPublishClientWithTransport(t, srv, failingBodyTransport{
+		base: srv.Client().Transport,
+		err:  errors.New("connection reset " + testToken),
+	})
+	err := c.TagManager().PublishContainerVersion(context.Background(), "10", "live")
+	if err == nil {
+		t.Fatal("PublishContainerVersion succeeded, want read failure")
+	}
+	if !received.Load() {
+		t.Fatal("server did not receive the publish request")
+	}
+	assertUncertainPublish(t, err)
+}
+
+func TestPublishContainerVersionOversizedResponseIsUncertain(t *testing.T) {
+	t.Parallel()
+
+	var received atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received.Store(true)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(bytes.Repeat([]byte("1"), 1<<20+32))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := mustPublishClient(t, srv)
+	err := c.TagManager().PublishContainerVersion(context.Background(), "10", "live")
+	if err == nil {
+		t.Fatal("PublishContainerVersion succeeded, want oversized response error")
+	}
+	if !received.Load() {
+		t.Fatal("server did not receive the publish request")
+	}
+	assertUncertainPublish(t, err)
 }
 
 func TestPublishContainerVersionPreRequestErrorsAreNotUncertain(t *testing.T) {
@@ -229,15 +295,68 @@ func TestPublishContainerVersionPreRequestErrorsAreNotUncertain(t *testing.T) {
 
 func mustPublishClient(t *testing.T, srv *httptest.Server) *client.Client {
 	t.Helper()
+	return mustPublishClientWithTransport(t, srv, srv.Client().Transport)
+}
+
+func mustPublishClientWithTransport(t *testing.T, srv *httptest.Server, rt http.RoundTripper) *client.Client {
+	t.Helper()
 	c, err := client.New(client.Config{
 		BaseURL:     srv.URL,
 		TokenAuth:   testToken,
 		SiteID:      "3",
 		ContainerID: "containerA",
-		HTTPClient:  srv.Client(),
+		HTTPClient:  &http.Client{Transport: rt},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return c
+}
+
+func assertUncertainPublish(t *testing.T, err error) {
+	t.Helper()
+	if !client.IsUncertainOutcome(err) {
+		t.Fatalf("error = %v, want uncertain outcome", err)
+	}
+	if !strings.Contains(err.Error(), "uncertain") {
+		t.Fatalf("error = %q, want uncertain publication outcome", err)
+	}
+	if !strings.Contains(err.Error(), "do not create another version") {
+		t.Fatalf("error = %q, want guidance against creating another version", err)
+	}
+	assertNoSecret(t, err.Error())
+}
+
+type failingBodyTransport struct {
+	base http.RoundTripper
+	err  error
+}
+
+func (t failingBodyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	resp, err := base.RoundTrip(req)
+	if err != nil {
+		return resp, err
+	}
+	resp.Body = &failingReadCloser{inner: resp.Body, err: t.err}
+	return resp, nil
+}
+
+type failingReadCloser struct {
+	inner io.ReadCloser
+	err   error
+}
+
+func (f *failingReadCloser) Read([]byte) (int, error) {
+	return 0, f.err
+}
+
+func (f *failingReadCloser) Close() error {
+	if f.inner == nil {
+		return nil
+	}
+	return f.inner.Close()
 }
