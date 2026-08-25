@@ -30,37 +30,54 @@ type Persistence interface {
 	Store
 }
 
-// Result counts fully committed mutations. It is only meaningful when
-// Execute or Run returns a nil error.
+// Result counts fully committed resource mutations and provider finalizations.
+// It is only meaningful when Execute or Run returns a nil error. Execute is a
+// resource-CRUD primitive and therefore leaves Finalized at zero.
 type Result struct {
-	Created int
-	Updated int
+	Created   int
+	Updated   int
+	Finalized int
 }
 
-// Run builds a plan with the shared reconciliation engine, then executes it.
+// Run is the canonical high-level apply lifecycle. It builds the resource
+// plan, attaches provider finalizations, executes resource mutations, then runs
+// those finalizations only after every resource mutation and state write
+// succeeds.
 //
 // Validation, remote reads, identity-guard checks, and dependency-graph
 // checks happen inside plan.BuildWithState before any mutation. Successful
-// creates and updates persist identities through st. On success, Run writes
-// human-readable progress and Format(result) to out.
-func Run(ctx context.Context, desired []resource.Resource, lookup Lookup, st Persistence, out io.Writer) (Result, error) {
+// creates and updates persist identities through st. Provider finalization
+// planning is non-mutating and happens before resource execution. On success,
+// Run writes human-readable progress and Format(result) to out.
+func Run(ctx context.Context, desired []resource.Resource, providers ProviderSet, st Persistence, out io.Writer) (Result, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if out == nil {
 		out = io.Discard
 	}
-	if lookup == nil && len(desired) > 0 {
-		return Result{}, fmt.Errorf("apply: provider lookup is required")
+	if providers == nil && len(desired) > 0 {
+		return Result{}, fmt.Errorf("apply: provider registry is required")
 	}
 	if st == nil {
 		return Result{}, fmt.Errorf("apply: state store is required")
 	}
 
+	var lookup Lookup
+	if providers != nil {
+		lookup = providers.LookupFor
+	}
+
 	planned, err := plan.BuildWithState(ctx, desired, func(addr resource.Address) (provider.Reader, error) {
-		if lookup == nil {
-			return nil, fmt.Errorf("provider lookup is required")
+		if providers == nil {
+			return nil, fmt.Errorf("provider registry is required")
 		}
-		return lookup(addr)
+		return providers.LookupFor(addr)
 	}, st)
 	if err != nil {
+		return Result{}, err
+	}
+	if err := AttachFinalizations(ctx, providers, planned); err != nil {
 		return Result{}, err
 	}
 
@@ -68,14 +85,20 @@ func Run(ctx context.Context, desired []resource.Resource, lookup Lookup, st Per
 	if err != nil {
 		return result, err
 	}
-	if result.Created+result.Updated > 0 {
+	result.Finalized, err = ExecuteFinalizations(ctx, providers, planned.Finalizations, out)
+	if err != nil {
+		return result, err
+	}
+	if result.Created+result.Updated > 0 || len(planned.Finalizations) > 0 {
 		fmt.Fprintln(out)
 	}
 	fmt.Fprint(out, Format(result))
 	return result, nil
 }
 
-// Execute carries out the actions in p in deterministic dependency order.
+// Execute carries out resource actions in p in deterministic dependency order.
+// Provider finalizations are intentionally not executed here; callers that
+// need the complete apply lifecycle should use Run.
 //
 // It builds the resource dependency graph from desired and fails before any
 // mutation when the graph is invalid. Create and update operations run
@@ -372,5 +395,12 @@ func applyError(addr resource.Address, op string, err error) error {
 
 // Format renders a successful apply result as deterministic terminal text.
 func Format(r Result) string {
-	return fmt.Sprintf("Apply complete! %d created, %d updated.\n", r.Created, r.Updated)
+	if r.Finalized == 0 {
+		return fmt.Sprintf("Apply complete! %d created, %d updated.\n", r.Created, r.Updated)
+	}
+	actionLabel := "provider actions"
+	if r.Finalized == 1 {
+		actionLabel = "provider action"
+	}
+	return fmt.Sprintf("Apply complete! %d created, %d updated, %d %s completed.\n", r.Created, r.Updated, r.Finalized, actionLabel)
 }
