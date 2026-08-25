@@ -67,13 +67,15 @@ type PendingChange struct {
 	Action  string
 }
 
-// FinalizationPlan is a provider-specific action that must happen after all
-// resource creates and updates succeed. The CLI stays provider-neutral while
-// still making the action visible during plan review.
+// FinalizationPlan is a provider-specific action considered after all resource
+// creates and updates succeed. Conditional actions may be skipped when the
+// provider rechecks the converged state. The CLI stays provider-neutral while
+// still making the potential action visible during plan review.
 type FinalizationPlan struct {
-	Address resource.Address
-	Action  string
-	Target  string
+	Address     resource.Address
+	Action      string
+	Target      string
+	Conditional bool
 }
 
 // FinalizationResult reports provider-specific progress. Details are safe,
@@ -87,7 +89,8 @@ type FinalizationResult struct {
 // Finalizer is an optional provider hook for declarative post-resource
 // convergence such as publishing an already-applied container draft.
 // PlanFinalization must be non-mutating. Finalize is called only after every
-// planned resource mutation succeeds.
+// planned resource mutation succeeds and is authoritative about whether a
+// conditional finalization still needs to mutate provider state.
 type Finalizer interface {
 	PlanFinalization(ctx context.Context, pending []PendingChange) (*FinalizationPlan, error)
 	Finalize(ctx context.Context, planned FinalizationPlan) (FinalizationResult, error)

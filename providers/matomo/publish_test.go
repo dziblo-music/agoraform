@@ -36,6 +36,9 @@ func TestPublicationIsDeclarativeProviderFinalization(t *testing.T) {
 	if planned == nil || planned.Action != "publish" || planned.Target != "live" {
 		t.Fatalf("planned = %+v, want publish -> live", planned)
 	}
+	if !planned.Conditional {
+		t.Fatalf("planned = %+v, want conditional publication", planned)
+	}
 
 	result, err := p.Finalize(context.Background(), *planned)
 	if err != nil {
@@ -54,6 +57,78 @@ func TestPublicationIsDeclarativeProviderFinalization(t *testing.T) {
 	}
 	if replanned != nil {
 		t.Fatalf("second plan = %+v, want no finalization", replanned)
+	}
+}
+
+func TestConditionalPublicationSkipsVersionWhenMutationConvergesDraftToLive(t *testing.T) {
+	t.Parallel()
+
+	s := newFinalizeServer(t)
+	s.liveVersion = "8"
+	p := newFinalizeProvider(t, s)
+	if err := p.Configure(resource.Attributes{"publish": true, "environment": "live"}); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+
+	planned, err := p.PlanFinalization(context.Background(), []provider.PendingChange{{
+		Address: resource.Address{Provider: matomo.Name, Type: matomo.TypeTag, Name: "trial_started"},
+		Action:  "update",
+	}})
+	if err != nil {
+		t.Fatalf("PlanFinalization: %v", err)
+	}
+	if planned == nil || !planned.Conditional {
+		t.Fatalf("planned = %+v, want conditional publication", planned)
+	}
+
+	result, err := p.Finalize(context.Background(), *planned)
+	if err != nil {
+		t.Fatalf("Finalize: %v", err)
+	}
+	if result.Changed || len(result.Details) != 1 || result.Details[0] != "no publication required" {
+		t.Fatalf("result = %+v, want no publication required", result)
+	}
+	if s.createCount() != 0 || s.publishCount() != 0 {
+		t.Fatalf("mutations: create=%d publish=%d, want 0/0", s.createCount(), s.publishCount())
+	}
+}
+
+func TestPublicationWithoutPendingChangesIsDefiniteWhenDraftDiffers(t *testing.T) {
+	t.Parallel()
+
+	s := newFinalizeServer(t)
+	s.liveVersion = "8"
+	s.liveVariableName = "previousName"
+	p := newFinalizeProvider(t, s)
+	if err := p.Configure(resource.Attributes{"publish": true, "environment": "live"}); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+
+	planned, err := p.PlanFinalization(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("PlanFinalization: %v", err)
+	}
+	if planned == nil || planned.Conditional {
+		t.Fatalf("planned = %+v, want definite publication", planned)
+	}
+}
+
+func TestPublicationWithoutPendingChangesIsOmittedWhenDraftMatchesLive(t *testing.T) {
+	t.Parallel()
+
+	s := newFinalizeServer(t)
+	s.liveVersion = "8"
+	p := newFinalizeProvider(t, s)
+	if err := p.Configure(resource.Attributes{"publish": true, "environment": "live"}); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+
+	planned, err := p.PlanFinalization(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("PlanFinalization: %v", err)
+	}
+	if planned != nil {
+		t.Fatalf("planned = %+v, want no publication", planned)
 	}
 }
 
@@ -205,6 +280,7 @@ type finalizeServer struct {
 	failCreate           bool
 	failPublish          bool
 	malformedPublishable bool
+	liveVariableName     string
 }
 
 func newFinalizeServer(t *testing.T) *finalizeServer {
@@ -262,14 +338,20 @@ func (s *finalizeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "TagManager.getContainerVariables":
 		version := vals.Get("idContainerVersion")
 		id := "2"
+		name := "userId"
 		if version != "9" {
 			id = "102"
+			s.mu.Lock()
+			if s.liveVariableName != "" {
+				name = s.liveVariableName
+			}
+			s.mu.Unlock()
 		}
 		_ = json.NewEncoder(w).Encode([]map[string]any{{
 			"idvariable":         id,
 			"idcontainerversion": version,
 			"type":               "DataLayer",
-			"name":               "userId",
+			"name":               name,
 			"parameters":         map[string]any{"dataLayerName": "userId"},
 		}})
 	case "TagManager.getContainerTriggers", "TagManager.getContainerTags":

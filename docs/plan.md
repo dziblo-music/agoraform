@@ -55,7 +55,15 @@ For example, Matomo Tag Manager publication can appear as:
 The provider decides whether that finalization is required using only
 non-mutating reads. If managed Tag Manager draft resources already have planned
 changes and `providers.matomo.publish` is enabled, the publication consequence
-is shown in the same plan before apply.
+is shown as conditional in the same plan before apply:
+
+```text
+> matomo.container.main: publish -> live [conditional]
+```
+
+Conditional provider actions still count as planned work. The provider checks
+the converged draft after resource mutations and may skip the action when no
+publication is required.
 
 A plan containing only a provider action still exits with code `2` because
 `apply` has work to do.
@@ -97,7 +105,7 @@ Agoraform will perform the following actions:
     eventAction:
       "trialStart" -> "trialStarted"
 
-> matomo.container.main: publish -> live
+> matomo.container.main: publish -> live [conditional]
 
 Plan: 0 to create, 1 to update, 0 to destroy, 1 provider action.
 ```
@@ -125,7 +133,9 @@ Plan never calls provider mutation methods. Resource reconciliation uses the
 read-only `provider.Reader` contract. Optional provider finalization planning
 is also required to be non-mutating.
 
-For Matomo publication, permission/environment checks and draft-versus-published
-comparison happen during planning without creating a version.
+For Matomo publication, permission/environment checks happen during planning
+without creating a version. Draft-versus-published comparison happens during
+planning for definite actions and again after convergence before any version is
+created.
 
 See [Matomo Tag Manager publication](matomo-publishing.md).

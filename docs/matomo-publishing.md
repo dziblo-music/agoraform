@@ -41,10 +41,18 @@ provider action, for example:
 ```
 
 A planned create or update of a managed `matomo.variable`, `matomo.trigger`,
-or `matomo.tag` causes publication to be planned when `publish: true`. When
-there are no draft resource changes, Agoraform compares the current draft with
-the version already published to the configured environment and omits the
-provider action when they are equivalent.
+or `matomo.tag` makes potential publication visible when `publish: true`:
+
+```text
+> matomo.container.main: publish -> live [conditional]
+```
+
+The action is conditional because the planned mutations may converge the draft
+back to the version already published. Apply makes the final decision against
+the converged draft immediately before version creation. When there are no
+planned draft resource changes, Agoraform compares the current draft with the
+published version: a difference produces a definite publication action, while
+equivalent fingerprints omit the action.
 
 Provider-native IDs and version metadata are ignored for that comparison.
 Behavioral tag state is not ignored: for example, a paused tag and an active

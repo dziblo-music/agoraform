@@ -91,8 +91,9 @@ func (p *Provider) PlanFinalization(ctx context.Context, pending []provider.Pend
 		return nil, fmt.Errorf("matomo: Tag Manager container %s has no draft version", p.cfg.ContainerID)
 	}
 
-	needed := hasPendingTagManagerChange(pending)
-	if !needed {
+	conditional := hasPendingTagManagerChange(pending)
+	needed := conditional
+	if !conditional {
 		needed, err = p.publicationNeeded(ctx, tm, container, environment)
 		if err != nil {
 			return nil, err
@@ -103,9 +104,10 @@ func (p *Provider) PlanFinalization(ctx context.Context, pending []provider.Pend
 	}
 
 	return &provider.FinalizationPlan{
-		Address: containerAddress,
-		Action:  "publish",
-		Target:  environment,
+		Address:     containerAddress,
+		Action:      "publish",
+		Target:      environment,
+		Conditional: conditional,
 	}, nil
 }
 
