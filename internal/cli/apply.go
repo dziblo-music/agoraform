@@ -5,9 +5,7 @@ import (
 
 	"github.com/dziblo-music/agoraform/internal/apply"
 	"github.com/dziblo-music/agoraform/internal/manifest"
-	"github.com/dziblo-music/agoraform/internal/plan"
 	"github.com/dziblo-music/agoraform/internal/provider"
-	"github.com/dziblo-music/agoraform/internal/resource"
 	"github.com/dziblo-music/agoraform/internal/state"
 	"github.com/spf13/cobra"
 )
@@ -65,31 +63,8 @@ The default manifest path is agoraform.yaml.`,
 				return err
 			}
 
-			planned, err := plan.BuildWithState(cmd.Context(), m.Resources, func(addr resource.Address) (provider.Reader, error) {
-				return reg.LookupFor(addr)
-			}, st)
-			if err != nil {
-				return err
-			}
-			if err := attachFinalizations(cmd.Context(), reg, planned); err != nil {
-				return err
-			}
-
-			out := cmd.OutOrStdout()
-			result, err := apply.Execute(cmd.Context(), planned, m.Resources, func(addr resource.Address) (provider.Provider, error) {
-				return reg.LookupFor(addr)
-			}, st, out)
-			if err != nil {
-				return err
-			}
-			if err := executeFinalizations(cmd.Context(), reg, planned.Finalizations, out); err != nil {
-				return err
-			}
-			if result.Created+result.Updated > 0 || len(planned.Finalizations) > 0 {
-				fmt.Fprintln(out)
-			}
-			fmt.Fprint(out, apply.Format(result))
-			return nil
+			_, err = apply.Run(cmd.Context(), m.Resources, reg, st, cmd.OutOrStdout())
+			return err
 		},
 	}
 
