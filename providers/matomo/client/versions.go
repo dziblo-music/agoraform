@@ -29,7 +29,7 @@ func (t *TagManager) GetAvailableEnvironments(ctx context.Context) ([]Environmen
 	if t == nil || t.c == nil {
 		return nil, fmt.Errorf("matomo: tag manager client is nil")
 	}
-	raw, err := t.Call(ctx, "getAvailableEnvironments", nil)
+	raw, err := t.c.Call(ctx, "TagManager.getAvailableEnvironments", nil)
 	if err != nil {
 		return nil, err
 	}
