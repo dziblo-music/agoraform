@@ -210,7 +210,7 @@ resources:
 | `eventCategory` | yes | Event category. A string, or a `$ref` to a `matomo.variable` (sent as `{{Variable Name}}`). No leading or trailing whitespace. At most 500 characters when a string. |
 | `eventAction` | yes | Event action. Same rules as `eventCategory`. If `name` is omitted and `eventAction` is a string, it is also the Matomo tag name and must be at most 255 characters. |
 | `eventName` | no | Event name. Same string-or-`$ref` rules as `eventCategory`. |
-| `eventValue` | no | Event value. Same string-or-`$ref` rules as `eventCategory`. |
+| `eventValue` | no | Numeric event value (number or numeric string), or a `$ref` to a `matomo.variable` (sent as `{{Variable Name}}`). Non-numeric literal strings are rejected before mutation. |
 | `name` | no | Tag Manager display name. Defaults to `eventAction` when that attribute is a string, otherwise the logical resource name. No leading or trailing whitespace. At most 255 characters. |
 
 A missing unbound remote tag plans as a create. A changed configurable field
