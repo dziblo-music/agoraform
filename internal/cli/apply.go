@@ -63,7 +63,7 @@ The default manifest path is agoraform.yaml.`,
 				return err
 			}
 
-			_, err = apply.Run(cmd.Context(), m.Resources, reg, st, cmd.OutOrStdout())
+			_, err = apply.Run(cmd.Context(), m.Resources, nil, st, cmd.OutOrStdout(), reg)
 			return err
 		},
 	}
