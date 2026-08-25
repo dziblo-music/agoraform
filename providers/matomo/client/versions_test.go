@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/dziblo-music/agoraform/providers/matomo/client"
 )
@@ -243,6 +244,64 @@ func TestPublishContainerVersionReadFailureIsUncertain(t *testing.T) {
 	assertUncertainPublish(t, err)
 }
 
+func TestPublishContainerVersionTransportFailureAfterRequestIsUncertain(t *testing.T) {
+	t.Parallel()
+
+	var received atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received.Store(true)
+		_, _ = io.WriteString(w, `12`)
+	}))
+	t.Cleanup(srv.Close)
+
+	c := mustPublishClientWithTransport(t, srv, failingAfterRequestTransport{
+		base: srv.Client().Transport,
+		err:  errors.New("connection reset " + testToken),
+	})
+	err := c.TagManager().PublishContainerVersion(context.Background(), "10", "live")
+	if err == nil {
+		t.Fatal("PublishContainerVersion succeeded, want transport failure")
+	}
+	if !received.Load() {
+		t.Fatal("server did not receive the publish request")
+	}
+	assertUncertainPublish(t, err)
+}
+
+func TestPublishContainerVersionTimeoutAfterRequestIsUncertain(t *testing.T) {
+	t.Parallel()
+
+	var received atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received.Store(true)
+		time.Sleep(100 * time.Millisecond)
+		_, _ = io.WriteString(w, `12`)
+	}))
+	t.Cleanup(srv.Close)
+
+	c, err := client.New(client.Config{
+		BaseURL:     srv.URL,
+		TokenAuth:   testToken,
+		SiteID:      "3",
+		ContainerID: "containerA",
+		HTTPClient: &http.Client{
+			Transport: srv.Client().Transport,
+			Timeout:   20 * time.Millisecond,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = c.TagManager().PublishContainerVersion(context.Background(), "10", "live")
+	if err == nil {
+		t.Fatal("PublishContainerVersion succeeded, want timeout")
+	}
+	if !received.Load() {
+		t.Fatal("server did not receive the publish request")
+	}
+	assertUncertainPublish(t, err)
+}
+
 func TestPublishContainerVersionOversizedResponseIsUncertain(t *testing.T) {
 	t.Parallel()
 
@@ -263,6 +322,42 @@ func TestPublishContainerVersionOversizedResponseIsUncertain(t *testing.T) {
 		t.Fatal("server did not receive the publish request")
 	}
 	assertUncertainPublish(t, err)
+}
+
+func TestPublishContainerVersionPreCanceledContextIsNotUncertain(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+	c, err := client.New(client.Config{
+		BaseURL:     "https://matomo.example.com",
+		TokenAuth:   testToken,
+		SiteID:      "3",
+		ContainerID: "containerA",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			calls.Add(1)
+			return nil, errors.New("transport should not be called")
+		})},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err = c.TagManager().PublishContainerVersion(ctx, "10", "live")
+	if err == nil {
+		t.Fatal("PublishContainerVersion succeeded, want canceled request")
+	}
+	if client.IsUncertainOutcome(err) {
+		t.Fatalf("pre-canceled context classified as uncertain: %v", err)
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("transport called %d times, want 0", calls.Load())
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context canceled", err)
+	}
+	assertNoSecret(t, err.Error())
 }
 
 func TestPublishContainerVersionPreRequestErrorsAreNotUncertain(t *testing.T) {
@@ -343,6 +438,32 @@ func (t failingBodyTransport) RoundTrip(req *http.Request) (*http.Response, erro
 	}
 	resp.Body = &failingReadCloser{inner: resp.Body, err: t.err}
 	return resp, nil
+}
+
+type failingAfterRequestTransport struct {
+	base http.RoundTripper
+	err  error
+}
+
+func (t failingAfterRequestTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	resp, err := base.RoundTrip(req)
+	if err != nil {
+		return resp, err
+	}
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	return nil, t.err
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
 
 type failingReadCloser struct {
