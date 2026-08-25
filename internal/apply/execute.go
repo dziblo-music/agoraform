@@ -15,24 +15,6 @@ import (
 // Lookup resolves the mutating provider for a resource address.
 type Lookup func(addr resource.Address) (provider.Provider, error)
 
-// LookupFor lets a Lookup participate in the high-level Run lifecycle. Run
-// records providers resolved through this method so provider finalizations are
-// not silently omitted for lookup-based callers that manage resources.
-func (l Lookup) LookupFor(addr resource.Address) (provider.Provider, error) {
-	if l == nil {
-		return nil, fmt.Errorf("provider lookup is required")
-	}
-	return l(addr)
-}
-
-// ProviderSource resolves providers for resource addresses. A full
-// *provider.Registry is preferred because it can also enumerate providers for
-// finalization-only applies, while Lookup remains supported for resource-based
-// internal callers.
-type ProviderSource interface {
-	LookupFor(addr resource.Address) (provider.Provider, error)
-}
-
 // Store persists provider-native identities after successful mutations.
 //
 // Implementations must not write a new identity for a failed mutation.
@@ -62,52 +44,61 @@ type Result struct {
 // those finalizations only after every resource mutation and state write
 // succeeds.
 //
+// lookup remains supported for resource-based internal callers. Supplying a
+// ProviderSet enables registry-wide finalization discovery, including
+// provider-only applies where no resource CRUD is planned. At most one
+// ProviderSet may be supplied.
+//
 // Validation, remote reads, identity-guard checks, and dependency-graph
 // checks happen inside plan.BuildWithState before any mutation. Successful
 // creates and updates persist identities through st. Provider finalization
 // planning is non-mutating and happens before resource execution. On success,
 // Run writes human-readable progress and Format(result) to out.
-func Run(ctx context.Context, desired []resource.Resource, providers ProviderSource, st Persistence, out io.Writer) (Result, error) {
+func Run(ctx context.Context, desired []resource.Resource, lookup Lookup, st Persistence, out io.Writer, providerSets ...ProviderSet) (Result, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if out == nil {
 		out = io.Discard
 	}
-	if providers == nil && len(desired) > 0 {
-		return Result{}, fmt.Errorf("apply: provider registry is required")
+	if len(providerSets) > 1 {
+		return Result{}, fmt.Errorf("apply: at most one provider set may be supplied")
 	}
-	if providers != nil && len(desired) == 0 && !canEnumerateProviders(providers) {
-		return Result{}, fmt.Errorf("apply: provider enumeration is required for a finalization-only apply")
+	var providers ProviderSet
+	if len(providerSets) == 1 {
+		providers = providerSets[0]
+	}
+	if lookup == nil && providers == nil && len(desired) > 0 {
+		return Result{}, fmt.Errorf("apply: provider lookup is required")
+	}
+	if lookup != nil && providers == nil && len(desired) == 0 {
+		return Result{}, fmt.Errorf("apply: provider registry is required for a finalization-only apply")
 	}
 	if st == nil {
 		return Result{}, fmt.Errorf("apply: state store is required")
 	}
 
-	catalog := newProviderCatalog(providers)
-	var lookup Lookup
-	if providers != nil {
-		lookup = catalog.LookupFor
+	catalog := newProviderCatalog(lookup, providers)
+	var resourceLookup Lookup
+	if lookup != nil || providers != nil {
+		resourceLookup = catalog.LookupFor
 	}
 
 	planned, err := plan.BuildWithState(ctx, desired, func(addr resource.Address) (provider.Reader, error) {
-		if providers == nil {
-			return nil, fmt.Errorf("provider registry is required")
-		}
 		return catalog.LookupFor(addr)
 	}, st)
 	if err != nil {
 		return Result{}, err
 	}
-	if err := AttachFinalizations(ctx, catalog, planned); err != nil {
+	if err := attachCatalogFinalizations(ctx, catalog, planned); err != nil {
 		return Result{}, err
 	}
 
-	result, err := Execute(ctx, planned, desired, lookup, st, out)
+	result, err := Execute(ctx, planned, desired, resourceLookup, st, out)
 	if err != nil {
 		return result, err
 	}
-	result.Finalized, err = ExecuteFinalizations(ctx, catalog, planned.Finalizations, out)
+	result.Finalized, err = executeCatalogFinalizations(ctx, catalog, planned.Finalizations, out)
 	if err != nil {
 		return result, err
 	}
