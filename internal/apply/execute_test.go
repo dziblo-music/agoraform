@@ -364,6 +364,9 @@ func TestRunProviderCreateFailureDoesNotWriteState(t *testing.T) {
 	if !strings.Contains(err.Error(), "remote create rejected") {
 		t.Fatalf("error = %q, want provider message", err)
 	}
+	if apply.IsPartial(err) {
+		t.Fatalf("pre-mutation create failure classified as partial: %v", err)
+	}
 	assertNoSecret(t, err.Error())
 
 	if _, ok, _ := st.Identity(res.Address); ok {
@@ -397,6 +400,9 @@ func TestRunProviderUpdateFailureDoesNotWriteState(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "fake.widget.homepage") || !strings.Contains(err.Error(), "update") {
 		t.Fatalf("error = %q, want address and update", err)
+	}
+	if apply.IsPartial(err) {
+		t.Fatalf("pre-mutation update failure classified as partial: %v", err)
 	}
 
 	id, ok, err := st.Identity(desired.Address)
@@ -465,7 +471,7 @@ func TestExecuteStateWriteFailureAfterCreate(t *testing.T) {
 	t.Parallel()
 
 	p := fake.New()
-	res := widget(t, "homepage", resource.Attributes{fake.AttrTitle: "Homepage"})
+	res := widget(t, "homepage", resource.Attributes{fake.AttrTitle: "Homepage " + plantedSecret})
 	st := &failingStore{err: errors.New("disk full")}
 	planned := &plan.Plan{
 		Changes: []plan.Change{{Address: res.Address, Action: plan.ActionCreate, After: res.Attributes}},
@@ -476,15 +482,24 @@ func TestExecuteStateWriteFailureAfterCreate(t *testing.T) {
 	if err == nil {
 		t.Fatal("Execute succeeded, want state write failure")
 	}
-	if !strings.Contains(err.Error(), "create succeeded but could not persist identity") {
-		t.Fatalf("error = %q, want persist failure after create", err)
+	partial := requirePartial(t, err)
+	if partial.Operation != "create" || partial.Stage != apply.StagePersist || partial.RemoteIdentity.ID == "" {
+		t.Fatalf("partial = %+v, want create persist with remote identity", partial)
+	}
+	if !strings.Contains(err.Error(), "created remotely") || !strings.Contains(err.Error(), partial.RemoteIdentity.ID) {
+		t.Fatalf("error = %q, want remote create identity", err)
 	}
 	if !strings.Contains(err.Error(), "disk full") {
 		t.Fatalf("error = %q, want underlying write error", err)
 	}
+	if !strings.Contains(err.Error(), "agoraform import "+res.Address.String()+" "+partial.RemoteIdentity.ID) {
+		t.Fatalf("error = %q, want import recovery", err)
+	}
 	if strings.Contains(out.String(), "Apply complete!") {
 		t.Fatalf("state write failure claimed apply complete:\n%s", out.String())
 	}
+	assertNoSecret(t, err.Error())
+	assertNoSecret(t, out.String())
 
 	_, creates, _, _ := p.Calls()
 	if creates != 1 {
@@ -498,7 +513,14 @@ func TestExecuteStateWriteFailureAfterUpdate(t *testing.T) {
 	p := fake.New()
 	live := widget(t, "homepage", resource.Attributes{fake.AttrTitle: "Homepage"})
 	seed(t, p, live, resource.Attributes{fake.AttrSerial: 2})
-	st := &failingStore{err: errors.New("permission denied")}
+	inner := mustStore(t)
+	if err := inner.Bind(live.Address, resource.Identity{ID: "id-homepage"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := inner.Save(); err != nil {
+		t.Fatal(err)
+	}
+	st := &failingRecordStore{Store: inner, err: errors.New("permission denied")}
 	desired := widget(t, "homepage", resource.Attributes{
 		fake.AttrTitle: "Homepage",
 		fake.AttrColor: "green",
@@ -519,8 +541,30 @@ func TestExecuteStateWriteFailureAfterUpdate(t *testing.T) {
 	if err == nil {
 		t.Fatal("Execute succeeded, want state write failure")
 	}
-	if !strings.Contains(err.Error(), "update succeeded but could not persist identity") {
-		t.Fatalf("error = %q, want persist failure after update", err)
+	partial := requirePartial(t, err)
+	if partial.Operation != "update" || partial.Stage != apply.StagePersist {
+		t.Fatalf("partial = %+v, want update persist", partial)
+	}
+	if !strings.Contains(err.Error(), "updated remotely") {
+		t.Fatalf("error = %q, want remote update succeeded", err)
+	}
+	if strings.Contains(err.Error(), "agoraform import") {
+		t.Fatalf("error = %q, must not require import after update persist failure", err)
+	}
+	if !strings.Contains(err.Error(), "existing identity binding remains valid") {
+		t.Fatalf("error = %q, want identity remains valid", err)
+	}
+
+	_, _, updates, _ := p.Calls()
+	if updates != 1 {
+		t.Fatalf("updates = %d, want 1 (not repeated)", updates)
+	}
+	if st.recordUpdates != 1 {
+		t.Fatalf("RecordUpdate calls = %d, want 1", st.recordUpdates)
+	}
+	id, ok, identErr := inner.Identity(desired.Address)
+	if identErr != nil || !ok || id.ID != "id-homepage" {
+		t.Fatalf("Identity = (%v,%v,%v), want original binding intact", id, ok, identErr)
 	}
 }
 
@@ -866,5 +910,33 @@ func (s *failingStore) RecordUpdate(resource.Address, resource.RemoteResource) e
 	return s.err
 }
 
+type failingRecordStore struct {
+	*state.Store
+	err           error
+	recordUpdates int
+}
+
+func (s *failingRecordStore) RecordCreate(resource.Address, resource.RemoteResource) error {
+	return s.err
+}
+
+func (s *failingRecordStore) RecordUpdate(resource.Address, resource.RemoteResource) error {
+	s.recordUpdates++
+	return s.err
+}
+
+func requirePartial(t *testing.T, err error) *apply.PartialApplyError {
+	t.Helper()
+	var partial *apply.PartialApplyError
+	if !errors.As(err, &partial) {
+		t.Fatalf("error = %v (%T), want PartialApplyError", err, err)
+	}
+	if !partial.RemoteMutation {
+		t.Fatalf("partial.RemoteMutation = false, want true")
+	}
+	return partial
+}
+
 var _ apply.Store = (*failingStore)(nil)
+var _ apply.Store = (*failingRecordStore)(nil)
 var _ apply.Persistence = (*state.Store)(nil)

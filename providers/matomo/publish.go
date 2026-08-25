@@ -163,12 +163,12 @@ func (p *Provider) Finalize(ctx context.Context, planned provider.FinalizationPl
 	if err != nil {
 		return result, fmt.Errorf("matomo: create container version: %w", err)
 	}
+	result.Changed = true
 	result.Details = append(result.Details, fmt.Sprintf("version %s created", versionID))
 	if err := tm.PublishContainerVersion(ctx, versionID, environment); err != nil {
 		return result, fmt.Errorf("matomo: publish container version %s to %s: %w", versionID, environment, err)
 	}
 	result.Details = append(result.Details, fmt.Sprintf("published to %s", environment))
-	result.Changed = true
 	return result, nil
 }
 

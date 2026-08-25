@@ -12,5 +12,7 @@
 //
 // Local state from package state remains the source of truth for
 // provider-native identities after successful mutations. Apply never deletes
-// remote resources.
+// remote resources. Post-mutation failures are returned as PartialApplyError
+// so callers can distinguish them from failures that occurred before any
+// remote change.
 package apply

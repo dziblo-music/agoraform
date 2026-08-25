@@ -22,6 +22,39 @@ const (
 // ErrStaleIdentity reports that a persisted identity no longer exists remotely.
 var ErrStaleIdentity = errors.New("persisted identity was not found remotely")
 
+// DuplicateIdentityError reports that the same provider-native identity is
+// bound to more than one logical address of the same resource type.
+type DuplicateIdentityError struct {
+	Provider     string
+	ResourceType string
+	RemoteID     string
+	Existing     string
+	Address      resource.Address
+}
+
+func (e *DuplicateIdentityError) Error() string {
+	if e == nil {
+		return "duplicate identity"
+	}
+	return fmt.Sprintf("duplicate identity %q for provider %q resource type %q on %s and %s", e.RemoteID, e.Provider, e.ResourceType, e.Existing, e.Address)
+}
+
+// OwnerOtherThan returns the logical address that already owns RemoteID,
+// excluding addr when addr is one of the conflicting bindings.
+func (e *DuplicateIdentityError) OwnerOtherThan(addr resource.Address) string {
+	if e == nil {
+		return ""
+	}
+	key := addr.String()
+	if e.Existing != "" && e.Existing != key {
+		return e.Existing
+	}
+	if e.Address.String() != "" && e.Address.String() != key {
+		return e.Address.String()
+	}
+	return e.Existing
+}
+
 // Record is the persisted management metadata for one logical resource.
 type Record struct {
 	Provider string `json:"provider"`
@@ -94,7 +127,13 @@ func validateRecords(records map[string]Record) error {
 		// coexist safely.
 		dupKey := rec.Provider + "\x00" + addr.Type + "\x00" + rec.RemoteID
 		if other, ok := seenRemote[dupKey]; ok {
-			return fmt.Errorf("duplicate identity %q for provider %q resource type %q on %s and %s", rec.RemoteID, rec.Provider, addr.Type, other, addr)
+			return &DuplicateIdentityError{
+				Provider:     rec.Provider,
+				ResourceType: addr.Type,
+				RemoteID:     rec.RemoteID,
+				Existing:     other,
+				Address:      addr,
+			}
 		}
 		seenRemote[dupKey] = addr.String()
 	}

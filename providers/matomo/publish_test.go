@@ -1,18 +1,22 @@
 package matomo_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/dziblo-music/agoraform/internal/apply"
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/resource"
+	"github.com/dziblo-music/agoraform/internal/state"
 	"github.com/dziblo-music/agoraform/providers/matomo"
 	"github.com/dziblo-music/agoraform/providers/matomo/client"
 )
@@ -199,6 +203,79 @@ func TestPublicationFailureReportsCreatedVersion(t *testing.T) {
 	}
 	if s.createCount() != 1 || s.publishCount() != 1 {
 		t.Fatalf("mutations: create=%d publish=%d, want 1/1", s.createCount(), s.publishCount())
+	}
+}
+
+func TestApplyPublicationFailureReportsPartialConvergence(t *testing.T) {
+	t.Parallel()
+
+	s := newFinalizeServer(t)
+	s.failPublish = true
+	p := newFinalizeProvider(t, s)
+	if err := p.Configure(resource.Attributes{"publish": true}); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+	st, err := state.New(filepath.Join(t.TempDir(), state.DefaultFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	_, err = apply.Run(context.Background(), nil, nil, st, &out, reg)
+	if err == nil {
+		t.Fatal("Run succeeded, want publication failure")
+	}
+	if !apply.IsPartial(err) {
+		t.Fatalf("publication failure after version create was not partial: %v", err)
+	}
+	if !strings.Contains(err.Error(), "publish") {
+		t.Fatalf("error = %q, want publish action", err)
+	}
+	if !strings.Contains(err.Error(), "were not rolled back") && !strings.Contains(err.Error(), "may already have changed") {
+		t.Fatalf("error = %q, want partial convergence guidance", err)
+	}
+	if !strings.Contains(out.String(), "version 10 created") {
+		t.Fatalf("created-version detail missing:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "Apply complete!") {
+		t.Fatalf("failed publication claimed apply complete:\n%s", out.String())
+	}
+	if strings.Contains(err.Error(), "test-secret-token") || strings.Contains(out.String(), "test-secret-token") {
+		t.Fatal("secret leaked in apply diagnostic")
+	}
+}
+
+func TestApplyPublicationCreateFailureIsNotPartial(t *testing.T) {
+	t.Parallel()
+
+	s := newFinalizeServer(t)
+	s.failCreate = true
+	p := newFinalizeProvider(t, s)
+	if err := p.Configure(resource.Attributes{"publish": true}); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+	st, err := state.New(filepath.Join(t.TempDir(), state.DefaultFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = apply.Run(context.Background(), nil, nil, st, &bytes.Buffer{}, reg)
+	if err == nil {
+		t.Fatal("Run succeeded, want version create failure")
+	}
+	if apply.IsPartial(err) {
+		t.Fatalf("version create failure classified as partial: %v", err)
+	}
+	if !strings.Contains(err.Error(), "create container version") {
+		t.Fatalf("error = %q, want create container version", err)
 	}
 }
 

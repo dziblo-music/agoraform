@@ -24,6 +24,7 @@ prints the SemVer identifier without the prefix (`0.1.0`).
 - Declarative Matomo Tag Manager publication through `providers.matomo.publish` and `providers.matomo.environment`
 - Provider-neutral plan/apply finalization hooks so provider-specific convergence can remain visible without adding provider-specific CLI commands
 - Capability-aware Matomo publication preflight and idempotent draft-versus-published comparison
+- Partial-apply diagnostics when a remote mutation succeeds but state persistence or provider finalization fails, including import or retry guidance without implying rollback
 
 ### Changed
 

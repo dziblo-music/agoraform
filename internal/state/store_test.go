@@ -2,6 +2,7 @@ package state
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -267,8 +268,13 @@ func TestBindRejectsEmptyAndConflictingIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	other := mustAddr(t, "fake.widget.other")
-	if err := st.Bind(other, resource.Identity{ID: "widget-1"}); err == nil {
+	err = st.Bind(other, resource.Identity{ID: "widget-1"})
+	if err == nil {
 		t.Fatal("duplicate identity should fail")
+	}
+	var conflict *DuplicateIdentityError
+	if !errors.As(err, &conflict) || conflict.RemoteID != "widget-1" {
+		t.Fatalf("error = %v, want DuplicateIdentityError for widget-1", err)
 	}
 }
 

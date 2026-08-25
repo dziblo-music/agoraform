@@ -23,6 +23,7 @@ type finalizingProvider struct {
 	finalized    bool
 	planned      provider.FinalizationPlan
 	finalDetails []string
+	finalChanged bool
 }
 
 func (p *finalizingProvider) Create(ctx context.Context, res resource.Resource) (resource.RemoteResource, error) {
@@ -49,13 +50,13 @@ func (p *finalizingProvider) Finalize(_ context.Context, planned provider.Finali
 	p.finalized = true
 	p.planned = planned
 	details := p.finalDetails
-	if len(details) == 0 {
+	if details == nil && p.finalizeErr == nil {
 		details = []string{"activated test"}
 	}
 	return provider.FinalizationResult{
 		Address: planned.Address,
 		Details: details,
-		Changed: p.finalizeErr == nil,
+		Changed: p.finalizeErr == nil || p.finalChanged,
 	}, p.finalizeErr
 }
 
@@ -132,6 +133,9 @@ func TestRunResourceFailurePreventsProviderFinalization(t *testing.T) {
 	if err == nil {
 		t.Fatal("Run succeeded, want create failure")
 	}
+	if apply.IsPartial(err) {
+		t.Fatalf("pre-mutation create failure classified as partial: %v", err)
+	}
 	if p.finalized {
 		t.Fatal("provider finalization ran after resource mutation failure")
 	}
@@ -152,6 +156,9 @@ func TestRunStateWriteFailurePreventsProviderFinalization(t *testing.T) {
 	if err == nil {
 		t.Fatal("Run succeeded, want state write failure")
 	}
+	if !apply.IsPartial(err) {
+		t.Fatalf("create persist failure was not partial: %v", err)
+	}
 	if p.finalized {
 		t.Fatal("provider finalization ran after state persistence failure")
 	}
@@ -165,6 +172,7 @@ func TestRunFinalizationFailurePreservesDetailsAndDoesNotClaimSuccess(t *testing
 		alwaysPlan:   true,
 		finalizeErr:  errors.New("activation rejected"),
 		finalDetails: []string{"prepared deployment"},
+		finalChanged: true,
 	}
 	reg := registerProvider(t, p)
 	st := newStateStore(t)
@@ -174,14 +182,46 @@ func TestRunFinalizationFailurePreservesDetailsAndDoesNotClaimSuccess(t *testing
 	if err == nil {
 		t.Fatal("Run succeeded, want finalization failure")
 	}
+	partial := requirePartial(t, err)
+	if partial.Stage != apply.StageFinalize || partial.ResourceChanges {
+		t.Fatalf("partial = %+v, want finalize without resource CRUD", partial)
+	}
 	if !strings.Contains(err.Error(), "fake.deployment.main") || !strings.Contains(err.Error(), "activate") {
 		t.Fatalf("error = %q, want finalization address/action", err)
+	}
+	if !strings.Contains(err.Error(), "Remote provider state may already have changed") {
+		t.Fatalf("error = %q, want partial remote mutation guidance", err)
 	}
 	if !strings.Contains(out.String(), "fake.deployment.main: prepared deployment") {
 		t.Fatalf("finalization detail missing:\n%s", out.String())
 	}
 	if strings.Contains(out.String(), "Apply complete!") {
 		t.Fatalf("failed finalization claimed apply complete:\n%s", out.String())
+	}
+}
+
+func TestRunFinalizationDetailsWithoutMutationAreNotPartial(t *testing.T) {
+	t.Parallel()
+
+	p := &finalizingProvider{
+		Provider:     fake.New(),
+		alwaysPlan:   true,
+		finalizeErr:  errors.New("activation rejected"),
+		finalDetails: []string{"validated deployment"},
+	}
+	reg := registerProvider(t, p)
+	st := newStateStore(t)
+	var out bytes.Buffer
+
+	_, err := apply.Run(context.Background(), nil, nil, st, &out, reg)
+	if err == nil {
+		t.Fatal("Run succeeded, want finalization failure")
+	}
+	if apply.IsPartial(err) {
+		t.Fatalf("non-mutating finalization failure classified as partial: %v", err)
+	}
+	if !strings.Contains(out.String(), "fake.deployment.main: validated deployment") {
+		t.Fatalf("finalization detail missing:\n%s", out.String())
 	}
 }
 

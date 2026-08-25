@@ -92,8 +92,9 @@ when that happens the provider reports `no publication required` rather than
 creating another version.
 
 If version creation succeeds but publication fails, apply prints the created
-version detail before returning the publication error. It does not print a
-successful `Apply complete` summary.
+version detail before returning a partial-convergence failure. Earlier resource
+changes remain applied. It does not print a successful `Apply complete`
+summary.
 
 ## Output
 
@@ -153,6 +154,51 @@ not attempted after a resource or required state-persistence failure.
 A provider finalization failure is returned as an apply failure. Earlier
 successful resource mutations are not rolled back; rollback and transactions
 are out of scope.
+
+Post-mutation failures are reported as partial convergence. That is distinct
+from a failure that happens before any remote mutation (validation, planning,
+or a provider create/update error). Incomplete apply still exits `1`.
+
+## Recovery
+
+Remote provider operations and local state writes are not a distributed
+transaction. When apply fails after a remote change, the remote object is left
+as-is and Agoraform does not delete or roll it back.
+
+### Create succeeded, state write failed
+
+The remote resource exists, but `agoraform.state.json` has no identity binding.
+Fix the state-file problem (permissions, disk, or a conflicting binding), then
+re-bind the provider-native identity:
+
+```text
+matomo.variable.user_id was created remotely with id 12, but its state binding could not be saved.
+Fix the state-file problem, then run:
+  agoraform import matomo.variable.user_id 12
+```
+
+If the write failed because that identity is already bound to another address,
+resolve the ownership conflict. Do not import the same identity onto a second
+address.
+
+A later plan that rediscovers the resource by mutable fields and reports it
+unchanged does **not** repair the missing binding.
+
+### Update succeeded, state write failed
+
+Updates are identity-bound. The previously persisted identity normally remains
+valid. Fix the state-file problem, then rerun `agoraform plan` and
+`agoraform apply`. Do not treat this as a missing identity that requires
+import.
+
+### Provider finalization failed after resource changes
+
+Earlier resource creates and updates remain applied. Provider progress details
+stay visible, including Matomo's `version N created` line when a container
+version was created before publish failed. Fix the provider error, then rerun
+`agoraform plan` and `agoraform apply`. Retrying apply does not roll back those
+resource changes, and Matomo publication remains idempotent when the converged
+draft is already published.
 
 ## Exit codes
 

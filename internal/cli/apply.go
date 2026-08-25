@@ -27,7 +27,9 @@ the plan run only after every resource mutation succeeds. Referenced
 resources receive provider-native identities at apply time; those identities
 are not written into the manifest. apply never deletes remote resources.
 Successful creates persist the provider-native identity returned by the
-provider in agoraform.state.json next to the manifest.
+provider in agoraform.state.json next to the manifest. If a remote mutation
+succeeds but a later state write or provider finalization fails, apply reports
+partial convergence and exits 1; it does not roll back the remote change.
 
 Exit codes:
   0  apply succeeded

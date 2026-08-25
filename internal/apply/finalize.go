@@ -191,10 +191,10 @@ func ExecuteFinalizations(ctx context.Context, providers ProviderSet, plans []pr
 		return 0, fmt.Errorf("apply: provider registry is required for finalization")
 	}
 	catalog := newProviderCatalog(nil, providers)
-	return executeCatalogFinalizations(ctx, catalog, plans, out)
+	return executeCatalogFinalizations(ctx, catalog, plans, out, false)
 }
 
-func executeCatalogFinalizations(ctx context.Context, catalog *providerCatalog, plans []provider.FinalizationPlan, out io.Writer) (int, error) {
+func executeCatalogFinalizations(ctx context.Context, catalog *providerCatalog, plans []provider.FinalizationPlan, out io.Writer, resourceChanges bool) (int, error) {
 	if len(plans) == 0 {
 		return 0, nil
 	}
@@ -209,17 +209,34 @@ func executeCatalogFinalizations(ctx context.Context, catalog *providerCatalog, 
 	}
 
 	completed := 0
+	remoteChanged := resourceChanges
 	for _, planned := range plans {
+		action := planned.Action
+		if action == "" {
+			action = "finalize"
+		}
+
 		registered, ok := catalog.Lookup(planned.Address.Provider)
 		if !ok {
-			return completed, fmt.Errorf("apply %s: provider %q is not registered", planned.Address, planned.Address.Provider)
+			err := fmt.Errorf("provider %q is not registered", planned.Address.Provider)
+			if remoteChanged {
+				return completed, finalizeError(planned.Address, action, nil, resourceChanges, err)
+			}
+			return completed, fmt.Errorf("apply %s: %s: %w", planned.Address, action, err)
 		}
 		finalizer, ok := registered.(provider.Finalizer)
 		if !ok {
-			return completed, fmt.Errorf("apply %s: provider %q does not support finalization", planned.Address, registered.Name())
+			err := fmt.Errorf("provider %q does not support finalization", registered.Name())
+			if remoteChanged {
+				return completed, finalizeError(planned.Address, action, nil, resourceChanges, err)
+			}
+			return completed, fmt.Errorf("apply %s: %s: %w", planned.Address, action, err)
 		}
 
 		result, err := finalizer.Finalize(ctx, planned)
+		if result.Changed {
+			remoteChanged = true
+		}
 		addr := result.Address
 		if addr.Provider == "" {
 			addr = planned.Address
@@ -228,9 +245,8 @@ func executeCatalogFinalizations(ctx context.Context, catalog *providerCatalog, 
 			fmt.Fprintf(out, "%s: %s\n", addr, detail)
 		}
 		if err != nil {
-			action := planned.Action
-			if action == "" {
-				action = "finalize"
+			if remoteChanged {
+				return completed, finalizeError(planned.Address, action, result.Details, resourceChanges, err)
 			}
 			return completed, fmt.Errorf("apply %s: %s: %w", planned.Address, action, err)
 		}
