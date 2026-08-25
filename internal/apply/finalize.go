@@ -11,50 +11,47 @@ import (
 	"github.com/dziblo-music/agoraform/internal/resource"
 )
 
-// ProviderSet exposes the provider registry operations required by provider
-// finalization planning and execution. *provider.Registry implements this
-// interface directly.
+// ProviderSet exposes the registry operations required to discover and execute
+// provider finalizations, including provider-only actions with no resource CRUD.
+// *provider.Registry implements this interface.
 type ProviderSet interface {
-	ProviderSource
+	LookupFor(addr resource.Address) (provider.Provider, error)
 	Lookup(name string) (provider.Provider, bool)
 	List() []provider.Provider
-}
-
-type providerLister interface {
-	List() []provider.Provider
-}
-
-type providerLookupByName interface {
-	Lookup(name string) (provider.Provider, bool)
 }
 
 type providerCatalog struct {
-	source ProviderSource
-	byName map[string]provider.Provider
+	lookup    Lookup
+	providers ProviderSet
+	byName    map[string]provider.Provider
 }
 
-func newProviderCatalog(source ProviderSource) *providerCatalog {
+func newProviderCatalog(lookup Lookup, providers ProviderSet) *providerCatalog {
 	catalog := &providerCatalog{
-		source: source,
-		byName: make(map[string]provider.Provider),
+		lookup:    lookup,
+		providers: providers,
+		byName:    make(map[string]provider.Provider),
 	}
 	catalog.refresh()
 	return catalog
 }
 
-func canEnumerateProviders(source ProviderSource) bool {
-	if source == nil {
-		return false
-	}
-	_, ok := source.(providerLister)
-	return ok
-}
-
 func (c *providerCatalog) LookupFor(addr resource.Address) (provider.Provider, error) {
-	if c == nil || c.source == nil {
+	if c == nil {
 		return nil, fmt.Errorf("provider lookup is required")
 	}
-	p, err := c.source.LookupFor(addr)
+
+	var (
+		p   provider.Provider
+		err error
+	)
+	if c.providers != nil {
+		p, err = c.providers.LookupFor(addr)
+	} else if c.lookup != nil {
+		p, err = c.lookup(addr)
+	} else {
+		return nil, fmt.Errorf("provider lookup is required")
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -69,8 +66,8 @@ func (c *providerCatalog) Lookup(name string) (provider.Provider, bool) {
 	if p, ok := c.byName[name]; ok {
 		return p, true
 	}
-	if lookup, ok := c.source.(providerLookupByName); ok {
-		p, found := lookup.Lookup(name)
+	if c.providers != nil {
+		p, found := c.providers.Lookup(name)
 		if found {
 			c.remember(p)
 		}
@@ -97,14 +94,10 @@ func (c *providerCatalog) List() []provider.Provider {
 }
 
 func (c *providerCatalog) refresh() {
-	if c == nil || c.source == nil {
+	if c == nil || c.providers == nil {
 		return
 	}
-	lister, ok := c.source.(providerLister)
-	if !ok {
-		return
-	}
-	for _, p := range lister.List() {
+	for _, p := range c.providers.List() {
 		c.remember(p)
 	}
 }
@@ -127,6 +120,33 @@ func AttachFinalizations(ctx context.Context, providers ProviderSet, p *plan.Pla
 		ctx = context.Background()
 	}
 
+	pending := pendingChanges(p)
+	for _, registered := range providers.List() {
+		if err := attachProviderFinalization(ctx, registered, pending, p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func attachCatalogFinalizations(ctx context.Context, catalog *providerCatalog, p *plan.Plan) error {
+	if p == nil || catalog == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	pending := pendingChanges(p)
+	for _, registered := range catalog.List() {
+		if err := attachProviderFinalization(ctx, registered, pending, p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func pendingChanges(p *plan.Plan) []provider.PendingChange {
 	pending := make([]provider.PendingChange, 0, len(p.Changes))
 	for _, change := range p.Changes {
 		if change.Action == plan.ActionUnchanged {
@@ -137,22 +157,23 @@ func AttachFinalizations(ctx context.Context, providers ProviderSet, p *plan.Pla
 			Action:  string(change.Action),
 		})
 	}
+	return pending
+}
 
-	for _, registered := range providers.List() {
-		if registered == nil {
-			continue
-		}
-		finalizer, ok := registered.(provider.Finalizer)
-		if !ok {
-			continue
-		}
-		planned, err := finalizer.PlanFinalization(ctx, pending)
-		if err != nil {
-			return fmt.Errorf("provider %q finalization plan: %w", registered.Name(), err)
-		}
-		if planned != nil {
-			p.Finalizations = append(p.Finalizations, *planned)
-		}
+func attachProviderFinalization(ctx context.Context, registered provider.Provider, pending []provider.PendingChange, p *plan.Plan) error {
+	if registered == nil {
+		return nil
+	}
+	finalizer, ok := registered.(provider.Finalizer)
+	if !ok {
+		return nil
+	}
+	planned, err := finalizer.PlanFinalization(ctx, pending)
+	if err != nil {
+		return fmt.Errorf("provider %q finalization plan: %w", registered.Name(), err)
+	}
+	if planned != nil {
+		p.Finalizations = append(p.Finalizations, *planned)
 	}
 	return nil
 }
@@ -166,19 +187,30 @@ func ExecuteFinalizations(ctx context.Context, providers ProviderSet, plans []pr
 	if len(plans) == 0 {
 		return 0, nil
 	}
+	if providers == nil {
+		return 0, fmt.Errorf("apply: provider registry is required for finalization")
+	}
+	catalog := newProviderCatalog(nil, providers)
+	return executeCatalogFinalizations(ctx, catalog, plans, out)
+}
+
+func executeCatalogFinalizations(ctx context.Context, catalog *providerCatalog, plans []provider.FinalizationPlan, out io.Writer) (int, error) {
+	if len(plans) == 0 {
+		return 0, nil
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if out == nil {
 		out = io.Discard
 	}
-	if providers == nil {
-		return 0, fmt.Errorf("apply: provider registry is required for finalization")
+	if catalog == nil {
+		return 0, fmt.Errorf("apply: provider catalog is required for finalization")
 	}
 
 	completed := 0
 	for _, planned := range plans {
-		registered, ok := providers.Lookup(planned.Address.Provider)
+		registered, ok := catalog.Lookup(planned.Address.Provider)
 		if !ok {
 			return completed, fmt.Errorf("apply %s: provider %q is not registered", planned.Address, planned.Address.Provider)
 		}
