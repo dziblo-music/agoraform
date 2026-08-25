@@ -226,7 +226,8 @@ mutable Trigger fields.
 
 Because Matomo's `TagManager.updateContainerTrigger` endpoint writes a
 complete trigger record, Agoraform re-reads the trigger immediately
-before an update and carries forward unmanaged values such as conditions.
+before an update and carries forward unmanaged `description` and
+`conditions`, preventing Matomo's empty defaults from erasing those values.
 
 A missing unbound remote trigger plans as a create. A changed `event` or
 `name` plans as an update. Existing v0.1.0 goal-only manifests remain
