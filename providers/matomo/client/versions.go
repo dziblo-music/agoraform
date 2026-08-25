@@ -9,8 +9,11 @@ import (
 	"strings"
 )
 
-// Environment is a Tag Manager publish target as returned by
-// TagManager.getAvailableEnvironments.
+// DefaultEnvironment is the initial v0.2 Tag Manager publish target when the
+// manifest does not specify one.
+const DefaultEnvironment = "live"
+
+// Environment is a Tag Manager publish target as returned by Tag Manager.
 type Environment struct {
 	ID   string
 	Name string
@@ -21,8 +24,7 @@ type rawEnvironment struct {
 	Name flexibleString `json:"name"`
 }
 
-// GetAvailableEnvironments lists Tag Manager environments that can receive
-// a published container version.
+// GetAvailableEnvironments lists Tag Manager environments.
 func (t *TagManager) GetAvailableEnvironments(ctx context.Context) ([]Environment, error) {
 	if t == nil || t.c == nil {
 		return nil, fmt.Errorf("matomo: tag manager client is nil")
@@ -34,6 +36,24 @@ func (t *TagManager) GetAvailableEnvironments(ctx context.Context) ([]Environmen
 	envs, err := decodeEnvironments(raw)
 	if err != nil {
 		return nil, malformedResponseError("TagManager.getAvailableEnvironments", 0)
+	}
+	return envs, nil
+}
+
+// GetAvailableEnvironmentsWithPublishCapability lists only environments that
+// the current credentials may publish to for the configured site. This is a
+// non-mutating preflight used before container version creation.
+func (t *TagManager) GetAvailableEnvironmentsWithPublishCapability(ctx context.Context) ([]Environment, error) {
+	if t == nil || t.c == nil {
+		return nil, fmt.Errorf("matomo: tag manager client is nil")
+	}
+	raw, err := t.c.Call(ctx, "TagManager.getAvailableEnvironmentsWithPublishCapability", t.c.withSiteID(nil))
+	if err != nil {
+		return nil, err
+	}
+	envs, err := decodeEnvironments(raw)
+	if err != nil {
+		return nil, malformedResponseError("TagManager.getAvailableEnvironmentsWithPublishCapability", 0)
 	}
 	return envs, nil
 }
@@ -86,8 +106,6 @@ func (t *TagManager) PublishContainerVersion(ctx context.Context, idContainerVer
 		return err
 	}
 	if _, err := decodeVersionID(raw, "TagManager.publishContainerVersion"); err != nil {
-		// Matomo typically returns the release id. A JSON null is also
-		// treated as success when the HTTP call itself succeeded.
 		if isEmptyJSON(raw) {
 			return nil
 		}
@@ -102,7 +120,7 @@ func decodeEnvironments(raw json.RawMessage) ([]Environment, error) {
 		return nil, nil
 	}
 	if raw[0] != '[' {
-		return nil, fmt.Errorf("unexpected TagManager.getAvailableEnvironments payload")
+		return nil, fmt.Errorf("unexpected Tag Manager environments payload")
 	}
 	var items []rawEnvironment
 	if err := json.Unmarshal(raw, &items); err != nil {

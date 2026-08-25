@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"sort"
+	"strings"
 
 	"github.com/dziblo-music/agoraform/providers/matomo/client"
 )
@@ -12,7 +13,8 @@ import (
 //
 // Provider-native ids, version numbers, and dates are omitted so a draft
 // that was snapshotted into a published version compares equal. Trigger
-// references on tags are compared by trigger name, not numeric id.
+// references on tags are compared by trigger name, not numeric id. Tag status
+// is retained because paused vs active changes runtime behavior.
 func fingerprintContainer(vars []client.Variable, triggers []client.Trigger, tags []client.Tag) (string, error) {
 	triggerName := make(map[string]string, len(triggers))
 	for _, tr := range triggers {
@@ -71,6 +73,7 @@ func fingerprintContainer(vars []client.Variable, triggers []client.Trigger, tag
 		fp.Tags = append(fp.Tags, tagFingerprint{
 			Type:          tag.Type,
 			Name:          tag.Name,
+			Status:        normalizeTagStatus(tag.Status),
 			Description:   tag.Description,
 			FireLimit:     tag.FireLimit,
 			FireDelay:     tag.FireDelay,
@@ -113,6 +116,7 @@ type triggerFingerprint struct {
 type tagFingerprint struct {
 	Type          string         `json:"type"`
 	Name          string         `json:"name"`
+	Status        string         `json:"status"`
 	Description   string         `json:"description"`
 	FireLimit     string         `json:"fireLimit"`
 	FireDelay     string         `json:"fireDelay"`
@@ -122,6 +126,14 @@ type tagFingerprint struct {
 	FireTriggers  []string       `json:"fireTriggers"`
 	BlockTriggers []string       `json:"blockTriggers"`
 	Parameters    map[string]any `json:"parameters"`
+}
+
+func normalizeTagStatus(status string) string {
+	status = strings.ToLower(strings.TrimSpace(status))
+	if status == "" {
+		return "active"
+	}
+	return status
 }
 
 func fingerprintKey(typ, name string) string {

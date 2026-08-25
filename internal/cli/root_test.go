@@ -21,7 +21,7 @@ func TestRootHelp(t *testing.T) {
 	}
 
 	out := stdout.String()
-	for _, want := range []string{"agoraform", "validate", "plan", "apply", "import", "publish"} {
+	for _, want := range []string{"agoraform", "validate", "plan", "apply", "import"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("help output missing %q:\n%s", want, out)
 		}

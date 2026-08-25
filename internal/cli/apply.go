@@ -5,6 +5,7 @@ import (
 
 	"github.com/dziblo-music/agoraform/internal/apply"
 	"github.com/dziblo-music/agoraform/internal/manifest"
+	"github.com/dziblo-music/agoraform/internal/plan"
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/resource"
 	"github.com/dziblo-music/agoraform/internal/state"
@@ -17,20 +18,18 @@ func newApplyCommand(reg *provider.Registry) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "apply [file]",
 		Short: "Apply reviewed changes through provider APIs",
-		Long: `Read live resources, plan the required create and update actions, and
-apply them through registered providers.
+		Long: `Read live resources, plan the required actions, and apply them
+through registered providers.
 
-apply loads and validates the manifest, including the resource
-dependency graph, and local identity state before any mutation. Creates
-and updates run sequentially in prerequisite-first order. Referenced
-resources receive provider-native identities at apply time; those
-identities are not written into the manifest. apply reuses the same plan
-engine as the plan command and never deletes remote resources. Tag
-Manager create and update operations write the container draft only;
-apply never publishes a container version. Use agoraform publish for
-that explicit step. Successful creates persist the provider-native
-identity returned by the provider in agoraform.state.json next to the
-manifest.
+apply loads and validates the manifest, including provider-specific
+non-secret desired state, the resource dependency graph, and local identity
+state before any mutation. Creates and updates run sequentially in
+prerequisite-first order. Provider finalization actions that were visible in
+the plan run only after every resource mutation succeeds. Referenced
+resources receive provider-native identities at apply time; those identities
+are not written into the manifest. apply never deletes remote resources.
+Successful creates persist the provider-native identity returned by the
+provider in agoraform.state.json next to the manifest.
 
 Exit codes:
   0  apply succeeded
@@ -66,10 +65,31 @@ The default manifest path is agoraform.yaml.`,
 				return err
 			}
 
-			_, err = apply.Run(cmd.Context(), m.Resources, func(addr resource.Address) (provider.Provider, error) {
+			planned, err := plan.BuildWithState(cmd.Context(), m.Resources, func(addr resource.Address) (provider.Reader, error) {
 				return reg.LookupFor(addr)
-			}, st, cmd.OutOrStdout())
-			return err
+			}, st)
+			if err != nil {
+				return err
+			}
+			if err := attachFinalizations(cmd.Context(), reg, planned); err != nil {
+				return err
+			}
+
+			out := cmd.OutOrStdout()
+			result, err := apply.Execute(cmd.Context(), planned, m.Resources, func(addr resource.Address) (provider.Provider, error) {
+				return reg.LookupFor(addr)
+			}, st, out)
+			if err != nil {
+				return err
+			}
+			if err := executeFinalizations(cmd.Context(), reg, planned.Finalizations, out); err != nil {
+				return err
+			}
+			if result.Created+result.Updated > 0 || len(planned.Finalizations) > 0 {
+				fmt.Fprintln(out)
+			}
+			fmt.Fprint(out, apply.Format(result))
+			return nil
 		},
 	}
 

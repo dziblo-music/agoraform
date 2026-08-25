@@ -3,16 +3,18 @@ package manifest
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/dziblo-music/agoraform/internal/provider"
 )
 
-// CheckProviders validates desired resources against a provider registry.
+// CheckProviders validates provider configuration and desired resources against
+// a provider registry.
 //
 // When reg is nil or empty, provider and type checks are skipped because the
 // registry cannot determine known providers. When providers are registered,
-// unknown providers, unknown resource types, ConnectionChecker failures, and
-// provider Validate failures are reported with the resource address.
+// unknown providers, unsupported provider configuration, ConnectionChecker
+// failures, unknown resource types, and provider Validate failures are reported.
 func CheckProviders(ctx context.Context, m *Manifest, reg *provider.Registry) error {
 	if m == nil {
 		return fmt.Errorf("manifest is nil")
@@ -30,6 +32,32 @@ func CheckProviders(ctx context.Context, m *Manifest, reg *provider.Registry) er
 	}
 
 	checked := make(map[string]struct{})
+	providerNames := make([]string, 0, len(m.Providers))
+	for name := range m.Providers {
+		providerNames = append(providerNames, name)
+	}
+	sort.Strings(providerNames)
+
+	for _, name := range providerNames {
+		p, ok := reg.Lookup(name)
+		if !ok {
+			return fmt.Errorf("%s: providers.%s: unknown provider %q", origin, name, name)
+		}
+		cfg, ok := p.(provider.Configurator)
+		if !ok {
+			return fmt.Errorf("%s: providers.%s: provider %q does not support manifest configuration", origin, name, name)
+		}
+		if err := cfg.Configure(m.Providers[name].Clone()); err != nil {
+			return fmt.Errorf("%s: providers.%s: %w", origin, name, err)
+		}
+		if c, ok := p.(provider.ConnectionChecker); ok {
+			if err := c.CheckConnection(ctx); err != nil {
+				return fmt.Errorf("%s: providers.%s: provider %q: %w", origin, name, p.Name(), err)
+			}
+		}
+		checked[p.Name()] = struct{}{}
+	}
+
 	for i, res := range m.Resources {
 		path := fmt.Sprintf("resources[%d]", i)
 		p, err := reg.LookupFor(res.Address)

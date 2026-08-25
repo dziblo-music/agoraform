@@ -7,342 +7,260 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/dziblo-music/agoraform/internal/provider"
+	"github.com/dziblo-music/agoraform/internal/resource"
 	"github.com/dziblo-music/agoraform/providers/matomo"
 	"github.com/dziblo-music/agoraform/providers/matomo/client"
 )
 
-func TestPublishContainerCreatesAndPublishesVersion(t *testing.T) {
+func TestPublicationIsDeclarativeProviderFinalization(t *testing.T) {
 	t.Parallel()
 
-	srv := newPublishServer(t)
-	p := publishProvider(t, srv, "")
+	s := newFinalizeServer(t)
+	p := newFinalizeProvider(t, s)
+	if err := p.Configure(resource.Attributes{"publish": true, "environment": "live"}); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
 
-	result, err := p.PublishContainer(context.Background())
+	planned, err := p.PlanFinalization(context.Background(), []provider.PendingChange{{
+		Address: resource.Address{Provider: matomo.Name, Type: matomo.TypeTag, Name: "trial_started"},
+		Action:  "update",
+	}})
 	if err != nil {
-		t.Fatalf("PublishContainer: %v", err)
+		t.Fatalf("PlanFinalization: %v", err)
 	}
-	if !result.Created || result.Address != matomo.ContainerAddress {
-		t.Fatalf("result = %+v, want created %s", result, matomo.ContainerAddress)
+	if planned == nil || planned.Action != "publish" || planned.Target != "live" {
+		t.Fatalf("planned = %+v, want publish -> live", planned)
 	}
-	if !srv.called("TagManager.createContainerVersion") || !srv.called("TagManager.publishContainerVersion") {
-		t.Fatalf("methods = %v, want create and publish", srv.methods())
+
+	result, err := p.Finalize(context.Background(), *planned)
+	if err != nil {
+		t.Fatalf("Finalize: %v", err)
 	}
-	if srv.lastPublishEnvironment() != client.DefaultEnvironment {
-		t.Fatalf("environment = %q", srv.lastPublishEnvironment())
+	if !result.Changed {
+		t.Fatalf("result = %+v, want changed", result)
+	}
+	if s.createCount() != 1 || s.publishCount() != 1 {
+		t.Fatalf("mutations: create=%d publish=%d, want 1/1", s.createCount(), s.publishCount())
+	}
+
+	replanned, err := p.PlanFinalization(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("second PlanFinalization: %v", err)
+	}
+	if replanned != nil {
+		t.Fatalf("second plan = %+v, want no finalization", replanned)
 	}
 }
 
-func TestPublishContainerNoopWhenAlreadyPublished(t *testing.T) {
+func TestPublicationDisabledDoesNotPlan(t *testing.T) {
 	t.Parallel()
 
-	srv := newPublishServer(t)
-	p := publishProvider(t, srv, "")
-	if _, err := p.PublishContainer(context.Background()); err != nil {
-		t.Fatalf("first publish: %v", err)
+	p := matomo.New(client.Config{})
+	if err := p.Configure(resource.Attributes{"publish": false}); err != nil {
+		t.Fatalf("Configure: %v", err)
 	}
-	srv.resetMutations()
-
-	result, err := p.PublishContainer(context.Background())
+	planned, err := p.PlanFinalization(context.Background(), []provider.PendingChange{{
+		Address: resource.Address{Provider: matomo.Name, Type: matomo.TypeTag, Name: "trial_started"},
+		Action:  "update",
+	}})
 	if err != nil {
-		t.Fatalf("second publish: %v", err)
+		t.Fatalf("PlanFinalization: %v", err)
 	}
-	if result.Created {
-		t.Fatal("expected no-op publish")
-	}
-	if srv.called("TagManager.createContainerVersion") || srv.called("TagManager.publishContainerVersion") {
-		t.Fatalf("no-op created a duplicate version: %v", srv.methods())
+	if planned != nil {
+		t.Fatalf("planned = %+v, want nil", planned)
 	}
 }
 
-func TestPublishContainerMissingConfiguration(t *testing.T) {
+func TestPublicationCapabilityFailurePreventsMutation(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	s := newFinalizeServer(t)
+	s.publishable = []string{"dev"}
+	p := newFinalizeProvider(t, s)
+	if err := p.Configure(resource.Attributes{"publish": true, "environment": "live"}); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+
+	planned := provider.FinalizationPlan{
+		Address: resource.Address{Provider: matomo.Name, Type: "container", Name: "main"},
+		Action:  "publish",
+		Target:  "live",
+	}
+	_, err := p.Finalize(context.Background(), planned)
+	if err == nil || !strings.Contains(err.Error(), "cannot publish") {
+		t.Fatalf("Finalize = %v, want capability error", err)
+	}
+	if s.createCount() != 0 || s.publishCount() != 0 {
+		t.Fatalf("capability failure mutated: create=%d publish=%d", s.createCount(), s.publishCount())
+	}
+}
+
+func TestPublicationFailureReportsCreatedVersion(t *testing.T) {
+	t.Parallel()
+
+	s := newFinalizeServer(t)
+	s.failPublish = true
+	p := newFinalizeProvider(t, s)
+	if err := p.Configure(resource.Attributes{"publish": true}); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	planned := provider.FinalizationPlan{
+		Address: resource.Address{Provider: matomo.Name, Type: "container", Name: "main"},
+		Action:  "publish",
+		Target:  "live",
+	}
+	result, err := p.Finalize(context.Background(), planned)
+	if err == nil || !strings.Contains(err.Error(), "publish container version") {
+		t.Fatalf("Finalize = %v, want publish failure", err)
+	}
+	if len(result.Details) == 0 || !strings.Contains(result.Details[0], "version 10 created") {
+		t.Fatalf("result details = %v, want created version detail", result.Details)
+	}
+	if strings.Contains(err.Error(), "test-secret-token") {
+		t.Fatalf("secret leaked in error %q", err.Error())
+	}
+	if s.createCount() != 1 || s.publishCount() != 1 {
+		t.Fatalf("mutations: create=%d publish=%d, want 1/1", s.createCount(), s.publishCount())
+	}
+}
+
+func TestConfigurePublicationValidation(t *testing.T) {
+	t.Parallel()
+
+	p := matomo.New(client.Config{})
+	for _, tc := range []struct {
 		name string
-		cfg  client.Config
-		want string
+		cfg  resource.Attributes
 	}{
-		{name: "url", cfg: client.Config{TokenAuth: "tok", SiteID: "3", ContainerID: "6OMh6taM"}, want: matomo.EnvURL},
-		{name: "token", cfg: client.Config{BaseURL: "https://matomo.example.com", SiteID: "3", ContainerID: "6OMh6taM"}, want: matomo.EnvTokenAuth},
-		{name: "site", cfg: client.Config{BaseURL: "https://matomo.example.com", TokenAuth: "tok", ContainerID: "6OMh6taM"}, want: matomo.EnvSiteID},
-		{name: "container", cfg: client.Config{BaseURL: "https://matomo.example.com", TokenAuth: "tok", SiteID: "3"}, want: matomo.EnvContainerID},
-	}
-	for _, tc := range cases {
-		tc := tc
+		{name: "publish type", cfg: resource.Attributes{"publish": "yes"}},
+		{name: "environment type", cfg: resource.Attributes{"environment": true}},
+		{name: "empty environment", cfg: resource.Attributes{"environment": "  "}},
+		{name: "unknown", cfg: resource.Attributes{"autoPublish": true}},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			p := matomo.New(tc.cfg)
-			_, err := p.PublishContainer(context.Background())
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("PublishContainer = %v, want %s", err, tc.want)
-			}
-			assertNoProviderSecret(t, err.Error())
-			if strings.Contains(err.Error(), "tok") {
-				t.Fatalf("secret leaked in %q", err.Error())
+			if err := p.Configure(tc.cfg); err == nil {
+				t.Fatalf("Configure(%v) succeeded, want error", tc.cfg)
 			}
 		})
 	}
 }
 
-func TestPublishContainerInvalidEnvironment(t *testing.T) {
-	t.Parallel()
-
-	srv := newPublishServer(t)
-	p := publishProvider(t, srv, "nope")
-	_, err := p.PublishContainer(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "nope") {
-		t.Fatalf("PublishContainer = %v, want invalid environment", err)
-	}
-	if srv.called("TagManager.createContainerVersion") || srv.called("TagManager.publishContainerVersion") {
-		t.Fatalf("invalid environment attempted publication: %v", srv.methods())
-	}
+type finalizeServer struct {
+	mu          sync.Mutex
+	server      *httptest.Server
+	publishable []string
+	liveVersion string
+	creates     int
+	publishes   int
+	failPublish bool
 }
 
-func TestPublishContainerVersionCreationFailure(t *testing.T) {
-	t.Parallel()
-
-	srv := newPublishServer(t)
-	srv.failCreate = `{"result":"error","message":"cannot create version ` + providerToken + `"}`
-	p := publishProvider(t, srv, "")
-	_, err := p.PublishContainer(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "create container version") {
-		t.Fatalf("PublishContainer = %v, want version creation error", err)
-	}
-	assertNoProviderSecret(t, err.Error())
-	if srv.called("TagManager.publishContainerVersion") {
-		t.Fatal("publish called after version creation failed")
-	}
-}
-
-func TestPublishContainerPublicationFailure(t *testing.T) {
-	t.Parallel()
-
-	srv := newPublishServer(t)
-	srv.failPublish = `{"result":"error","message":"cannot publish ` + providerToken + `"}`
-	p := publishProvider(t, srv, "")
-	_, err := p.PublishContainer(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "publish container version") {
-		t.Fatalf("PublishContainer = %v, want publication error", err)
-	}
-	assertNoProviderSecret(t, err.Error())
-	if !srv.called("TagManager.createContainerVersion") {
-		t.Fatal("expected version creation before publication failure")
-	}
-}
-
-func TestPublishContainerMalformedEnvironments(t *testing.T) {
-	t.Parallel()
-
-	srv := newPublishServer(t)
-	srv.failEnvironments = `"oops ` + providerToken + `"`
-	p := publishProvider(t, srv, "")
-	_, err := p.PublishContainer(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "malformed") {
-		t.Fatalf("PublishContainer = %v, want malformed environments", err)
-	}
-	assertNoProviderSecret(t, err.Error())
-	if srv.called("TagManager.createContainerVersion") {
-		t.Fatal("malformed environments attempted publication")
-	}
-}
-
-func TestPublishContainerUsesConfiguredEnvironment(t *testing.T) {
-	t.Parallel()
-
-	srv := newPublishServer(t)
-	p := publishProvider(t, srv, "dev")
-	if _, err := p.PublishContainer(context.Background()); err != nil {
-		t.Fatalf("PublishContainer: %v", err)
-	}
-	if srv.lastPublishEnvironment() != "dev" {
-		t.Fatalf("environment = %q, want dev", srv.lastPublishEnvironment())
-	}
-}
-
-func publishProvider(t *testing.T, srv *publishServer, environment string) *matomo.Provider {
+func newFinalizeServer(t *testing.T) *finalizeServer {
 	t.Helper()
-	httpSrv := httptest.NewServer(srv)
-	t.Cleanup(httpSrv.Close)
-	srv.server = httpSrv
-	return matomo.NewWithHTTPClient(client.Config{
-		BaseURL:     httpSrv.URL,
-		TokenAuth:   providerToken,
-		SiteID:      "3",
-		ContainerID: "6OMh6taM",
-		Environment: environment,
-		HTTPClient:  httpSrv.Client(),
-	}, httpSrv.Client())
-}
-
-type publishEntity struct {
-	ID   string
-	Name string
-	Type string
-	Key  string
-}
-
-type publishServer struct {
-	mu               sync.Mutex
-	draftVersion     string
-	nextVersion      int
-	liveVersion      string
-	entities         map[string][]publishEntity // version -> variables
-	calls            []string
-	createCount      int
-	publishCount     int
-	publishEnv       string
-	failCreate       string
-	failPublish      string
-	failEnvironments string
-	server           *httptest.Server
-}
-
-func newPublishServer(t *testing.T) *publishServer {
-	t.Helper()
-	s := &publishServer{
-		draftVersion: "9",
-		nextVersion:  10,
-		entities:     map[string][]publishEntity{},
-	}
-	s.entities["9"] = []publishEntity{{ID: "2", Name: "userId", Type: "DataLayer", Key: "userId"}}
+	s := &finalizeServer{publishable: []string{"live", "dev"}}
+	s.server = httptest.NewServer(s)
+	t.Cleanup(s.server.Close)
 	return s
 }
 
-func (s *publishServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func newFinalizeProvider(t *testing.T, s *finalizeServer) *matomo.Provider {
+	t.Helper()
+	return matomo.NewWithHTTPClient(client.Config{
+		BaseURL:     s.server.URL,
+		TokenAuth:   "test-secret-token",
+		SiteID:      "3",
+		ContainerID: "6OMh6taM",
+		HTTPClient:  s.server.Client(),
+	}, s.server.Client())
+}
+
+func (s *finalizeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
 	vals, _ := url.ParseQuery(string(body))
-	method := vals.Get("method")
-	s.mu.Lock()
-	s.calls = append(s.calls, method)
-	s.mu.Unlock()
-
-	switch method {
+	switch vals.Get("method") {
 	case "API.getMatomoVersion":
 		_, _ = io.WriteString(w, `"5.2.0"`)
+	case "TagManager.getAvailableEnvironmentsWithPublishCapability":
+		s.mu.Lock()
+		ids := append([]string(nil), s.publishable...)
+		s.mu.Unlock()
+		writeEnvironments(w, ids)
 	case "TagManager.getAvailableEnvironments":
-		if s.failEnvironments != "" {
-			_, _ = io.WriteString(w, s.failEnvironments)
-			return
-		}
-		_, _ = io.WriteString(w, `[{"id":"live","name":"Live"},{"id":"dev","name":"Dev"}]`)
+		writeEnvironments(w, []string{"live", "dev"})
 	case "TagManager.getContainer":
-		s.writeContainer(w)
+		s.mu.Lock()
+		live := s.liveVersion
+		s.mu.Unlock()
+		out := map[string]any{
+			"idcontainer": "6OMh6taM",
+			"idsite":      3,
+			"name":        "Website",
+			"draft":       map[string]any{"idcontainerversion": 9},
+			"releases":    []any{},
+		}
+		if live != "" {
+			out["releases"] = []any{map[string]any{"idcontainerversion": live, "environment": "live"}}
+		}
+		_ = json.NewEncoder(w).Encode(out)
 	case "TagManager.getContainerVariables":
-		s.writeVariables(w, vals.Get("idContainerVersion"))
+		version := vals.Get("idContainerVersion")
+		id := "2"
+		if version != "9" {
+			id = "102"
+		}
+		_ = json.NewEncoder(w).Encode([]map[string]any{{
+			"idvariable":         id,
+			"idcontainerversion": version,
+			"type":               "DataLayer",
+			"name":               "userId",
+			"parameters":         map[string]any{"dataLayerName": "userId"},
+		}})
 	case "TagManager.getContainerTriggers", "TagManager.getContainerTags":
 		_, _ = io.WriteString(w, `[]`)
 	case "TagManager.createContainerVersion":
-		s.createVersion(w)
+		s.mu.Lock()
+		s.creates++
+		s.mu.Unlock()
+		_, _ = io.WriteString(w, `10`)
 	case "TagManager.publishContainerVersion":
-		s.publishVersion(w, vals)
+		s.mu.Lock()
+		s.publishes++
+		fail := s.failPublish
+		if !fail {
+			s.liveVersion = vals.Get("idContainerVersion")
+		}
+		s.mu.Unlock()
+		if fail {
+			_, _ = io.WriteString(w, `{"result":"error","message":"cannot publish test-secret-token"}`)
+			return
+		}
+		_, _ = io.WriteString(w, `1`)
 	default:
-		_, _ = io.WriteString(w, `{"result":"error","message":"unknown method"}`)
+		_, _ = io.WriteString(w, `{"result":"error","message":"unexpected method"}`)
 	}
 }
 
-func (s *publishServer) writeContainer(w http.ResponseWriter) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := map[string]any{
-		"idcontainer": "6OMh6taM",
-		"idsite":      3,
-		"name":        "Website",
-		"draft":       map[string]any{"idcontainerversion": s.draftVersion},
-		"releases":    []any{},
-	}
-	if s.liveVersion != "" {
-		out["releases"] = []any{
-			map[string]any{"idcontainerversion": s.liveVersion, "environment": "live"},
-			map[string]any{"idcontainerversion": s.liveVersion, "environment": "dev"},
-		}
+func writeEnvironments(w http.ResponseWriter, ids []string) {
+	out := make([]map[string]any, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, map[string]any{"id": id, "name": strings.ToUpper(id)})
 	}
 	_ = json.NewEncoder(w).Encode(out)
 }
 
-func (s *publishServer) writeVariables(w http.ResponseWriter, version string) {
+func (s *finalizeServer) createCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	entities := s.entities[version]
-	out := make([]map[string]any, 0, len(entities))
-	for _, e := range entities {
-		out = append(out, map[string]any{
-			"idvariable":         e.ID,
-			"idcontainerversion": version,
-			"type":               e.Type,
-			"name":               e.Name,
-			"status":             "active",
-			"parameters":         map[string]any{"dataLayerName": e.Key},
-		})
-	}
-	_ = json.NewEncoder(w).Encode(out)
+	return s.creates
 }
 
-func (s *publishServer) createVersion(w http.ResponseWriter) {
+func (s *finalizeServer) publishCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.createCount++
-	if s.failCreate != "" {
-		_, _ = io.WriteString(w, s.failCreate)
-		return
-	}
-	id := strconv.Itoa(s.nextVersion)
-	s.nextVersion++
-	copied := make([]publishEntity, 0, len(s.entities[s.draftVersion]))
-	for i, e := range s.entities[s.draftVersion] {
-		e.ID = strconv.Itoa(100 + i)
-		copied = append(copied, e)
-	}
-	s.entities[id] = copied
-	_, _ = io.WriteString(w, id)
-}
-
-func (s *publishServer) publishVersion(w http.ResponseWriter, vals url.Values) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.publishCount++
-	s.publishEnv = vals.Get("environment")
-	if s.failPublish != "" {
-		_, _ = io.WriteString(w, s.failPublish)
-		return
-	}
-	s.liveVersion = vals.Get("idContainerVersion")
-	_, _ = io.WriteString(w, `1`)
-}
-
-func (s *publishServer) called(method string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, m := range s.calls {
-		if m == method {
-			return true
-		}
-	}
-	return false
-}
-
-func (s *publishServer) methods() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := make([]string, len(s.calls))
-	copy(out, s.calls)
-	return out
-}
-
-func (s *publishServer) lastPublishEnvironment() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.publishEnv
-}
-
-func (s *publishServer) resetMutations() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.calls = nil
-	s.createCount = 0
-	s.publishCount = 0
+	return s.publishes
 }

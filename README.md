@@ -7,28 +7,25 @@ shows a non-mutating plan, applies creates and updates, and imports existing
 goals into local management.
 
 ```text
-validate -> plan -> apply -> publish -> plan
+validate -> plan -> apply -> plan
 ```
 
-The last `plan` in that sequence reports no changes when the remote
-resources and local state are unchanged. `publish` is required to move an
-already-applied Tag Manager draft into a published environment; `apply`
-never publishes automatically.
+The last `plan` in that sequence reports no changes when the remote goal and
+local state are unchanged.
 
 ## 0.1.0 status
 
 | Included | Not included |
 | --- | --- |
-| `validate`, `plan`, `apply`, `import`, `publish` | Google Ads, Meta Ads |
-| `matomo.goal`, `matomo.variable`, `matomo.trigger`, and `matomo.tag` | Automatic Tag Manager publication as a side effect of `apply` |
+| `validate`, `plan`, `apply`, `import` | Google Ads, Meta Ads |
+| `matomo.goal`, `matomo.variable`, `matomo.trigger`, and `matomo.tag` | Matomo Tag Manager versions or publish |
 | Local `agoraform.state.json` | Remote state, workspaces, locking, encryption |
 | Create and update | Destroy / delete of remote objects |
 | Environment-variable Matomo auth | Credentials in manifests |
 | Reviewable `plan` before `apply` | Budget safeguards, approval prompts, automatic rollback |
 
-Later work may add other providers. Tag Manager container rollback,
-scheduled publishing, and additional environments beyond the single
-configured v0.2 target are out of scope.
+Later work may add other providers and remaining Tag Manager publishing.
+Container versions are not implemented yet.
 
 Agoraform is licensed under the [Apache License 2.0](LICENSE).
 
@@ -136,11 +133,10 @@ You need a Matomo site you are allowed to change, plus:
 MATOMO_URL            Matomo base URL, for example https://matomo.example.com
 MATOMO_TOKEN_AUTH     API token
 MATOMO_SITE_ID        numeric site id
-MATOMO_CONTAINER_ID   Tag Manager container id (required for matomo.variable, matomo.trigger, matomo.tag, and publish)
-MATOMO_ENVIRONMENT    Tag Manager publish target (optional, default live)
+MATOMO_CONTAINER_ID   Tag Manager container id (required for matomo.variable, matomo.trigger, and matomo.tag)
 ```
 
-`validate`, `plan`, `apply`, `import`, and `publish` call Matomo. They fail without
+`validate`, `plan`, `apply`, and `import` call Matomo. They fail without
 those variables and a reachable instance. Credentials never belong in YAML.
 
 From an extracted release archive or a source checkout, copy the included
@@ -163,8 +159,6 @@ agoraform validate
 agoraform plan      # expect a create; exit code 2 when changes exist
 agoraform apply
 agoraform plan      # no changes; exit code 0
-agoraform publish   # required for Tag Manager; no-op when already published
-agoraform plan      # still no changes
 ```
 
 The example declares one `matomo.goal`:
@@ -208,24 +202,19 @@ agoraform plan -f path/to/manifest.yaml
 agoraform apply
 agoraform apply -f path/to/manifest.yaml
 
-agoraform publish
-agoraform publish -f path/to/manifest.yaml
-
 agoraform import ADDRESS REMOTE-ID
 agoraform import -f path/to/manifest.yaml ADDRESS REMOTE-ID
 ```
 
-| Command | Behavior |
+| Command | 0.1.0 behavior |
 | --- | --- |
 | `validate` | Schema, addresses, duplicates, provider type, Matomo connectivity, goal fields |
 | `plan` | Diff vs live Matomo; never mutates; reads `agoraform.state.json` |
-| `apply` | Executes planned creates and updates; persists identities; no destroy; never publishes Tag Manager containers |
-| `publish` | Creates a container version from the draft and publishes it; no-op when already published |
+| `apply` | Executes planned creates and updates; persists identities; no destroy |
 | `import` | Binds one existing remote id; prints YAML; no remote mutation |
 
 Details: [docs/manifest.md](docs/manifest.md), [docs/plan.md](docs/plan.md),
 [docs/apply.md](docs/apply.md), [docs/import.md](docs/import.md),
-[docs/publish.md](docs/publish.md),
 [docs/state.md](docs/state.md), [providers/matomo/README.md](providers/matomo/README.md).
 
 ### Exit codes
@@ -233,7 +222,7 @@ Details: [docs/manifest.md](docs/manifest.md), [docs/plan.md](docs/plan.md),
 | Code | Meaning |
 | --- | --- |
 | `0` | Success. For `plan`, no changes. For `apply`, planned mutations finished |
-| `1` | Command failure (plan, apply, import, or publish error) |
+| `1` | Command failure (plan, apply, or import error) |
 | `2` | `plan` succeeded and changes are present |
 | `3` | Invalid usage |
 

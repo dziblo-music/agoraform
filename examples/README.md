@@ -10,10 +10,9 @@ not in resource attributes. See [docs/state.md](../docs/state.md).
 
 ## Workflow
 
-`validate`, `plan`, `apply`, `publish`, and `import` contact Matomo. Set
-`MATOMO_URL`, `MATOMO_TOKEN_AUTH`, and `MATOMO_SITE_ID` first. Tag Manager
-publish also needs `MATOMO_CONTAINER_ID`. Structural loading of this file
-is covered by unit tests without a live instance.
+`validate`, `plan`, `apply`, and `import` contact Matomo. Set
+`MATOMO_URL`, `MATOMO_TOKEN_AUTH`, and `MATOMO_SITE_ID` first. Structural
+loading of this file is covered by unit tests without a live instance.
 
 From the root of an extracted release archive or repository checkout:
 

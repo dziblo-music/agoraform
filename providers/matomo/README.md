@@ -5,9 +5,7 @@ credentials from the environment, talks to Matomo through
 `providers/matomo/client`, and manages `matomo.goal` plus Tag Manager
 `matomo.variable`, `matomo.trigger`, and `matomo.tag`.
 
-`agoraform apply` writes Tag Manager resources to the configured container
-draft. `agoraform publish` creates a container version from that draft and
-publishes it to the configured environment. Apply never publishes.
+Tag Manager versions remain out of scope.
 
 ## Configuration
 
@@ -18,16 +16,12 @@ environment:
 MATOMO_URL            required   Matomo base URL, for example https://matomo.example.com
 MATOMO_TOKEN_AUTH     required   API token
 MATOMO_SITE_ID        required for goals and Tag Manager resources
-MATOMO_CONTAINER_ID   required for Tag Manager resources and publish   container id such as 6OMh6taM
-MATOMO_ENVIRONMENT    optional for publish   default live
+MATOMO_CONTAINER_ID   required for Tag Manager resources   container id such as 6OMh6taM
 ```
 
 `MATOMO_CONTAINER_ID` is the Tag Manager container Agoraform manages. Variable,
 trigger, and tag create, read, and update operate on that container's draft
-version. It is not used by `matomo.goal`. `agoraform publish` snapshots that
-draft into a new version and publishes it to `MATOMO_ENVIRONMENT` (default
-`live`). Re-running publish when the draft already matches the published
-version is a no-op.
+version. It is not used by `matomo.goal`.
 
 ### Precedence
 
@@ -253,7 +247,7 @@ are not managed in v0.2.
 - JSON decoding and Matomo `{"result":"error"}` mapping
 - secret redaction in returned errors
 - Goals helpers: `GetGoals`, `AddGoal`, `UpdateGoal`, and preservation-safe updates
-- Tag Manager helpers: `GetContainer`, draft version resolution, `GetContainerVariables`, `AddContainerVariable`, preservation-safe `UpdateContainerVariable`, `GetContainerTriggers`, `AddContainerTrigger`, preservation-safe `UpdateContainerTrigger`, `GetContainerTags`, `AddContainerTag`, preservation-safe `UpdateContainerTag`, `GetAvailableEnvironments`, `CreateContainerVersion`, and `PublishContainerVersion`
+- Tag Manager helpers: `GetContainer`, draft version resolution, `GetContainerVariables`, `AddContainerVariable`, preservation-safe `UpdateContainerVariable`, `GetContainerTriggers`, `AddContainerTrigger`, preservation-safe `UpdateContainerTrigger`, `GetContainerTags`, `AddContainerTag`, and preservation-safe `UpdateContainerTag`
 
 Two API surfaces share that client:
 
@@ -270,13 +264,9 @@ use addresses such as `matomo.goal.trial_started`,
 `matomo.tag.trial_started`. `validate`, `plan`, `apply`, and `import` call
 `CheckConnection` once after the provider and resource type resolve, then
 validate resource attributes and (for `plan`) read live objects.
-`agoraform publish` validates publication configuration, then creates and
-publishes a container version when the draft is not already represented by
-the currently published environment. See [publish.md](../../docs/publish.md).
 
 ## Safety
 
 - Tests use `httptest` only. They never contact a real Matomo instance.
 - Tokens must not appear in errors, logs, plan output, or fixtures.
-- `agoraform plan` still cannot mutate remote resources. `agoraform apply`
-never calls Tag Manager version or publish endpoints.
+- `agoraform plan` still cannot mutate remote resources.

@@ -17,7 +17,6 @@ func TestConfigFromEnv(t *testing.T) {
 	t.Setenv(matomo.EnvTokenAuth, " env-token ")
 	t.Setenv(matomo.EnvSiteID, " 4 ")
 	t.Setenv(matomo.EnvContainerID, " containerA ")
-	t.Setenv(matomo.EnvEnvironment, " staging ")
 
 	cfg := matomo.ConfigFromEnv()
 	if cfg.BaseURL != "https://matomo.example.com" {
@@ -31,9 +30,6 @@ func TestConfigFromEnv(t *testing.T) {
 	}
 	if cfg.ContainerID != "containerA" {
 		t.Fatalf("ContainerID = %q", cfg.ContainerID)
-	}
-	if cfg.Environment != "staging" {
-		t.Fatalf("Environment = %q", cfg.Environment)
 	}
 	if cfg.Timeout != client.DefaultTimeout {
 		t.Fatalf("Timeout = %s, want default", cfg.Timeout)
@@ -89,7 +85,6 @@ func TestConfigFromEnvEmpty(t *testing.T) {
 	t.Setenv(matomo.EnvTokenAuth, "")
 	t.Setenv(matomo.EnvSiteID, "")
 	t.Setenv(matomo.EnvContainerID, "")
-	t.Setenv(matomo.EnvEnvironment, "")
 
 	cfg := matomo.ConfigFromEnv()
 	if cfg.BaseURL != "" || cfg.TokenAuth != "" {

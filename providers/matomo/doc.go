@@ -2,8 +2,8 @@
 //
 // The provider registers matomo.goal, matomo.variable, matomo.trigger,
 // and matomo.tag, loads credentials from the environment, and talks to
-// Matomo through providers/matomo/client. Explicit container publication
-// is implemented by agoraform publish, not apply.
+// Matomo through providers/matomo/client. Tag Manager versions remain
+// follow-up work.
 //
 // Generic core and reconciliation packages must not import this package or
 // depend on Matomo API types. The CLI composition root may import it in order

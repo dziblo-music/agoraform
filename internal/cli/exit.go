@@ -8,7 +8,7 @@ const (
 	ExitOK = 0
 
 	// ExitError indicates a general runtime or command failure,
-	// including failed planning, apply, import, or publish.
+	// including failed planning, apply, or import.
 	ExitError = 1
 
 	// ExitChanges indicates plan succeeded and changes are present.

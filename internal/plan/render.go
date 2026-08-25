@@ -19,11 +19,18 @@ func Format(p *Plan) string {
 	sort.SliceStable(changes, func(i, j int) bool {
 		return changes[i].Address.String() < changes[j].Address.String()
 	})
+	finalizations := append([]providerFinalization(nil), normalizedFinalizations(p)...)
+	sort.SliceStable(finalizations, func(i, j int) bool {
+		if finalizations[i].Address == finalizations[j].Address {
+			return finalizations[i].Action < finalizations[j].Action
+		}
+		return finalizations[i].Address < finalizations[j].Address
+	})
 
 	create, update, destroy := Plan{Changes: changes}.Counts()
 
 	var b strings.Builder
-	if create+update == 0 {
+	if create+update == 0 && len(finalizations) == 0 {
 		b.WriteString("No changes. Desired configuration matches live resources.\n\n")
 	} else {
 		b.WriteString("Agoraform will perform the following actions:\n\n")
@@ -34,10 +41,46 @@ func Format(p *Plan) string {
 			writeChange(&b, c)
 			b.WriteByte('\n')
 		}
+		for _, f := range finalizations {
+			fmt.Fprintf(&b, "> %s: %s", f.Address, f.Action)
+			if f.Target != "" {
+				fmt.Fprintf(&b, " -> %s", f.Target)
+			}
+			b.WriteString("\n\n")
+		}
 	}
 
-	fmt.Fprintf(&b, "Plan: %d to create, %d to update, %d to destroy.\n", create, update, destroy)
+	fmt.Fprintf(&b, "Plan: %d to create, %d to update, %d to destroy", create, update, destroy)
+	if len(finalizations) > 0 {
+		fmt.Fprintf(&b, ", %d provider action", len(finalizations))
+		if len(finalizations) != 1 {
+			b.WriteByte('s')
+		}
+	}
+	b.WriteString(".\n")
 	return b.String()
+}
+
+type providerFinalization struct {
+	Address string
+	Action  string
+	Target  string
+}
+
+func normalizedFinalizations(p *Plan) []providerFinalization {
+	out := make([]providerFinalization, 0, len(p.Finalizations))
+	for _, f := range p.Finalizations {
+		action := strings.TrimSpace(f.Action)
+		if action == "" {
+			action = "finalize"
+		}
+		out = append(out, providerFinalization{
+			Address: f.Address.String(),
+			Action:  action,
+			Target:  strings.TrimSpace(f.Target),
+		})
+	}
+	return out
 }
 
 func writeChange(b *strings.Builder, c Change) {

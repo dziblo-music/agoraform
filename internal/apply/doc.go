@@ -9,5 +9,5 @@
 // receive resource.Resolved bindings in place of configuration Refs.
 // Local state from package state is the source of truth for
 // provider-native identities after a successful mutation. Apply never
-// deletes remote resources and never publishes Tag Manager containers.
+// deletes remote resources.
 package apply

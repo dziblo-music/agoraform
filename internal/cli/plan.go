@@ -26,8 +26,8 @@ func newPlanCommand(reg *provider.Registry) *cobra.Command {
 changes required to reach the desired manifest state.
 
 plan only validates configuration and reads remote state. It never creates,
-updates, or imports resources. Persisted identities are read from
-agoraform.state.json next to the manifest.
+updates, imports, or performs provider finalization actions. Persisted
+identities are read from agoraform.state.json next to the manifest.
 
 Exit codes:
   0  plan succeeded and no changes are required
@@ -68,6 +68,9 @@ The default manifest path is agoraform.yaml.`,
 				return reg.LookupFor(addr)
 			}, st)
 			if err != nil {
+				return err
+			}
+			if err := attachFinalizations(cmd.Context(), reg, result); err != nil {
 				return err
 			}
 
