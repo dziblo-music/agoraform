@@ -9,10 +9,10 @@ import (
 	"github.com/dziblo-music/agoraform/internal/state"
 )
 
-// Partial-apply failure stages. These distinguish a state-write failure after
-// a successful resource mutation from a provider finalization failure after
-// successful resource convergence.
+// Partial-apply failure stages. These distinguish failures after a successful
+// provider mutation from state-write and provider-finalization failures.
 const (
+	StageMutation = "mutation"
 	StagePersist  = "persist"
 	StageFinalize = "finalize"
 )
@@ -36,6 +36,8 @@ func (e *PartialApplyError) Error() string {
 		return "partial apply failure"
 	}
 	switch e.Stage {
+	case StageMutation:
+		return e.mutationMessage()
 	case StagePersist:
 		return e.persistMessage()
 	case StageFinalize:
@@ -53,6 +55,25 @@ func (e *PartialApplyError) Unwrap() error {
 		return nil
 	}
 	return e.Err
+}
+
+func (e *PartialApplyError) mutationMessage() string {
+	cause := e.Err
+	if cause == nil {
+		cause = errors.New("unknown error")
+	}
+
+	switch e.Operation {
+	case "create":
+		if e.RemoteIdentity.IsZero() {
+			return fmt.Sprintf("%s was created remotely, but Agoraform could not safely accept the provider result: %v\nRemote state may already have changed; it was not rolled back. Identify the created remote resource before retrying, then bind it with agoraform import.", e.Address, cause)
+		}
+		return fmt.Sprintf("%s was created remotely with id %s, but Agoraform could not safely accept the provider result: %v\nRemote state may already have changed; it was not rolled back. Fix the provider issue, then inspect the remote resource and re-bind it with agoraform import if needed.", e.Address, e.RemoteIdentity.ID, cause)
+	case "update":
+		return fmt.Sprintf("%s was updated remotely, but Agoraform could not safely accept the provider result: %v\nThe existing identity binding remains unchanged. Inspect the remote resource and fix the provider issue before rerunning agoraform plan and agoraform apply.", e.Address, cause)
+	default:
+		return fmt.Sprintf("apply %s: %s: %v\nRemote provider state may already have changed; it was not rolled back.", e.Address, e.Operation, cause)
+	}
 }
 
 func (e *PartialApplyError) persistMessage() string {
@@ -105,6 +126,18 @@ func (e *PartialApplyError) finalizeMessage() string {
 func IsPartial(err error) bool {
 	var partial *PartialApplyError
 	return errors.As(err, &partial)
+}
+
+func postMutationError(addr resource.Address, operation string, id resource.Identity, err error) error {
+	return &PartialApplyError{
+		Address:         addr,
+		Operation:       operation,
+		RemoteMutation:  true,
+		RemoteIdentity:  id,
+		Stage:           StageMutation,
+		ResourceChanges: true,
+		Err:             err,
+	}
 }
 
 func persistCreateError(addr resource.Address, id resource.Identity, err error) error {
