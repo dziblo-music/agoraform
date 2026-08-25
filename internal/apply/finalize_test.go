@@ -63,7 +63,6 @@ func TestRunPlansAndExecutesProviderFinalization(t *testing.T) {
 	t.Parallel()
 
 	p := &finalizingProvider{Provider: fake.New()}
-	reg := registerProvider(t, p)
 	st := newStateStore(t)
 	res := resource.Resource{
 		Address:    resource.Address{Provider: fake.Name, Type: fake.TypeWidget, Name: "one"},
@@ -71,7 +70,9 @@ func TestRunPlansAndExecutesProviderFinalization(t *testing.T) {
 	}
 	var out bytes.Buffer
 
-	result, err := apply.Run(context.Background(), []resource.Resource{res}, nil, st, &out, reg)
+	result, err := apply.Run(context.Background(), []resource.Resource{res}, func(resource.Address) (provider.Provider, error) {
+		return p, nil
+	}, st, &out)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
