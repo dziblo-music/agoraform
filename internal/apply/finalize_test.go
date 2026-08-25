@@ -168,9 +168,9 @@ func TestRunFinalizationFailurePreservesDetailsAndDoesNotClaimSuccess(t *testing
 	t.Parallel()
 
 	p := &finalizingProvider{
-		Provider:      fake.New(),
-		alwaysPlan:    true,
-		finalizeErr:   errors.New("activation rejected"),
+		Provider:     fake.New(),
+		alwaysPlan:   true,
+		finalizeErr:  errors.New("activation rejected"),
 		finalDetails: []string{"prepared deployment"},
 		finalChanged: true,
 	}
@@ -204,9 +204,9 @@ func TestRunFinalizationDetailsWithoutMutationAreNotPartial(t *testing.T) {
 	t.Parallel()
 
 	p := &finalizingProvider{
-		Provider:      fake.New(),
-		alwaysPlan:    true,
-		finalizeErr:   errors.New("activation rejected"),
+		Provider:     fake.New(),
+		alwaysPlan:   true,
+		finalizeErr:  errors.New("activation rejected"),
 		finalDetails: []string{"validated deployment"},
 	}
 	reg := registerProvider(t, p)
