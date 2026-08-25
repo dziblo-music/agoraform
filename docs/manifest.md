@@ -262,7 +262,7 @@ resources:
 | `eventCategory` | yes | Event category string, or `$ref` to a `matomo.variable`. No leading or trailing whitespace. At most 500 characters when a string. |
 | `eventAction` | yes | Event action string, or `$ref` to a `matomo.variable`. If `name` is omitted and this is a string, it is also the Matomo tag name and must be at most 255 characters. |
 | `eventName` | no | Event name string, or `$ref` to a `matomo.variable`. |
-| `eventValue` | no | Event value string, or `$ref` to a `matomo.variable`. |
+| `eventValue` | no | Numeric event value (number or numeric string), or `$ref` to a `matomo.variable`. Non-numeric literal strings are rejected before mutation. |
 | `name` | no | Tag Manager display name. Defaults to `eventAction` when that attribute is a string. No leading or trailing whitespace. At most 255 characters. |
 
 `type` is immutable after create. Remote response fields such as `idtag`,
