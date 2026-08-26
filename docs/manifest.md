@@ -196,6 +196,8 @@ windows, currency, and `alwaysUseDefaultValue` are documented in the
     primaryForGoal: true
 ```
 
+See the [complete Google Ads conversion example](../examples/googleads-conversion/README.md).
+
 ### `googleads.customer_conversion_goal`
 
 Account-default website conversion-goal biddability. Google Ads creates

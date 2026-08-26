@@ -120,6 +120,9 @@ agoraform import googleads.customer_conversion_goal.signup SIGNUP~WEBSITE
 Unsupported origins, such as app or Google-hosted goals, fail with guidance
 instead of reconstructing a website conversion-goal manifest.
 
+See the [Google Ads conversion example](../examples/googleads-conversion/README.md)
+for a complete greenfield apply and adoption workflow.
+
 ## Matomo variables
 
 Import a Tag Manager variable by its numeric `idvariable` in the configured

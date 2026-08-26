@@ -113,8 +113,10 @@ GOOGLE_ADS_CUSTOMER_ID         10-digit customer ID (hyphens optional)
 GOOGLE_ADS_LOGIN_CUSTOMER_ID   optional manager-account customer ID
 ```
 
-The `googleads` provider manages website conversion actions. See
-[providers/googleads/README.md](providers/googleads/README.md).
+The `googleads` provider manages website conversion actions and customer
+conversion-goal biddability. See
+[providers/googleads/README.md](providers/googleads/README.md) and the
+[v0.3 conversion example](examples/googleads-conversion/README.md).
 
 Non-secret publication desired state belongs in the manifest:
 
@@ -170,6 +172,51 @@ duplicate container versions.
 
 See [the complete conversion example](examples/matomo-conversion/README.md) for
 Matomo verification and the application-side data-layer event contract.
+
+## v0.3 Google Ads conversion measurement
+
+The v0.3 example manages a website `Trial Started` conversion in Google Ads:
+
+- `googleads.conversion_action.trial_started` as a `SIGNUP` website conversion;
+- `googleads.customer_conversion_goal.signup` so `SIGNUP` / `WEBSITE` is
+  biddable as an account-default optimization goal;
+- a logical `$ref` so the conversion action exists before goal reconciliation.
+
+Agoraform manages Google Ads configuration only. Website tags, Google Tag
+Manager, and application event emission stay outside the provider. After apply,
+use the conversion ID and conversion label from Google Ads when configuring
+those external tools.
+
+Set Google Ads runtime configuration, then copy the included example:
+
+```bash
+export GOOGLE_ADS_DEVELOPER_TOKEN=replace-with-your-developer-token
+export GOOGLE_ADS_CLIENT_ID=replace-with-your-oauth-client-id
+export GOOGLE_ADS_CLIENT_SECRET=replace-with-your-oauth-client-secret
+export GOOGLE_ADS_REFRESH_TOKEN=replace-with-your-oauth-refresh-token
+export GOOGLE_ADS_CUSTOMER_ID=1234567890
+
+cp examples/googleads-conversion/agoraform.yaml agoraform.yaml
+```
+
+Run:
+
+```bash
+agoraform validate
+agoraform plan
+agoraform apply
+agoraform plan
+```
+
+Review the first plan before applying. The conversion action is created. The
+customer conversion goal is created by Google Ads; Agoraform adopts or updates
+it and never attempts unsupported create or delete operations. The final plan
+should report `No changes.` when desired configuration, local state, and remote
+state are unchanged.
+
+See [the Google Ads conversion example](examples/googleads-conversion/README.md)
+for Google Ads verification, conversion identifiers for website tags, and
+import of an equivalent manually configured conversion.
 
 ## Resource references and dependency ordering
 
@@ -314,7 +361,8 @@ agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
 
 - v0.2.0 Matomo resources are fully implemented. Unreleased v0.3.0 work adds
   website `googleads.conversion_action` and `googleads.customer_conversion_goal`
-  resources. Meta Ads is not implemented.
+  resources; see the [Google Ads conversion example](examples/googleads-conversion/README.md).
+  Meta Ads is not implemented.
 - One Matomo Tag Manager container is configured at a time through
   `MATOMO_CONTAINER_ID`.
 - Tag Manager support is limited to the variable, trigger, and tag types
@@ -338,6 +386,7 @@ agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
 - [Matomo provider](providers/matomo/README.md)
 - [Google Ads provider](providers/googleads/README.md)
 - [v0.2 conversion example](examples/matomo-conversion/README.md)
+- [v0.3 Google Ads conversion example](examples/googleads-conversion/README.md)
 - [Release process](docs/release.md)
 - [Changelog](CHANGELOG.md)
 
