@@ -10,6 +10,7 @@ guides lives here.
 - [Apply execution (0.1.0)](apply.md)
 - [Import (0.1.0)](import.md)
 - [Matomo Tag Manager publication (v0.2.0)](matomo-publishing.md)
+- [Google Ads account and OAuth setup](google-ads-setup.md)
 - [Local state (0.1.0)](state.md)
 - [Releasing](release.md)
 - [Matomo provider](../providers/matomo/README.md)
@@ -21,6 +22,7 @@ Tag Manager `matomo.variable`, `matomo.trigger`, and `matomo.tag`, plus
 declarative container publication through `plan` and `apply`. Unreleased
 v0.3 work adds website `googleads.conversion_action` and
 `googleads.customer_conversion_goal` resources; see the
+[Google Ads setup guide](google-ads-setup.md) and
 [Google Ads conversion example](../examples/googleads-conversion/README.md).
 The CLI remains provider-neutral.
 
