@@ -13,7 +13,8 @@ import (
 // Variable is a Matomo Tag Manager variable as returned by
 // TagManager.getContainerVariables.
 //
-// Field names follow the API JSON response. Values are normalized to
+// Field names follow the API JSON response. Scalar parameter values are
+// normalized to strings and structured values are preserved as canonical JSON
 // strings so callers do not have to handle Matomo's mixed encodings.
 // IDVariable is the provider-native identifier within the draft version.
 type Variable struct {
@@ -295,8 +296,14 @@ func flexibleValueString(v any) (string, error) {
 			return "true", nil
 		}
 		return "false", nil
+	case []any, map[string]any:
+		b, err := json.Marshal(x)
+		if err != nil {
+			return "", err
+		}
+		return string(b), nil
 	default:
-		return "", fmt.Errorf("expected string or number")
+		return "", fmt.Errorf("unsupported JSON value type %T", v)
 	}
 }
 
