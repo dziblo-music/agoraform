@@ -14,7 +14,8 @@ import (
 // When reg is nil or empty, provider and type checks are skipped because the
 // registry cannot determine known providers. When providers are registered,
 // unknown providers, unsupported provider configuration, ConnectionChecker
-// failures, unknown resource types, and provider Validate failures are reported.
+// failures, unknown resource types, provider Validate failures, and optional
+// cross-resource ResourceSetValidator failures are reported.
 func CheckProviders(ctx context.Context, m *Manifest, reg *provider.Registry) error {
 	if m == nil {
 		return fmt.Errorf("manifest is nil")
@@ -58,6 +59,7 @@ func CheckProviders(ctx context.Context, m *Manifest, reg *provider.Registry) er
 		checked[p.Name()] = struct{}{}
 	}
 
+	resourceSetValidators := make(map[string]provider.ResourceSetValidator)
 	for i, res := range m.Resources {
 		path := fmt.Sprintf("resources[%d]", i)
 		p, err := reg.LookupFor(res.Address)
@@ -74,6 +76,20 @@ func CheckProviders(ctx context.Context, m *Manifest, reg *provider.Registry) er
 		}
 		if err := p.Validate(ctx, res); err != nil {
 			return fmt.Errorf("%s: %s: %w", origin, path, err)
+		}
+		if validator, ok := p.(provider.ResourceSetValidator); ok {
+			resourceSetValidators[p.Name()] = validator
+		}
+	}
+
+	validatorNames := make([]string, 0, len(resourceSetValidators))
+	for name := range resourceSetValidators {
+		validatorNames = append(validatorNames, name)
+	}
+	sort.Strings(validatorNames)
+	for _, name := range validatorNames {
+		if err := resourceSetValidators[name].ValidateResourceSet(ctx, m.Resources); err != nil {
+			return fmt.Errorf("%s: provider %q: %w", origin, name, err)
 		}
 	}
 	return nil
