@@ -70,7 +70,7 @@ resources:
 | `alwaysUseDefaultValue` | no | When true, Google Ads always uses the default value. |
 | `count` | no | `ONE` or `MANY`. Mapped to Google Ads `ONE_PER_CLICK` / `MANY_PER_CLICK`. The API default is `MANY`. |
 | `primaryForGoal` | no | Whether this action is primary for its conversion goal. API default is `true`. |
-| `clickThroughLookbackWindowDays` | no | Click-through window, 1–90 days. |
+| `clickThroughLookbackWindowDays` | no | Click-through window for `WEBPAGE` actions, 1–30 days. |
 | `viewThroughLookbackWindowDays` | no | View-through window, 1–30 days. |
 
 `type` is always `WEBPAGE` and is not configurable. Provider-native IDs and
