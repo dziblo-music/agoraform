@@ -40,6 +40,8 @@ archives:
       - CHANGELOG.md
       - examples/agoraform.yaml
       - examples/README.md
+      - examples/matomo-conversion/README.md
+      - examples/matomo-conversion/agoraform.yaml
 
 checksum:
   name_template: checksums.txt
@@ -68,9 +70,9 @@ release:
     SemVer 2.0 release. `agoraform --version` prints `{{ .Version }}`.
     The git tag is `v{{ .Version }}`.
 
-    **Supported in {{ .Version }}:** `validate`, `plan`, `apply`, and `import` for `matomo.goal` only, with local identity state. Create and update only; no destroy.
+    **Supported in 0.2.x:** `validate`, `plan`, `apply`, and `import` for Matomo goals plus Tag Manager Data Layer variables, Custom Event triggers, and Matomo Analytics event tags. Tag Manager publication is declarative through provider configuration and remains visible in `plan` before `apply` can publish. State remains local; create/update/import only, with no destroy.
 
-    This GitHub release is created as a **draft**. Publish it only after a clean install of a release artifact has been verified.
+    This GitHub release is created as a **draft**. Publish it only after a clean install of a release artifact and the documented non-production Matomo release verification have succeeded.
 
     Full notes: [CHANGELOG.md](https://github.com/dziblo-music/agoraform/blob/v{{ .Version }}/CHANGELOG.md)
   footer: |
