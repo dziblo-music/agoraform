@@ -1,7 +1,7 @@
 # Matomo provider
 
-The Matomo provider is Agoraform's first production provider. It manages
-analytics goals and, in unreleased v0.2.0 work, Matomo Tag Manager variables,
+The Matomo provider is Agoraform's first production provider. v0.1.0
+introduced analytics goals, and v0.2.0 adds Matomo Tag Manager variables,
 triggers, tags, and declarative container publication.
 
 The Agoraform CLI remains provider-neutral. There is no Matomo-specific
@@ -20,7 +20,7 @@ MATOMO_CONTAINER_ID   required for Tag Manager resources/publication
 
 Tokens never belong in the manifest, logs, plan output, or local state.
 `MATOMO_CONTAINER_ID` identifies the single Tag Manager container managed by
-the initial v0.2.0 implementation.
+the v0.2.0 implementation.
 
 ## Declarative provider configuration
 
@@ -54,7 +54,7 @@ See [Matomo Tag Manager publication](../../docs/matomo-publishing.md).
 
 ### `matomo.goal`
 
-Stable v0.1.0 resource:
+Introduced in v0.1.0:
 
 ```yaml
 - address: matomo.goal.trial_started
@@ -70,7 +70,7 @@ Provider-native goal IDs are stored in local state.
 
 ### `matomo.variable`
 
-Unreleased v0.2.0 Data Layer variable:
+v0.2.0 Data Layer variable:
 
 ```yaml
 - address: matomo.variable.user_id
@@ -86,7 +86,7 @@ attributes. Updates preserve unmanaged Matomo fields.
 
 ### `matomo.trigger`
 
-Unreleased v0.2.0 Custom Event trigger:
+v0.2.0 Custom Event trigger:
 
 ```yaml
 - address: matomo.trigger.trial_started
@@ -100,7 +100,7 @@ to `event`. Updates preserve unmanaged description/conditions.
 
 ### `matomo.tag`
 
-Unreleased v0.2.0 Matomo Analytics event tag:
+v0.2.0 Matomo Analytics event tag:
 
 ```yaml
 - address: matomo.tag.trial_started
