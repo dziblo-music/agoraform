@@ -132,7 +132,7 @@ func (p *Provider) Validate(_ context.Context, res resource.Resource) error {
 	}
 	switch res.Address.Type {
 	case TypeConversionAction:
-		return p.validateConversionAction(res)
+		return p.validateWebsiteConversionAction(res)
 	default:
 		return nil
 	}
@@ -142,7 +142,7 @@ func (p *Provider) Validate(_ context.Context, res resource.Resource) error {
 func (p *Provider) Read(ctx context.Context, res resource.Resource) (resource.RemoteResource, error) {
 	switch res.Address.Type {
 	case TypeConversionAction:
-		return p.readConversionAction(ctx, res)
+		return p.readWebsiteConversionAction(ctx, res)
 	default:
 		return resource.RemoteResource{}, notImplemented("read", res.Address)
 	}
@@ -152,7 +152,7 @@ func (p *Provider) Read(ctx context.Context, res resource.Resource) (resource.Re
 func (p *Provider) Create(ctx context.Context, res resource.Resource) (resource.RemoteResource, error) {
 	switch res.Address.Type {
 	case TypeConversionAction:
-		return p.createConversionAction(ctx, res)
+		return p.createWebsiteConversionAction(ctx, res)
 	default:
 		return resource.RemoteResource{}, notImplemented("create", res.Address)
 	}
@@ -162,7 +162,7 @@ func (p *Provider) Create(ctx context.Context, res resource.Resource) (resource.
 func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual resource.RemoteResource) (resource.RemoteResource, error) {
 	switch desired.Address.Type {
 	case TypeConversionAction:
-		return p.updateConversionAction(ctx, desired, actual)
+		return p.updateWebsiteConversionAction(ctx, desired, actual)
 	default:
 		return resource.RemoteResource{}, notImplemented("update", desired.Address)
 	}
@@ -172,7 +172,7 @@ func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual
 func (p *Provider) Import(ctx context.Context, addr resource.Address, id string) (resource.RemoteResource, error) {
 	switch addr.Type {
 	case TypeConversionAction:
-		return p.importConversionAction(ctx, addr, id)
+		return p.importWebsiteConversionAction(ctx, addr, id)
 	default:
 		return resource.RemoteResource{}, notImplemented("import", addr)
 	}
