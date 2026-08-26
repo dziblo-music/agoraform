@@ -79,7 +79,7 @@ func Execute() int {
 
 // ExecuteWith runs the CLI using the provided streams and args.
 func ExecuteWith(streams IOStreams, args []string) int {
-	if err := config.LoadLocalEnvFromWorkingDirectory(); err != nil {
+	if err := config.LoadLocalEnv(localEnvDirectory(args)); err != nil {
 		fmt.Fprintln(streams.ErrOut, "Error:", err)
 		return ExitError
 	}
