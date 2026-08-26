@@ -107,6 +107,24 @@ resources:
   - address: googleads.conversion_action.trial_started
     attributes:
       name: Trial Started
+      category: SIGNUP
+      value: 0
+      count: ONE
+      primaryForGoal: true
+`
+
+const googleAdsConversionActionIncompleteManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.conversion_action.trial_started
+    attributes:
+      name: Trial Started
+`
+
+const googleAdsUnknownResourceManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.campaign.brand
+    attributes:
+      name: Brand
 `
 
 func TestValidateSuccess(t *testing.T) {
@@ -147,7 +165,7 @@ func TestValidateGoogleAdsMissingCredentials(t *testing.T) {
 func TestValidateGoogleAdsUnknownResourceType(t *testing.T) {
 	t.Parallel()
 
-	path := writeManifest(t, "agoraform.yaml", googleAdsConversionActionManifest)
+	path := writeManifest(t, "agoraform.yaml", googleAdsUnknownResourceManifest)
 	streams, _, stderr := testStreams()
 	code := cli.ExecuteWith(streams, []string{"validate", "-f", path})
 	if code != cli.ExitError {
@@ -156,6 +174,64 @@ func TestValidateGoogleAdsUnknownResourceType(t *testing.T) {
 	errOut := stderr.String()
 	if !strings.Contains(errOut, "unknown resource type") {
 		t.Fatalf("stderr = %q, want unknown resource type", errOut)
+	}
+}
+
+func TestValidateGoogleAdsConversionActionMissingCredentials(t *testing.T) {
+	t.Parallel()
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsConversionActionManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWith(streams, []string{"validate", "-f", path})
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	errOut := stderr.String()
+	if strings.Contains(errOut, "unknown resource type") {
+		t.Fatalf("stderr = %q, googleads.conversion_action should be registered", errOut)
+	}
+	if !strings.Contains(errOut, googleads.EnvDeveloperToken) && !strings.Contains(errOut, "required") {
+		t.Fatalf("stderr = %q, want missing credential error", errOut)
+	}
+}
+
+func TestValidateGoogleAdsConversionActionWithProvider(t *testing.T) {
+	t.Parallel()
+
+	p, _ := googleAdsTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsConversionActionManifest)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitOK, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "1 resource") {
+		t.Fatalf("stdout = %q, want 1 resource", stdout.String())
+	}
+}
+
+func TestValidateGoogleAdsConversionActionMissingCategory(t *testing.T) {
+	t.Parallel()
+
+	p, _ := googleAdsTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsConversionActionIncompleteManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "category") {
+		t.Fatalf("stderr = %q, want category validation error", stderr.String())
 	}
 }
 
@@ -552,6 +628,30 @@ func matomoVariableTestProvider(t *testing.T) (*matomo.Provider, *httptest.Serve
 		SiteID:      "3",
 		ContainerID: "6OMh6taM",
 		HTTPClient:  srv.Client(),
+	}, srv.Client())
+	return p, srv
+}
+
+func googleAdsTestProvider(t *testing.T) (*googleads.Provider, *httptest.Server) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/oauth/token") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"access_token":"cli-test-access-token","expires_in":3600,"token_type":"Bearer"}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"results":[{"customer":{"id":"1234567890"}}]}`)
+	}))
+	t.Cleanup(srv.Close)
+	p := googleads.NewWithHTTPClient(googleads.Config{
+		DeveloperToken: "cli-test-developer-token",
+		ClientID:       "cli-test-client-id",
+		ClientSecret:   "cli-test-client-secret",
+		RefreshToken:   "cli-test-refresh-token",
+		CustomerID:     "1234567890",
+		BaseURL:        srv.URL,
+		TokenURL:       srv.URL + "/oauth/token",
+		HTTPClient:     srv.Client(),
 	}, srv.Client())
 	return p, srv
 }

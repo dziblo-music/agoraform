@@ -15,11 +15,11 @@ guides lives here.
 - [Matomo provider](../providers/matomo/README.md)
 - [Google Ads provider](../providers/googleads/README.md)
 
-The 0.1.0 product release manages `matomo.goal` only. Unreleased work for
-v0.2.0 also manages Tag Manager `matomo.variable`, `matomo.trigger`, and
-`matomo.tag`, plus declarative container publication through `plan` and
-`apply`. The CLI remains provider-neutral; there is no Matomo-specific
-`publish` command.
+The 0.1.0 product release manages `matomo.goal` only. v0.2.0 also manages
+Tag Manager `matomo.variable`, `matomo.trigger`, and `matomo.tag`, plus
+declarative container publication through `plan` and `apply`. Unreleased
+v0.3 work adds website `googleads.conversion_action` resources. The CLI
+remains provider-neutral.
 
 Changelog: [CHANGELOG.md](../CHANGELOG.md).
 
