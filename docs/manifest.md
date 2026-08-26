@@ -48,7 +48,8 @@ GOOGLE_ADS_DEVELOPER_TOKEN
 GOOGLE_ADS_REFRESH_TOKEN
 ```
 
-See [Matomo Tag Manager publication](matomo-publishing.md).
+See [Matomo Tag Manager publication](matomo-publishing.md) and the
+[Google Ads provider](../providers/googleads/README.md).
 
 ## Resource addresses
 
@@ -164,6 +165,36 @@ v0.2.0 supports Matomo Analytics event tags:
 Supported event fields may be literals or, where documented, references to
 managed variables. See the [Matomo provider reference](../providers/matomo/README.md)
 for the complete resource-specific schema and preservation behavior.
+
+## Google Ads resources
+
+### `googleads.conversion_action`
+
+Website conversion actions. Common attributes:
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `name` | yes | Conversion action name. |
+| `category` | yes | Website category such as `SIGNUP` or `PURCHASE`. |
+| `value` | no | Default conversion value. |
+| `count` | no | `ONE` or `MANY`. |
+| `primaryForGoal` | no | Whether the action is primary for its conversion goal. |
+| `status` | no | `ENABLED`, `HIDDEN`, or `REMOVED`. |
+
+`type` is always website (`WEBPAGE`) and is computed. Provider-native IDs and
+resource names live in local state, not attributes. Optional conversion
+windows, currency, and `alwaysUseDefaultValue` are documented in the
+[Google Ads provider reference](../providers/googleads/README.md).
+
+```yaml
+- address: googleads.conversion_action.trial_started
+  attributes:
+    name: Trial Started
+    category: SIGNUP
+    value: 0
+    count: ONE
+    primaryForGoal: true
+```
 
 ## Matomo provider desired state
 

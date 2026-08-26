@@ -102,9 +102,7 @@ MATOMO_CONTAINER_ID   Tag Manager container id for v0.2 Tag Manager resources
 
 Credentials never belong in YAML, plan output, logs, or local state.
 
-Google Ads credentials stay outside the manifest as well. The `googleads`
-provider is registered as an authenticated API foundation; conversion-action
-resources are not implemented yet:
+Google Ads credentials stay outside the manifest as well:
 
 ```text
 GOOGLE_ADS_DEVELOPER_TOKEN     Google Ads API developer token
@@ -114,6 +112,9 @@ GOOGLE_ADS_REFRESH_TOKEN       OAuth 2.0 refresh token
 GOOGLE_ADS_CUSTOMER_ID         10-digit customer ID (hyphens optional)
 GOOGLE_ADS_LOGIN_CUSTOMER_ID   optional manager-account customer ID
 ```
+
+The `googleads` provider manages website conversion actions. See
+[providers/googleads/README.md](providers/googleads/README.md).
 
 Non-secret publication desired state belongs in the manifest:
 
@@ -310,8 +311,8 @@ agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
 
 ## v0.2.0 limitations
 
-- Matomo resources are fully implemented. Google Ads is an authenticated
-  client foundation without managed resources yet. Meta Ads is not implemented.
+- Matomo resources are fully implemented. Google Ads manages website
+  `googleads.conversion_action` resources. Meta Ads is not implemented.
 - One Matomo Tag Manager container is configured at a time through
   `MATOMO_CONTAINER_ID`.
 - Tag Manager support is limited to the variable, trigger, and tag types

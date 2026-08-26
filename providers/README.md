@@ -43,8 +43,8 @@ Tag Manager versions are not implemented yet. See
 credentials from `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`,
 `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`,
 `GOOGLE_ADS_CUSTOMER_ID`, and optional `GOOGLE_ADS_LOGIN_CUSTOMER_ID`. It
-provides an authenticated REST client for query and mutate operations.
-Conversion-action resources are not implemented yet.
+manages website `googleads.conversion_action` resources and uses an
+authenticated REST client for query and mutate operations.
 
 See [googleads/README.md](googleads/README.md).
 

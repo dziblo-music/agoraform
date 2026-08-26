@@ -91,6 +91,17 @@ state as `remoteId`. Do not copy it into YAML.
 
 `name` remains immutable for a state-bound Matomo goal.
 
+## Google Ads conversion actions
+
+Import a website conversion action by its numeric conversion action ID, or
+by the Google Ads resource name
+`customers/{customerId}/conversionActions/{id}`. Agoraform stores the
+numeric ID in local state as `remoteId`. Do not copy it into YAML.
+
+```bash
+agoraform import googleads.conversion_action.trial_started 123456789
+```
+
 ## Matomo variables
 
 Import a Tag Manager variable by its numeric `idvariable` in the configured

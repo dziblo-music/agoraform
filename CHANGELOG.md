@@ -13,6 +13,7 @@ prints the SemVer identifier without the prefix (`0.2.0`).
 ### Added
 
 - Google Ads provider foundation (`googleads`) with environment-based OAuth and developer-token authentication, customer ID normalization, and a reusable REST client for query and mutate operations.
+- `googleads.conversion_action` for website conversion actions such as Trial Started (read, create, update, import), with Google Ads enum/default normalization so equivalent remote state produces no plan diff.
 
 ## [0.2.0] - 2026-08-26
 
