@@ -11,19 +11,8 @@ import (
 	"strings"
 )
 
-// LocalEnvFileName is the local, non-versioned provider configuration file
-// Agoraform loads from the current working directory.
+// LocalEnvFileName is the local, non-versioned provider configuration file.
 const LocalEnvFileName = ".agoraform.env"
-
-// LoadLocalEnvFromWorkingDirectory loads LocalEnvFileName from the process
-// working directory when the file exists.
-func LoadLocalEnvFromWorkingDirectory() error {
-	dir, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("determine working directory: %w", err)
-	}
-	return LoadLocalEnv(dir)
-}
 
 // LoadLocalEnv loads LocalEnvFileName from dir. Values already present in the
 // process environment take precedence over values from the file.
