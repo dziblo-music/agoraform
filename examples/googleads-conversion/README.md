@@ -41,19 +41,27 @@ action. Hyphens are optional. If you authenticate through a manager account,
 also set `GOOGLE_ADS_LOGIN_CUSTOMER_ID`. Customer IDs are not secrets, but
 they are account-specific, so this reusable example does not embed them.
 
-Set the required environment variables:
+Set the non-secret IDs normally and load secret values from your usual secret
+manager. For an interactive Bash session where secret-manager injection is not
+available, `read -s` keeps the typed secret values out of shell command history:
 
 ```bash
-export GOOGLE_ADS_DEVELOPER_TOKEN=replace-with-your-developer-token
 export GOOGLE_ADS_CLIENT_ID=replace-with-your-oauth-client-id
-export GOOGLE_ADS_CLIENT_SECRET=replace-with-your-oauth-client-secret
-export GOOGLE_ADS_REFRESH_TOKEN=replace-with-your-oauth-refresh-token
 export GOOGLE_ADS_CUSTOMER_ID=1234567890
 # export GOOGLE_ADS_LOGIN_CUSTOMER_ID=1234567890  # manager account, if required
+
+read -rsp "Google Ads developer token: " GOOGLE_ADS_DEVELOPER_TOKEN; echo
+export GOOGLE_ADS_DEVELOPER_TOKEN
+read -rsp "Google Ads OAuth client secret: " GOOGLE_ADS_CLIENT_SECRET; echo
+export GOOGLE_ADS_CLIENT_SECRET
+read -rsp "Google Ads refresh token: " GOOGLE_ADS_REFRESH_TOKEN; echo
+export GOOGLE_ADS_REFRESH_TOKEN
 ```
 
+Do not replace the secret prompts above with literal secret values in commands.
 Keep tokens and client secrets out of shell history, logs, source control, and
-the manifest. On a real system, load them from your usual secret manager.
+the manifest. On automated systems, inject them from your normal secret manager
+instead of storing them in scripts.
 
 The empty `providers.googleads: {}` block is valid. There are no non-secret
 Google Ads YAML fields yet; putting OAuth secrets or the developer token in
