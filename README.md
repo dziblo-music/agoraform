@@ -187,17 +187,26 @@ Manager, and application event emission stay outside the provider. After apply,
 use the conversion ID and conversion label from Google Ads when configuring
 those external tools.
 
-Set Google Ads runtime configuration, then copy the included example:
+Set Google Ads runtime configuration, then copy the included example. Load
+secret values from your normal secret manager; for an interactive Bash session,
+`read -s` avoids placing typed secrets in shell command history:
 
 ```bash
-export GOOGLE_ADS_DEVELOPER_TOKEN=replace-with-your-developer-token
 export GOOGLE_ADS_CLIENT_ID=replace-with-your-oauth-client-id
-export GOOGLE_ADS_CLIENT_SECRET=replace-with-your-oauth-client-secret
-export GOOGLE_ADS_REFRESH_TOKEN=replace-with-your-oauth-refresh-token
 export GOOGLE_ADS_CUSTOMER_ID=1234567890
+
+read -rsp "Google Ads developer token: " GOOGLE_ADS_DEVELOPER_TOKEN; echo
+export GOOGLE_ADS_DEVELOPER_TOKEN
+read -rsp "Google Ads OAuth client secret: " GOOGLE_ADS_CLIENT_SECRET; echo
+export GOOGLE_ADS_CLIENT_SECRET
+read -rsp "Google Ads refresh token: " GOOGLE_ADS_REFRESH_TOKEN; echo
+export GOOGLE_ADS_REFRESH_TOKEN
 
 cp examples/googleads-conversion/agoraform.yaml agoraform.yaml
 ```
+
+Do not substitute literal secret values into those prompt commands. On
+automated systems, inject the `GOOGLE_ADS_*` secrets from your secret manager.
 
 Run:
 
