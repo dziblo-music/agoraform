@@ -309,14 +309,14 @@ agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
 | `2` | `plan` succeeded and changes are present |
 | `3` | Invalid CLI usage |
 
-## v0.2.0 limitations
+## Current development limitations
 
-- Matomo resources are fully implemented. Google Ads manages website
-  `googleads.conversion_action` resources. Meta Ads is not implemented.
+- v0.2.0 Matomo resources are fully implemented. Unreleased v0.3.0 work adds
+  website `googleads.conversion_action` resources. Meta Ads is not implemented.
 - One Matomo Tag Manager container is configured at a time through
   `MATOMO_CONTAINER_ID`.
 - Tag Manager support is limited to the variable, trigger, and tag types
-  documented for this release.
+  documented for v0.2.0.
 - There is no provider-specific `agoraform publish` command; publication is
   declarative through normal `plan`/`apply`.
 - Rollback, scheduled publication, approval workflows, generalized deployment
