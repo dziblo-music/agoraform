@@ -28,6 +28,18 @@ values do not create false diffs. Computed/read-only fields belong on
 Register implementations with `provider.Registry`. The core never imports
 Matomo, Google Ads, or other vendor API types.
 
+## Local provider configuration
+
+Provider credentials and connection settings remain environment variables,
+but they do not need to be exported manually for every shell session.
+Agoraform automatically loads an optional `.agoraform.env` file next to the
+selected `agoraform.yaml` before providers are initialized. Existing process
+environment variables take precedence over file values.
+
+The local file is ignored by Git and must never be committed. See
+[Local provider configuration](../docs/local-configuration.md) for format,
+precedence, security guidance, and examples.
+
 ## Matomo
 
 [`matomo/`](matomo/) is the first production provider. It registers as
