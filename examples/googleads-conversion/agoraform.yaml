@@ -1,0 +1,23 @@
+# Google Ads conversion-measurement example for Agoraform v0.3.0.
+# Credentials, customer IDs, and provider-native identities stay outside
+# this manifest. Website tags and application events are not managed here.
+
+apiVersion: agoraform.io/v1alpha1
+providers:
+  googleads: {}
+resources:
+  - address: googleads.conversion_action.trial_started
+    attributes:
+      name: Trial Started
+      category: SIGNUP
+      value: 0
+      count: ONE
+      primaryForGoal: true
+
+  - address: googleads.customer_conversion_goal.signup
+    attributes:
+      category: SIGNUP
+      origin: WEBSITE
+      biddable: true
+      conversionAction:
+        $ref: googleads.conversion_action.trial_started

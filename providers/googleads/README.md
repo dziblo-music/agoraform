@@ -6,6 +6,10 @@ conversion-tracking workflow. Credentials come from the environment. The
 Agoraform CLI remains provider-neutral; there is no Google Ads-specific
 command.
 
+See the [complete conversion-measurement example](../../examples/googleads-conversion/README.md)
+for a reusable `Trial Started` / `SIGNUP` workflow, import, and Google Ads
+verification.
+
 ## Runtime configuration
 
 Credentials and connection details come from environment variables:
