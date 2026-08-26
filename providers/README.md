@@ -36,7 +36,8 @@ Agoraform automatically loads an optional `.agoraform.env` file next to the
 selected `agoraform.yaml` before providers are initialized. Existing process
 environment variables take precedence over file values.
 
-The local file is ignored by Git and must never be committed. See
+The Agoraform source repository ignores `.agoraform.env`; projects using
+Agoraform should add the same entry to their own `.gitignore`. See
 [Local provider configuration](../docs/local-configuration.md) for format,
 precedence, security guidance, and examples.
 
