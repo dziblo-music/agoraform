@@ -1,8 +1,8 @@
 # Google Ads setup
 
 Agoraform uses the Google Ads API through OAuth 2.0 user credentials. Before
-using the `googleads` provider, configure Google Ads API access and expose the
-required values as environment variables.
+using the `googleads` provider, configure Google Ads API access and provide the
+required runtime values through `.agoraform.env` or the process environment.
 
 This guide covers the current Agoraform authentication flow. Service-account
 authentication is not currently supported by Agoraform.
@@ -143,30 +143,28 @@ can normally be omitted.
 
 ## 7. Configure Agoraform
 
-PowerShell:
+For local use, create `.agoraform.env` next to `agoraform.yaml`:
 
-```powershell
-$env:GOOGLE_ADS_DEVELOPER_TOKEN = "..."
-$env:GOOGLE_ADS_CLIENT_ID = "..."
-$env:GOOGLE_ADS_CLIENT_SECRET = "..."
-$env:GOOGLE_ADS_REFRESH_TOKEN = "..."
-$env:GOOGLE_ADS_CUSTOMER_ID = "1234567890"
-# $env:GOOGLE_ADS_LOGIN_CUSTOMER_ID = "0987654321" # only when required
+```dotenv
+GOOGLE_ADS_DEVELOPER_TOKEN=replace-with-developer-token
+GOOGLE_ADS_CLIENT_ID=replace-with-client-id
+GOOGLE_ADS_CLIENT_SECRET=replace-with-client-secret
+GOOGLE_ADS_REFRESH_TOKEN=replace-with-refresh-token
+GOOGLE_ADS_CUSTOMER_ID=1234567890
+# GOOGLE_ADS_LOGIN_CUSTOMER_ID=0987654321
 ```
 
-Bash:
+Agoraform loads this file automatically before initializing providers. You can
+copy the repository `.agoraform.env.example` template and fill in the values
+you need. Add `.agoraform.env` to the `.gitignore` of the repository containing
+your campaign; the Agoraform source repository already ignores it.
 
-```bash
-export GOOGLE_ADS_DEVELOPER_TOKEN="..."
-export GOOGLE_ADS_CLIENT_ID="..."
-export GOOGLE_ADS_CLIENT_SECRET="..."
-export GOOGLE_ADS_REFRESH_TOKEN="..."
-export GOOGLE_ADS_CUSTOMER_ID="1234567890"
-# export GOOGLE_ADS_LOGIN_CUSTOMER_ID="0987654321" # only when required
-```
+If a process environment variable is already set, it overrides the value in
+`.agoraform.env`. Direct PowerShell/Bash environment variables therefore remain
+fully supported and are preferred for CI/CD or secret-manager injection.
 
-For persistent or automated environments, inject secrets from an appropriate
-secret manager rather than storing them in scripts.
+See [Local provider configuration](local-configuration.md) for file format,
+precedence, and security guidance.
 
 ## 8. Verify before applying changes
 

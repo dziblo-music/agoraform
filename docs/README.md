@@ -9,6 +9,7 @@ guides lives here.
 - [Plan engine (0.1.0)](plan.md)
 - [Apply execution (0.1.0)](apply.md)
 - [Import (0.1.0)](import.md)
+- [Local provider configuration](local-configuration.md)
 - [Matomo Tag Manager publication (v0.2.0)](matomo-publishing.md)
 - [Google Ads account and OAuth setup](google-ads-setup.md)
 - [Local state (0.1.0)](state.md)
@@ -24,7 +25,9 @@ v0.3 work adds website `googleads.conversion_action` and
 `googleads.customer_conversion_goal` resources; see the
 [Google Ads setup guide](google-ads-setup.md) and
 [Google Ads conversion example](../examples/googleads-conversion/README.md).
-The CLI remains provider-neutral.
+Provider credentials and connection settings can be stored locally in an
+optional [`.agoraform.env`](local-configuration.md) file instead of being
+exported manually for each shell session. The CLI remains provider-neutral.
 
 Changelog: [CHANGELOG.md](../CHANGELOG.md).
 

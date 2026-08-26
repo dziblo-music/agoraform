@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/dziblo-music/agoraform/internal/config"
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/spf13/cobra"
 )
@@ -78,6 +79,10 @@ func Execute() int {
 
 // ExecuteWith runs the CLI using the provided streams and args.
 func ExecuteWith(streams IOStreams, args []string) int {
+	if err := config.LoadLocalEnv(localEnvDirectory(args)); err != nil {
+		fmt.Fprintln(streams.ErrOut, "Error:", err)
+		return ExitError
+	}
 	return ExecuteWithRegistry(streams, args, newProviderRegistry())
 }
 

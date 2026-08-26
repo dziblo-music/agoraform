@@ -15,8 +15,9 @@ coverage.html
 go.work
 go.work.sum
 
-# Agoraform local state
+# Agoraform local state and secrets
 agoraform.state.json
+.agoraform.env
 
 # IDE / editor
 .idea/
