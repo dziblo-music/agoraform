@@ -5,7 +5,7 @@ Agoraform keeps marketing desired state and provider credentials separate.
 - `agoraform.yaml` is the version-controlled declaration of marketing resources.
 - `.agoraform.env` is optional local configuration for credentials and connection details and must not be committed.
 
-When Agoraform starts, it looks for `.agoraform.env` in the current working directory. If the file is absent, existing environment-variable behavior is unchanged.
+When Agoraform starts, it looks for `.agoraform.env` next to the selected manifest. With the default `agoraform.yaml`, that is the current directory. With `-f path/to/agoraform.yaml` or a positional manifest path, Agoraform loads `path/to/.agoraform.env`. If the file is absent, existing environment-variable behavior is unchanged.
 
 ## File format
 
@@ -66,11 +66,9 @@ Treat the file like any other local secrets file:
 
 Agoraform does not intentionally write loaded values to the manifest, plan output, logs, or local state.
 
-## Working directory
+## Project layout
 
-Agoraform only loads `.agoraform.env` from the directory where the command is run. It does not search parent directories.
-
-A typical project therefore looks like:
+A typical project looks like:
 
 ```text
 campaign/
@@ -78,7 +76,7 @@ campaign/
 └── .agoraform.env       # local only, ignored by Git
 ```
 
-Then run Agoraform from that directory:
+Run Agoraform from that directory:
 
 ```bash
 agoraform validate
@@ -86,5 +84,13 @@ agoraform plan
 agoraform apply
 agoraform plan
 ```
+
+Or select a manifest from elsewhere:
+
+```bash
+agoraform plan -f campaign/agoraform.yaml
+```
+
+Agoraform will still use `campaign/.agoraform.env`.
 
 Directly exported environment variables remain fully supported; `.agoraform.env` is optional convenience for local use.
