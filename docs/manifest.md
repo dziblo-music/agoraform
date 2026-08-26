@@ -196,6 +196,28 @@ windows, currency, and `alwaysUseDefaultValue` are documented in the
     primaryForGoal: true
 ```
 
+### `googleads.customer_conversion_goal`
+
+Account-default website conversion-goal biddability. Google Ads creates
+these objects automatically; Agoraform only updates `biddable`.
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `category` | yes | Website category such as `SIGNUP` or `PURCHASE`. |
+| `origin` | yes | `WEBSITE`. |
+| `biddable` | yes | Whether the goal is an account-default optimization goal. |
+| `conversionAction` | no | `$ref` to a managed `googleads.conversion_action` so apply creates that action first. |
+
+```yaml
+- address: googleads.customer_conversion_goal.signup
+  attributes:
+    category: SIGNUP
+    origin: WEBSITE
+    biddable: true
+    conversionAction:
+      $ref: googleads.conversion_action.trial_started
+```
+
 ## Matomo provider desired state
 
 v0.2.0 recognizes:

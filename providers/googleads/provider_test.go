@@ -37,8 +37,8 @@ func TestProviderRegisterAndLookup(t *testing.T) {
 	if got.Name() != googleads.Name {
 		t.Fatalf("Name = %q", got.Name())
 	}
-	if len(got.ResourceTypes()) != 1 || got.ResourceTypes()[0] != googleads.TypeConversionAction {
-		t.Fatalf("ResourceTypes = %v, want [%s]", got.ResourceTypes(), googleads.TypeConversionAction)
+	if len(got.ResourceTypes()) != 2 || got.ResourceTypes()[0] != googleads.TypeConversionAction || got.ResourceTypes()[1] != googleads.TypeCustomerConversionGoal {
+		t.Fatalf("ResourceTypes = %v, want [%s %s]", got.ResourceTypes(), googleads.TypeConversionAction, googleads.TypeCustomerConversionGoal)
 	}
 
 	addr, err := resource.ParseAddress("googleads.conversion_action.trial_started")
@@ -47,6 +47,14 @@ func TestProviderRegisterAndLookup(t *testing.T) {
 	}
 	if _, err := reg.LookupFor(addr); err != nil {
 		t.Fatalf("LookupFor conversion_action: %v", err)
+	}
+
+	goalAddr, err := resource.ParseAddress("googleads.customer_conversion_goal.signup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.LookupFor(goalAddr); err != nil {
+		t.Fatalf("LookupFor customer_conversion_goal: %v", err)
 	}
 
 	unknown, err := resource.ParseAddress("googleads.campaign.brand")

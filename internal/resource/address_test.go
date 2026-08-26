@@ -9,6 +9,7 @@ func TestParseAddressRoundTrip(t *testing.T) {
 		"matomo.goal.trial_started",
 		"fake.widget.homepage",
 		"googleads.conversion_action.purchase",
+		"googleads.customer_conversion_goal.signup",
 		"a.b.c",
 		"provider_one.type2.name_3",
 	}

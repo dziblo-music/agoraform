@@ -18,8 +18,9 @@ guides lives here.
 The 0.1.0 product release manages `matomo.goal` only. v0.2.0 also manages
 Tag Manager `matomo.variable`, `matomo.trigger`, and `matomo.tag`, plus
 declarative container publication through `plan` and `apply`. Unreleased
-v0.3 work adds website `googleads.conversion_action` resources. The CLI
-remains provider-neutral.
+v0.3 work adds website `googleads.conversion_action` and
+`googleads.customer_conversion_goal` resources. The CLI remains
+provider-neutral.
 
 Changelog: [CHANGELOG.md](../CHANGELOG.md).
 

@@ -3,7 +3,8 @@
 // The provider registers as googleads, loads credentials from the
 // environment, and talks to the Google Ads REST API through
 // providers/googleads/client. v0.3 manages website conversion actions
-// (googleads.conversion_action). Other Google Ads resources remain
+// (googleads.conversion_action) and customer conversion-goal biddability
+// (googleads.customer_conversion_goal). Other Google Ads resources remain
 // follow-up work.
 //
 // Generic core and reconciliation packages must not import this package or

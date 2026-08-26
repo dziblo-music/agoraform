@@ -1,9 +1,10 @@
 # Google Ads provider
 
 The Google Ads provider registers as `googleads` and manages website
-conversion actions for the v0.3 conversion-tracking workflow. Credentials
-come from the environment. The Agoraform CLI remains provider-neutral;
-there is no Google Ads-specific command.
+conversion actions and customer conversion-goal biddability for the v0.3
+conversion-tracking workflow. Credentials come from the environment. The
+Agoraform CLI remains provider-neutral; there is no Google Ads-specific
+command.
 
 ## Runtime configuration
 
@@ -88,6 +89,55 @@ Import accepts the numeric conversion action ID or the resource name
 
 ```bash
 agoraform import googleads.conversion_action.trial_started 123456789
+```
+
+### `googleads.customer_conversion_goal`
+
+Account-default website conversion-goal biddability. Google Ads automatically
+creates `CustomerConversionGoal` objects for each conversion-action
+category/origin combination. Agoraform reads those provider-created goals and
+reconciles `biddable`; it never creates or deletes them.
+
+Address goals by category and origin, not by opaque resource names.
+Provider-native identity is the computed `CATEGORY~ORIGIN` key stored in
+local state.
+
+```yaml
+resources:
+  - address: googleads.conversion_action.trial_started
+    attributes:
+      name: Trial Started
+      category: SIGNUP
+  - address: googleads.customer_conversion_goal.signup
+    attributes:
+      category: SIGNUP
+      origin: WEBSITE
+      biddable: true
+      conversionAction:
+        $ref: googleads.conversion_action.trial_started
+```
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `category` | yes | Website category such as `SIGNUP`, `PURCHASE`, or `SUBSCRIBE_PAID`. |
+| `origin` | yes | Must be `WEBSITE`. Other origins are out of scope. |
+| `biddable` | yes | When true, Google Ads uses the goal as an account-default optimization goal. |
+| `conversionAction` | no | `$ref` to a `googleads.conversion_action`. Use this when the matching conversion action is also managed so apply creates it before goal reconciliation. |
+
+`resourceName` and the `CATEGORY~ORIGIN` identity are computed. Campaign
+conversion goals and custom conversion goals are out of scope.
+
+If the expected provider-created goal is still missing after the matching
+conversion action exists, Agoraform reports that Google Ads creates the
+object automatically and that Agoraform cannot create or delete it.
+
+Equivalent live values, including enum case, produce no plan diff.
+
+Import accepts `CATEGORY~ORIGIN` or the resource name
+`customers/{customerId}/customerConversionGoals/{category}~{origin}`:
+
+```bash
+agoraform import googleads.customer_conversion_goal.signup SIGNUP~WEBSITE
 ```
 
 ## HTTP client

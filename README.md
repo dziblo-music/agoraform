@@ -312,7 +312,8 @@ agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
 ## Current development limitations
 
 - v0.2.0 Matomo resources are fully implemented. Unreleased v0.3.0 work adds
-  website `googleads.conversion_action` resources. Meta Ads is not implemented.
+  website `googleads.conversion_action` and `googleads.customer_conversion_goal`
+  resources. Meta Ads is not implemented.
 - One Matomo Tag Manager container is configured at a time through
   `MATOMO_CONTAINER_ID`.
 - Tag Manager support is limited to the variable, trigger, and tag types
