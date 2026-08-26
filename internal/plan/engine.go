@@ -28,7 +28,8 @@ type Identities interface {
 
 // Build compares desired resources with provider-reported live state.
 //
-// Missing remote resources become creates. Configurable differences become
+// Missing remote resources become creates unless the provider declares a
+// provider-created lifecycle such as adoption. Configurable differences become
 // updates. Computed/read-only fields are ignored. Resources are read in
 // deterministic dependency order (prerequisites first) so providers can
 // observe prerequisite identities while normalizing dependents. Display
@@ -41,7 +42,8 @@ func Build(ctx context.Context, desired []resource.Resource, lookup Lookup) (*Pl
 // BuildWithState is Build plus persisted identity bindings.
 //
 // Resource references are validated as a dependency graph before any
-// remote read. Reads then follow that graph's prerequisite-first order.
+// remote read. Provider resource-set validation then checks cross-resource
+// provider invariants. Reads follow the graph's prerequisite-first order.
 // When identities contains a binding, that identity is attached to the
 // desired resource before Validate/Read. A bound identity that is missing
 // remotely is a stale-state error, not a create. A provider must also
@@ -58,6 +60,9 @@ func BuildWithState(ctx context.Context, desired []resource.Resource, lookup Loo
 	}
 	if lookup == nil && len(desired) > 0 {
 		return nil, fmt.Errorf("plan: provider lookup is required")
+	}
+	if err := validateProviderResourceSets(ctx, desired, lookup); err != nil {
+		return nil, err
 	}
 
 	byAddr := make(map[string]resource.Resource, len(desired))
@@ -76,6 +81,35 @@ func BuildWithState(ctx context.Context, desired []resource.Resource, lookup Loo
 	}
 
 	return &Plan{Changes: changes}, nil
+}
+
+func validateProviderResourceSets(ctx context.Context, desired []resource.Resource, lookup Lookup) error {
+	if len(desired) == 0 || lookup == nil {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	for _, res := range desired {
+		reader, err := lookup(res.Address)
+		if err != nil {
+			return fmt.Errorf("plan %s: %w", res.Address, err)
+		}
+		if reader == nil {
+			return fmt.Errorf("plan %s: provider reader is nil", res.Address)
+		}
+		name := reader.Name()
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		validator, ok := reader.(provider.ResourceSetValidator)
+		if !ok {
+			continue
+		}
+		if err := validator.ValidateResourceSet(ctx, desired); err != nil {
+			return fmt.Errorf("plan: provider %s: %w", name, err)
+		}
+	}
+	return nil
 }
 
 func planResource(ctx context.Context, res resource.Resource, lookup Lookup, identities Identities) (Change, error) {
@@ -106,11 +140,16 @@ func planResource(ctx context.Context, res resource.Resource, lookup Lookup, ide
 		if err != nil {
 			return Change{}, fmt.Errorf("plan %s: %w", addr, err)
 		}
+		operation, err := missingResourceOperation(reader, res)
+		if err != nil {
+			return Change{}, fmt.Errorf("plan %s: %w", addr, err)
+		}
 		return Change{
-			Address: addr,
-			Action:  ActionCreate,
-			After:   want,
-			Diffs:   diffsFromDesired(want),
+			Address:   addr,
+			Action:    ActionCreate,
+			After:     want,
+			Diffs:     diffsFromDesired(want),
+			Operation: operation,
 		}, nil
 	}
 	if err != nil {
@@ -146,6 +185,25 @@ func planResource(ctx context.Context, res resource.Resource, lookup Lookup, ide
 		Diffs:    diffs,
 		Computed: live.Computed.Clone(),
 	}, nil
+}
+
+func missingResourceOperation(reader provider.Reader, res resource.Resource) (string, error) {
+	planner, ok := reader.(provider.MissingResourcePlanner)
+	if !ok {
+		return "", nil
+	}
+	mode, err := planner.PlanMissingResource(res)
+	if err != nil {
+		return "", err
+	}
+	switch mode {
+	case "", provider.MissingResourceCreate:
+		return "", nil
+	case provider.MissingResourceAdopt:
+		return string(mode), nil
+	default:
+		return "", fmt.Errorf("provider returned unsupported missing-resource mode %q", mode)
+	}
 }
 
 func attachIdentity(addr resource.Address, res *resource.Resource, identities Identities) (bool, error) {
