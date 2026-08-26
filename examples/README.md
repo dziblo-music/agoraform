@@ -3,28 +3,28 @@
 Example manifests live here. They are validated automatically by the Go test
 suite and contain no credentials or private deployment values.
 
-- [agoraform.yaml](agoraform.yaml) — minimal v0.1.0 `matomo.goal` manifest.
-- [matomo-conversion](matomo-conversion/README.md) — complete v0.2.0 Matomo Tag
-  Manager conversion workflow with a variable, trigger, tag, and declarative
-  publication.
+- [matomo-conversion](matomo-conversion/README.md) — primary v0.2.0 quickstart:
+  complete Matomo Tag Manager conversion workflow with a Data Layer variable,
+  Custom Event trigger, Matomo Analytics event tag, logical references, import
+  guidance, and declarative publication.
+- [agoraform.yaml](agoraform.yaml) — minimal `matomo.goal` example retained from
+  v0.1.0.
 
-Managed identities belong in `agoraform.state.json` beside the manifest,
-not in resource attributes. See [docs/state.md](../docs/state.md).
+Managed identities belong in `agoraform.state.json` beside the working
+manifest, not in resource attributes. See [docs/state.md](../docs/state.md).
 
-## Workflow
+## v0.2.0 quickstart
 
-`validate`, `plan`, `apply`, and `import` contact Matomo. Set
-`MATOMO_URL`, `MATOMO_TOKEN_AUTH`, and `MATOMO_SITE_ID` first. Structural
-loading of this file is covered by unit tests without a live instance.
-
-From the root of an extracted release archive or repository checkout:
+`validate`, `plan`, `apply`, and `import` contact Matomo. Set the required
+runtime configuration first:
 
 ```bash
 export MATOMO_URL=https://matomo.example.com
 export MATOMO_TOKEN_AUTH=replace-me
 export MATOMO_SITE_ID=1
+export MATOMO_CONTAINER_ID=replace-with-your-container-id
 
-cp examples/agoraform.yaml agoraform.yaml
+cp examples/matomo-conversion/agoraform.yaml agoraform.yaml
 
 agoraform validate
 agoraform plan
@@ -32,16 +32,26 @@ agoraform apply
 agoraform plan
 ```
 
-The second `plan` should report no changes when the remote goal and local
-state are unchanged.
+Review the first plan before applying. The example enables declarative
+publication, so `plan` makes the potential publication visible and `apply`
+publishes only after draft resources converge. The final `plan` should report
+`No changes.` when configuration and remote state are unchanged.
 
-Import an existing goal without recreating it:
+See [matomo-conversion/README.md](matomo-conversion/README.md) for the
+application-side event contract, Matomo verification, disabled-publication
+workflow, and import guidance.
+
+## Minimal goal example
+
+For the smaller v0.1-style goal workflow:
 
 ```bash
-agoraform import matomo.goal.trial_started 12
+cp examples/agoraform.yaml agoraform.yaml
+agoraform validate
+agoraform plan
+agoraform apply
+agoraform plan
 ```
-
-Add the printed YAML to `agoraform.yaml`, then run `agoraform plan` again.
 
 Provider credentials are supplied through `MATOMO_*` environment variables,
 never in the manifest. See [providers/matomo/README.md](../providers/matomo/README.md).
