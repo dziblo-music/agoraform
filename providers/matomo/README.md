@@ -84,6 +84,10 @@ v0.2.0 Data Layer variable:
 `key`. Provider-native IDs/status/version metadata are computed, not desired
 attributes. Updates preserve unmanaged Matomo fields.
 
+Agoraform may encounter other, unmanaged Matomo variable types while reading a
+container. Their scalar and structured parameter values are tolerated so they
+do not prevent managed Data Layer variables from being planned or applied.
+
 ### `matomo.trigger`
 
 v0.2.0 Custom Event trigger:
@@ -111,6 +115,12 @@ v0.2.0 Matomo Analytics event tag:
     eventCategory: signup
     eventAction: trialStarted
 ```
+
+The target Tag Manager container must already contain a **Matomo Configuration**
+variable. Matomo Analytics tags reference that variable for the Matomo URL,
+site ID, and tracking configuration. v0.2 does not manage
+`MatomoConfiguration` variables declaratively, so create one in Matomo before
+managing `matomo.tag` resources if the container does not already have one.
 
 Supported fields:
 
