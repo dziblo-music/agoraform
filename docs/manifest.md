@@ -44,6 +44,8 @@ These do not:
 ```text
 MATOMO_TOKEN_AUTH
 MATOMO_URL
+GOOGLE_ADS_DEVELOPER_TOKEN
+GOOGLE_ADS_REFRESH_TOKEN
 ```
 
 See [Matomo Tag Manager publication](matomo-publishing.md).
@@ -201,7 +203,10 @@ Validation covers:
 
 Matomo runtime connection settings come from `MATOMO_URL`,
 `MATOMO_TOKEN_AUTH`, and `MATOMO_SITE_ID`; Tag Manager resource/publication
-work also requires `MATOMO_CONTAINER_ID`.
+work also requires `MATOMO_CONTAINER_ID`. Google Ads connection settings come
+from `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`,
+`GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`, and
+`GOOGLE_ADS_CUSTOMER_ID`.
 
 See [plan.md](plan.md), [apply.md](apply.md), [import.md](import.md), and
 [state.md](state.md).

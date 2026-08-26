@@ -12,6 +12,7 @@ import (
 	"github.com/dziblo-music/agoraform/internal/cli"
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/provider/fake"
+	"github.com/dziblo-music/agoraform/providers/googleads"
 	"github.com/dziblo-music/agoraform/providers/matomo"
 	"github.com/dziblo-music/agoraform/providers/matomo/client"
 )
@@ -95,6 +96,19 @@ resources:
       title: Homepage banner
 `
 
+const googleAdsProviderManifest = `apiVersion: agoraform.io/v1alpha1
+providers:
+  googleads: {}
+resources: []
+`
+
+const googleAdsConversionActionManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.conversion_action.trial_started
+    attributes:
+      name: Trial Started
+`
+
 func TestValidateSuccess(t *testing.T) {
 	t.Parallel()
 
@@ -112,6 +126,36 @@ func TestValidateSuccess(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "0 resources") {
 		t.Fatalf("stdout = %q, want resource count", stdout.String())
+	}
+}
+
+func TestValidateGoogleAdsMissingCredentials(t *testing.T) {
+	t.Parallel()
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsProviderManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWith(streams, []string{"validate", "-f", path})
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	errOut := stderr.String()
+	if !strings.Contains(errOut, googleads.EnvDeveloperToken) && !strings.Contains(errOut, "required") {
+		t.Fatalf("stderr = %q, want missing %s", errOut, googleads.EnvDeveloperToken)
+	}
+}
+
+func TestValidateGoogleAdsUnknownResourceType(t *testing.T) {
+	t.Parallel()
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsConversionActionManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWith(streams, []string{"validate", "-f", path})
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	errOut := stderr.String()
+	if !strings.Contains(errOut, "unknown resource type") {
+		t.Fatalf("stderr = %q, want unknown resource type", errOut)
 	}
 }
 
