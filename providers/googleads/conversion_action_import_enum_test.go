@@ -8,7 +8,6 @@ import (
 
 	"github.com/dziblo-music/agoraform/internal/importer"
 	"github.com/dziblo-music/agoraform/internal/provider"
-	"github.com/dziblo-music/agoraform/providers/googleads"
 )
 
 func TestImportConversionActionRejectsUnsupportedStatus(t *testing.T) {
@@ -84,5 +83,3 @@ func TestImportConversionActionRejectsUnsupportedCountingType(t *testing.T) {
 	}
 	assertNoProviderSecret(t, err.Error())
 }
-
-var _ = googleads.AttrCount
