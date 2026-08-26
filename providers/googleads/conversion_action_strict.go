@@ -217,6 +217,20 @@ func decodeWebsiteConversionActionRow(raw json.RawMessage, configuredCustomerID 
 		return malformed("unsupported category " + category)
 	}
 
+	status := normalizeEnum(body.Status)
+	if status != "" {
+		if _, ok := conversionActionStatuses[status]; !ok {
+			return conversionActionData{}, fmt.Errorf("conversion action %s has status %s; googleads.conversion_action supports statuses %s", id, status, joinSorted(keys(conversionActionStatuses)))
+		}
+	}
+
+	countingType := normalizeEnum(body.CountingType)
+	if countingType != "" {
+		if _, err := normalizeCount(countingType); err != nil {
+			return conversionActionData{}, fmt.Errorf("conversion action %s has counting type %s; googleads.conversion_action only manages ONE_PER_CLICK or MANY_PER_CLICK counting", id, countingType)
+		}
+	}
+
 	clickWindow, err := parseOptionalInt64(body.ClickThroughLookbackWindowDays)
 	if err != nil {
 		return malformed("invalid clickThroughLookbackWindowDays")
@@ -237,7 +251,7 @@ func decodeWebsiteConversionActionRow(raw json.RawMessage, configuredCustomerID 
 		ResourceName:                   resourceName,
 		ID:                             id,
 		Name:                           body.Name,
-		Status:                         normalizeEnum(body.Status),
+		Status:                         status,
 		Type:                           typeName,
 		Origin:                         normalizeEnum(body.Origin),
 		Category:                       category,
@@ -246,7 +260,7 @@ func decodeWebsiteConversionActionRow(raw json.RawMessage, configuredCustomerID 
 		IncludeInConversionsMetric:     body.IncludeInConversionsMetric,
 		ClickThroughLookbackWindowDays: clickWindow,
 		ViewThroughLookbackWindowDays:  viewWindow,
-		CountingType:                   normalizeEnum(body.CountingType),
+		CountingType:                   countingType,
 		TagSnippets:                    body.TagSnippets,
 	}
 	if body.ValueSettings != nil {
