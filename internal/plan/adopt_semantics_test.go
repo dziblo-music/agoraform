@@ -16,8 +16,8 @@ type adoptReader struct {
 	readCalled bool
 }
 
-func (r *adoptReader) Name() string { return "fake" }
-func (r *adoptReader) ResourceTypes() []string { return []string{"widget"} }
+func (r *adoptReader) Name() string                                      { return "fake" }
+func (r *adoptReader) ResourceTypes() []string                           { return []string{"widget"} }
 func (r *adoptReader) Validate(context.Context, resource.Resource) error { return nil }
 func (r *adoptReader) Read(context.Context, resource.Resource) (resource.RemoteResource, error) {
 	r.readCalled = true
