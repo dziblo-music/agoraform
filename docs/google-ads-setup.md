@@ -154,9 +154,10 @@ GOOGLE_ADS_CUSTOMER_ID=1234567890
 # GOOGLE_ADS_LOGIN_CUSTOMER_ID=0987654321
 ```
 
-Agoraform loads this file automatically before initializing providers. The file
-is ignored by the repository's `.gitignore`. You can also copy the repository
-`.agoraform.env.example` template and fill in the values you need.
+Agoraform loads this file automatically before initializing providers. You can
+copy the repository `.agoraform.env.example` template and fill in the values
+you need. Add `.agoraform.env` to the `.gitignore` of the repository containing
+your campaign; the Agoraform source repository already ignores it.
 
 If a process environment variable is already set, it overrides the value in
 `.agoraform.env`. Direct PowerShell/Bash environment variables therefore remain
