@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/dziblo-music/agoraform/internal/apply"
+	"github.com/dziblo-music/agoraform/internal/importer"
+	"github.com/dziblo-music/agoraform/internal/manifest"
 	"github.com/dziblo-music/agoraform/internal/plan"
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/resource"
@@ -590,6 +592,20 @@ func TestImportCustomerConversionGoal(t *testing.T) {
 	if live.Identity.ID != "SIGNUP~WEBSITE" {
 		t.Fatalf("identity = %q", live.Identity.ID)
 	}
+	if live.Attributes[googleads.AttrCategory] != "SIGNUP" || live.Attributes[googleads.AttrOrigin] != "WEBSITE" {
+		t.Fatalf("attributes = %#v", live.Attributes)
+	}
+	if live.Attributes[googleads.AttrBiddable] != true {
+		t.Fatalf("biddable = %v", live.Attributes[googleads.AttrBiddable])
+	}
+	if _, ok := live.Attributes[googleads.AttrConversionAction]; ok {
+		t.Fatal("conversionAction $ref must not be reconstructed by import")
+	}
+	for _, key := range []string{"id", "resourceName"} {
+		if _, ok := live.Attributes[key]; ok {
+			t.Fatalf("computed %s leaked into attributes: %#v", key, live.Attributes)
+		}
+	}
 
 	named, err := p.Import(context.Background(), addr, "customers/"+testCustomerID+"/customerConversionGoals/SIGNUP~WEBSITE")
 	if err != nil {
@@ -606,6 +622,9 @@ func TestImportCustomerConversionGoal(t *testing.T) {
 	if normalized.Identity.ID != "SIGNUP~WEBSITE" {
 		t.Fatalf("normalized import identity = %q", normalized.Identity.ID)
 	}
+	if len(fake.mutates) != 0 {
+		t.Fatalf("import mutated remote: %v", fake.mutates)
+	}
 }
 
 func TestImportCustomerConversionGoalNotFound(t *testing.T) {
@@ -615,6 +634,147 @@ func TestImportCustomerConversionGoalNotFound(t *testing.T) {
 	_, err := p.Import(context.Background(), mustCustomerConversionGoalAddress(t, "signup"), "SIGNUP~WEBSITE")
 	if !errors.Is(err, provider.ErrNotFound) {
 		t.Fatalf("Import = %v, want ErrNotFound", err)
+	}
+}
+
+func TestNormalizeCustomerConversionGoalImportID(t *testing.T) {
+	t.Parallel()
+
+	p, _ := testConversionActionProvider(t, nil)
+	addr := mustCustomerConversionGoalAddress(t, "signup")
+
+	got, err := p.NormalizeImportID(addr, "signup~website")
+	if err != nil || got != "SIGNUP~WEBSITE" {
+		t.Fatalf("case alias = (%q, %v), want SIGNUP~WEBSITE", got, err)
+	}
+	got, err = p.NormalizeImportID(addr, "customers/"+testCustomerID+"/customerConversionGoals/SIGNUP~WEBSITE")
+	if err != nil || got != "SIGNUP~WEBSITE" {
+		t.Fatalf("resource name = (%q, %v), want SIGNUP~WEBSITE", got, err)
+	}
+
+	_, err = p.NormalizeImportID(addr, "not-an-id")
+	if err == nil || !strings.Contains(err.Error(), "CATEGORY~ORIGIN") {
+		t.Fatalf("invalid id error = %v", err)
+	}
+	_, err = p.NormalizeImportID(addr, "SIGNUP~APP")
+	if err == nil || !strings.Contains(err.Error(), "WEBSITE") {
+		t.Fatalf("unsupported origin error = %v", err)
+	}
+	_, err = p.NormalizeImportID(addr, "customers/0000000000/customerConversionGoals/SIGNUP~WEBSITE")
+	if err == nil || !strings.Contains(err.Error(), "does not match configured") {
+		t.Fatalf("wrong customer error = %v", err)
+	}
+}
+
+func TestImportCustomerConversionGoalInvalidID(t *testing.T) {
+	t.Parallel()
+
+	p, _ := testConversionActionProvider(t, newConversionActionFake())
+	_, err := p.Import(context.Background(), mustCustomerConversionGoalAddress(t, "signup"), "not-an-id")
+	if err == nil || !strings.Contains(err.Error(), "CATEGORY~ORIGIN") {
+		t.Fatalf("Import = %v, want invalid id", err)
+	}
+	assertNoProviderSecret(t, err.Error())
+}
+
+func TestImportCustomerConversionGoalUnsupportedOrigin(t *testing.T) {
+	t.Parallel()
+
+	fake := newConversionActionFake()
+	fake.seedGoal(map[string]any{"category": "SIGNUP", "origin": "APP", "biddable": true})
+	p, _ := testConversionActionProvider(t, fake)
+	_, err := p.Import(context.Background(), mustCustomerConversionGoalAddress(t, "signup"), "SIGNUP~APP")
+	if err == nil {
+		t.Fatal("expected unsupported origin error")
+	}
+	if errors.Is(err, provider.ErrNotFound) {
+		t.Fatal("unsupported origin must not look like not found")
+	}
+	if !strings.Contains(err.Error(), "WEBSITE") {
+		t.Fatalf("error = %q, want WEBSITE guidance", err)
+	}
+	if len(fake.mutates) != 0 {
+		t.Fatalf("unsupported import mutated remote: %v", fake.mutates)
+	}
+}
+
+func TestImportCustomerConversionGoalAPIError(t *testing.T) {
+	t.Parallel()
+
+	fake := newConversionActionFake()
+	fake.searchStatus = http.StatusForbidden
+	p, _ := testConversionActionProvider(t, fake)
+	_, err := p.Import(context.Background(), mustCustomerConversionGoalAddress(t, "signup"), "SIGNUP~WEBSITE")
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+	if errors.Is(err, provider.ErrNotFound) {
+		t.Fatal("API failure must not be ErrNotFound")
+	}
+	assertNoProviderSecret(t, err.Error())
+}
+
+func TestImportCustomerConversionGoalRejectsUnsupportedRemote(t *testing.T) {
+	t.Parallel()
+
+	fake := newConversionActionFake()
+	fake.searchBody = `{"results":[{"customerConversionGoal":{"resourceName":"customers/` + testCustomerID + `/customerConversionGoals/SIGNUP~APP","category":"SIGNUP","origin":"APP","biddable":true}}]}`
+	p, _ := testConversionActionProvider(t, fake)
+	_, err := p.Import(context.Background(), mustCustomerConversionGoalAddress(t, "signup"), "SIGNUP~WEBSITE")
+	if err == nil {
+		t.Fatal("expected unsupported remote origin error")
+	}
+	if errors.Is(err, provider.ErrNotFound) {
+		t.Fatal("unsupported remote origin must not look like not found")
+	}
+	if !strings.Contains(err.Error(), "WEBSITE") {
+		t.Fatalf("error = %q, want WEBSITE guidance", err)
+	}
+}
+
+func TestImportCustomerConversionGoalThenPlanUnchanged(t *testing.T) {
+	t.Parallel()
+
+	fake := newConversionActionFake()
+	fake.seedGoal(map[string]any{"category": "SIGNUP", "origin": "WEBSITE", "biddable": true})
+	p, _ := testConversionActionProvider(t, fake)
+	addr := mustCustomerConversionGoalAddress(t, "signup")
+
+	st := mustGoogleAdsImportStore(t)
+	got, err := importer.Run(context.Background(), addr, "signup~website", lookupGoogleAds(p), st)
+	if err != nil {
+		t.Fatalf("importer.Run: %v", err)
+	}
+	if got.Identity.ID != "SIGNUP~WEBSITE" {
+		t.Fatalf("canonical identity = %q", got.Identity.ID)
+	}
+	if strings.Contains(got.YAML, "resourceName") || strings.Contains(got.YAML, "$ref") || strings.Contains(got.YAML, "conversionAction") {
+		t.Fatalf("generated YAML leaked computed or reconstructed fields:\n%s", got.YAML)
+	}
+
+	parsed, err := manifest.Parse([]byte(got.YAML), "generated")
+	if err != nil {
+		t.Fatalf("generated YAML: %v\n%s", err, got.YAML)
+	}
+	planned, err := plan.BuildWithState(context.Background(), parsed.Resources, func(resource.Address) (provider.Reader, error) {
+		return p, nil
+	}, st)
+	if err != nil {
+		t.Fatalf("plan after import: %v", err)
+	}
+	if planned.HasChanges() {
+		t.Fatalf("plan after import has changes: %+v", planned.Changes)
+	}
+	if len(fake.mutates) != 0 {
+		t.Fatalf("import/plan mutated remote: %v", fake.mutates)
+	}
+
+	again, err := importer.Run(context.Background(), addr, "SIGNUP~WEBSITE", lookupGoogleAds(p), mustGoogleAdsImportStore(t))
+	if err != nil {
+		t.Fatalf("second import: %v", err)
+	}
+	if got.YAML != again.YAML {
+		t.Fatalf("YAML differed:\n%s\n---\n%s", got.YAML, again.YAML)
 	}
 }
 

@@ -71,9 +71,21 @@ func Run(ctx context.Context, addr resource.Address, remoteID string, lookup Loo
 		}
 	}
 
-	live, err := p.Import(ctx, addr, remoteID)
+	canonicalID := remoteID
+	if n, ok := p.(provider.ImportIDNormalizer); ok {
+		canonicalID, err = n.NormalizeImportID(addr, remoteID)
+		if err != nil {
+			return Result{}, fmt.Errorf("import %s: %w", addr, err)
+		}
+		canonicalID = strings.TrimSpace(canonicalID)
+		if canonicalID == "" {
+			return Result{}, fmt.Errorf("import %s: remote identifier is empty", addr)
+		}
+	}
+
+	live, err := p.Import(ctx, addr, canonicalID)
 	if errors.Is(err, provider.ErrNotFound) {
-		return Result{}, fmt.Errorf("import %s: remote resource %q was not found: %w", addr, remoteID, err)
+		return Result{}, fmt.Errorf("import %s: remote resource %q was not found: %w", addr, canonicalID, err)
 	}
 	if err != nil {
 		return Result{}, fmt.Errorf("import %s: %w", addr, err)
@@ -81,8 +93,8 @@ func Run(ctx context.Context, addr resource.Address, remoteID string, lookup Loo
 	if live.Identity.IsZero() {
 		return Result{}, fmt.Errorf("import %s: provider returned no identity", addr)
 	}
-	if live.Identity.ID != remoteID {
-		return Result{}, fmt.Errorf("import %s: provider returned identity %q for requested remote identity %q; refusing to bind a different remote resource", addr, live.Identity.ID, remoteID)
+	if live.Identity.ID != canonicalID {
+		return Result{}, fmt.Errorf("import %s: provider returned identity %q for requested remote identity %q; refusing to bind a different remote resource", addr, live.Identity.ID, canonicalID)
 	}
 	if live.Address != addr {
 		return Result{}, fmt.Errorf("import %s: provider returned logical address %s for requested address %s; refusing to bind a different resource", addr, live.Address, addr)
@@ -101,13 +113,13 @@ func Run(ctx context.Context, addr resource.Address, remoteID string, lookup Loo
 		return Result{}, fmt.Errorf("import %s: cannot encode configuration: %w", addr, err)
 	}
 
-	if err := st.RecordImport(addr, remoteID); err != nil {
+	if err := st.RecordImport(addr, canonicalID); err != nil {
 		return Result{}, fmt.Errorf("import %s: could not persist identity: %w", addr, err)
 	}
 
 	return Result{
 		Address:  addr,
-		Identity: resource.Identity{ID: remoteID},
+		Identity: resource.Identity{ID: canonicalID},
 		YAML:     yamlText,
 	}, nil
 }

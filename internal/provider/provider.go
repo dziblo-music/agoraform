@@ -148,7 +148,21 @@ type Provider interface {
 	// supplied logical address without mutating remote state. The returned
 	// RemoteResource must carry exactly addr and exactly the requested id as
 	// its identity. If that identity does not exist, Import returns ErrNotFound.
+	//
+	// Callers that accept aliases should implement ImportIDNormalizer so
+	// Import receives the canonical identity stored in local state.
 	Import(ctx context.Context, addr resource.Address, id string) (resource.RemoteResource, error)
+}
+
+// ImportIDNormalizer is an optional provider hook that rewrites a
+// user-supplied import identifier into the canonical provider-native
+// identity stored in local state.
+//
+// Agoraform calls this before Import. Implementations must not mutate
+// remote state. Typical aliases are resource names or case variants of a
+// stable key such as CATEGORY~ORIGIN.
+type ImportIDNormalizer interface {
+	NormalizeImportID(addr resource.Address, raw string) (string, error)
 }
 
 // Supports reports whether p manages the given resource type.

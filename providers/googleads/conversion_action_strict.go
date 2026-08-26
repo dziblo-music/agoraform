@@ -105,22 +105,12 @@ func (p *Provider) updateWebsiteConversionAction(ctx context.Context, desired re
 }
 
 func (p *Provider) importWebsiteConversionAction(ctx context.Context, addr resource.Address, rawID string) (resource.RemoteResource, error) {
-	id, err := parseImportConversionActionID(addr, rawID)
+	id, err := p.canonicalConversionActionImportID(addr, rawID)
 	if err != nil {
 		return resource.RemoteResource{}, err
 	}
 	if err := p.requireCustomerID(); err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("googleads: import %s: %w", addr, err)
-	}
-	if customerID, restID, ok := splitConversionActionResourceName(id); ok {
-		configured, err := p.configuredCustomerID()
-		if err != nil {
-			return resource.RemoteResource{}, fmt.Errorf("googleads: import %s: %w", addr, err)
-		}
-		if customerID != configured {
-			return resource.RemoteResource{}, fmt.Errorf("googleads: import %s: resource name customer %s does not match configured %s", addr, customerID, configured)
-		}
-		id = restID
 	}
 	live, err := p.readWebsiteConversionActionByID(ctx, addr, id)
 	if err != nil {
