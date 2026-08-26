@@ -20,7 +20,8 @@ const (
 
 // Provider is the Agoraform Google Ads provider.
 //
-// It registers googleads.conversion_action and shares a reusable REST client
+// It registers googleads.conversion_action and
+// googleads.customer_conversion_goal and shares a reusable REST client
 // for authenticated query and mutate operations.
 type Provider struct {
 	cfg    Config
@@ -67,7 +68,7 @@ func (p *Provider) Name() string { return Name }
 
 // ResourceTypes implements provider.Provider.
 func (p *Provider) ResourceTypes() []string {
-	return []string{TypeConversionAction}
+	return []string{TypeConversionAction, TypeCustomerConversionGoal}
 }
 
 // Client returns the reusable Google Ads HTTP client, creating it on first use.
@@ -133,6 +134,8 @@ func (p *Provider) Validate(_ context.Context, res resource.Resource) error {
 	switch res.Address.Type {
 	case TypeConversionAction:
 		return p.validateWebsiteConversionAction(res)
+	case TypeCustomerConversionGoal:
+		return p.validateCustomerConversionGoal(res)
 	default:
 		return nil
 	}
@@ -143,6 +146,8 @@ func (p *Provider) Read(ctx context.Context, res resource.Resource) (resource.Re
 	switch res.Address.Type {
 	case TypeConversionAction:
 		return p.readWebsiteConversionAction(ctx, res)
+	case TypeCustomerConversionGoal:
+		return p.readCustomerConversionGoal(ctx, res)
 	default:
 		return resource.RemoteResource{}, notImplemented("read", res.Address)
 	}
@@ -153,6 +158,8 @@ func (p *Provider) Create(ctx context.Context, res resource.Resource) (resource.
 	switch res.Address.Type {
 	case TypeConversionAction:
 		return p.createWebsiteConversionAction(ctx, res)
+	case TypeCustomerConversionGoal:
+		return p.createCustomerConversionGoal(ctx, res)
 	default:
 		return resource.RemoteResource{}, notImplemented("create", res.Address)
 	}
@@ -163,6 +170,8 @@ func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual
 	switch desired.Address.Type {
 	case TypeConversionAction:
 		return p.updateWebsiteConversionAction(ctx, desired, actual)
+	case TypeCustomerConversionGoal:
+		return p.updateCustomerConversionGoal(ctx, desired, actual)
 	default:
 		return resource.RemoteResource{}, notImplemented("update", desired.Address)
 	}
@@ -173,6 +182,8 @@ func (p *Provider) Import(ctx context.Context, addr resource.Address, id string)
 	switch addr.Type {
 	case TypeConversionAction:
 		return p.importWebsiteConversionAction(ctx, addr, id)
+	case TypeCustomerConversionGoal:
+		return p.importCustomerConversionGoal(ctx, addr, id)
 	default:
 		return resource.RemoteResource{}, notImplemented("import", addr)
 	}
@@ -183,6 +194,8 @@ func (p *Provider) NormalizeComparable(desired resource.Resource, live *resource
 	switch desired.Address.Type {
 	case TypeConversionAction:
 		return p.normalizeConversionActionComparable(desired, live)
+	case TypeCustomerConversionGoal:
+		return p.normalizeCustomerConversionGoalComparable(desired, live)
 	default:
 		want := desired.Attributes.Clone()
 		if live == nil {

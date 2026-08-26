@@ -771,6 +771,7 @@ type conversionActionFake struct {
 
 	nextID int64
 	byID   map[string]map[string]any
+	goals  map[string]map[string]any
 
 	searchStatus int
 	searchBody   string
@@ -779,12 +780,14 @@ type conversionActionFake struct {
 
 	lastQuery  string
 	lastMutate string
+	mutates    []string
 }
 
 func newConversionActionFake() *conversionActionFake {
 	return &conversionActionFake{
 		nextID: 100,
 		byID:   map[string]map[string]any{},
+		goals:  map[string]map[string]any{},
 	}
 }
 
@@ -792,6 +795,12 @@ func (f *conversionActionFake) seed(action map[string]any) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.storeLocked(cloneMap(action))
+}
+
+func (f *conversionActionFake) seedGoal(goal map[string]any) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.storeGoalLocked(cloneMap(goal))
 }
 
 func (f *conversionActionFake) storeLocked(action map[string]any) {
@@ -828,6 +837,134 @@ func (f *conversionActionFake) storeLocked(action map[string]any) {
 	f.byID[id] = action
 }
 
+func (f *conversionActionFake) storeGoalLocked(goal map[string]any) {
+	if f.goals == nil {
+		f.goals = map[string]map[string]any{}
+	}
+	category := strings.ToUpper(strings.TrimSpace(stringify(goal["category"])))
+	origin := strings.ToUpper(strings.TrimSpace(stringify(goal["origin"])))
+	if origin == "" {
+		origin = "WEBSITE"
+		goal["origin"] = origin
+	}
+	id := category + "~" + origin
+	if stringify(goal["resourceName"]) == "" {
+		goal["resourceName"] = "customers/" + testCustomerID + "/customerConversionGoals/" + id
+	}
+	if _, ok := goal["biddable"]; !ok {
+		goal["biddable"] = true
+	}
+	goal["category"] = category
+	goal["origin"] = origin
+	f.goals[id] = goal
+}
+
+func (f *conversionActionFake) ensureGoalLocked(category, origin string) {
+	category = strings.ToUpper(strings.TrimSpace(category))
+	origin = strings.ToUpper(strings.TrimSpace(origin))
+	if category == "" {
+		return
+	}
+	if origin == "" {
+		origin = "WEBSITE"
+	}
+	id := category + "~" + origin
+	if _, ok := f.goals[id]; ok {
+		return
+	}
+	f.storeGoalLocked(map[string]any{
+		"category": category,
+		"origin":   origin,
+		"biddable": true,
+	})
+}
+
+func (f *conversionActionFake) searchGoalsLocked(query string) []any {
+	var out []any
+	for _, goal := range f.goals {
+		if matchesCustomerConversionGoalQuery(query, goal) {
+			out = append(out, map[string]any{"customerConversionGoal": cloneMap(goal)})
+		}
+	}
+	return out
+}
+
+func (f *conversionActionFake) mutateGoalLocked(body []byte) (string, error) {
+	var req struct {
+		Operations []map[string]any `json:"operations"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil || len(req.Operations) == 0 {
+		return "", errors.New("malformed mutate")
+	}
+	op := req.Operations[0]
+	if _, ok := op["create"]; ok {
+		return "", errors.New("unsupported create")
+	}
+	if _, ok := op["remove"]; ok {
+		return "", errors.New("unsupported remove")
+	}
+	raw, ok := op["update"]
+	if !ok {
+		return "", errors.New("unsupported mutate")
+	}
+	goal, _ := raw.(map[string]any)
+	resourceName := stringify(goal["resourceName"])
+	id := strings.TrimPrefix(resourceName, "customers/"+testCustomerID+"/customerConversionGoals/")
+	current, ok := f.goals[id]
+	if !ok {
+		return "", errors.New("missing customer conversion goal")
+	}
+	merged := cloneMap(current)
+	for k, v := range goal {
+		if k == "resourceName" {
+			continue
+		}
+		merged[k] = v
+	}
+	f.storeGoalLocked(merged)
+	return resourceName, nil
+}
+
+func matchesCustomerConversionGoalQuery(query string, goal map[string]any) bool {
+	category := stringify(goal["category"])
+	origin := stringify(goal["origin"])
+	if strings.Contains(query, "customer_conversion_goal.category = ") {
+		want := extractGAQLString(query, "customer_conversion_goal.category = ")
+		if want != "" && want != category {
+			return false
+		}
+	}
+	if strings.Contains(query, "customer_conversion_goal.origin = ") {
+		want := extractGAQLString(query, "customer_conversion_goal.origin = ")
+		if want != "" && want != origin {
+			return false
+		}
+	}
+	return true
+}
+
+func extractGAQLString(query, prefix string) string {
+	start := strings.Index(query, prefix)
+	if start < 0 {
+		return ""
+	}
+	rest := strings.TrimSpace(query[start+len(prefix):])
+	if rest == "" {
+		return ""
+	}
+	if rest[0] == '\'' {
+		rest = rest[1:]
+		if i := strings.Index(rest, "'"); i >= 0 {
+			rest = rest[:i]
+		}
+		return rest
+	}
+	if i := strings.IndexAny(rest, " \n"); i >= 0 {
+		rest = rest[:i]
+	}
+	return rest
+}
+
 func (f *conversionActionFake) handler(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -855,6 +992,11 @@ func (f *conversionActionFake) handler(w http.ResponseWriter, r *http.Request) {
 			_, _ = io.WriteString(w, f.searchBody)
 			return
 		}
+		if strings.Contains(strings.ToLower(req.Query), "from customer_conversion_goal") {
+			results := f.searchGoalsLocked(req.Query)
+			_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
+			return
+		}
 		if strings.Contains(strings.ToLower(req.Query), "from customer") {
 			_, _ = io.WriteString(w, `{"results":[{"customer":{"id":"`+testCustomerID+`"}}]}`)
 			return
@@ -864,8 +1006,38 @@ func (f *conversionActionFake) handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.Contains(r.URL.Path, "/customerConversionGoals:mutate") {
+		f.lastMutate = string(body)
+		f.mutates = append(f.mutates, "customerConversionGoals")
+		if f.mutateStatus >= 400 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(f.mutateStatus)
+			if f.mutateBody != "" {
+				_, _ = io.WriteString(w, f.mutateBody)
+				return
+			}
+			_, _ = io.WriteString(w, `{"error":{"code":400,"message":"mutate failed `+testDeveloperToken+`","status":"INVALID_ARGUMENT"}}`)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if f.mutateBody != "" {
+			_, _ = io.WriteString(w, f.mutateBody)
+			return
+		}
+		resourceName, err := f.mutateGoalLocked(body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"results": []any{map[string]any{"resourceName": resourceName}},
+		})
+		return
+	}
+
 	if strings.Contains(r.URL.Path, "/conversionActions:mutate") {
 		f.lastMutate = string(body)
+		f.mutates = append(f.mutates, "conversionActions")
 		if f.mutateStatus >= 400 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(f.mutateStatus)
@@ -931,6 +1103,7 @@ func (f *conversionActionFake) mutateLocked(body []byte) (string, error) {
 			}
 		}
 		f.storeLocked(created)
+		f.ensureGoalLocked(stringify(created["category"]), stringify(created["origin"]))
 		return stringify(created["resourceName"]), nil
 	}
 	if raw, ok := op["update"]; ok {

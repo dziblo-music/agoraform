@@ -14,6 +14,7 @@ prints the SemVer identifier without the prefix (`0.2.0`).
 
 - Google Ads provider foundation (`googleads`) with environment-based OAuth and developer-token authentication, customer ID normalization, and a reusable REST client for query and mutate operations.
 - `googleads.conversion_action` for website conversion actions such as Trial Started (read, create, update, import), with Google Ads enum/default normalization so equivalent remote state produces no plan diff.
+- `googleads.customer_conversion_goal` for account-default website conversion-goal biddability (read, adopt, update, import). Google Ads creates these objects automatically; Agoraform reconciles `biddable` and never attempts unsupported create or delete operations.
 
 ## [0.2.0] - 2026-08-26
 

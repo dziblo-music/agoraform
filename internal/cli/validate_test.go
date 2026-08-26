@@ -120,6 +120,23 @@ resources:
       name: Trial Started
 `
 
+const googleAdsCustomerConversionGoalManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.customer_conversion_goal.signup
+    attributes:
+      category: SIGNUP
+      origin: WEBSITE
+      biddable: true
+`
+
+const googleAdsCustomerConversionGoalIncompleteManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.customer_conversion_goal.signup
+    attributes:
+      category: SIGNUP
+      origin: WEBSITE
+`
+
 const googleAdsUnknownResourceManifest = `apiVersion: agoraform.io/v1alpha1
 resources:
   - address: googleads.campaign.brand
@@ -232,6 +249,64 @@ func TestValidateGoogleAdsConversionActionMissingCategory(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "category") {
 		t.Fatalf("stderr = %q, want category validation error", stderr.String())
+	}
+}
+
+func TestValidateGoogleAdsCustomerConversionGoalMissingCredentials(t *testing.T) {
+	t.Parallel()
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsCustomerConversionGoalManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWith(streams, []string{"validate", "-f", path})
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	errOut := stderr.String()
+	if strings.Contains(errOut, "unknown resource type") {
+		t.Fatalf("stderr = %q, googleads.customer_conversion_goal should be registered", errOut)
+	}
+	if !strings.Contains(errOut, googleads.EnvDeveloperToken) && !strings.Contains(errOut, "required") {
+		t.Fatalf("stderr = %q, want missing credential error", errOut)
+	}
+}
+
+func TestValidateGoogleAdsCustomerConversionGoalWithProvider(t *testing.T) {
+	t.Parallel()
+
+	p, _ := googleAdsTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsCustomerConversionGoalManifest)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitOK, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "1 resource") {
+		t.Fatalf("stdout = %q, want 1 resource", stdout.String())
+	}
+}
+
+func TestValidateGoogleAdsCustomerConversionGoalMissingBiddable(t *testing.T) {
+	t.Parallel()
+
+	p, _ := googleAdsTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsCustomerConversionGoalIncompleteManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "biddable") {
+		t.Fatalf("stderr = %q, want biddable validation error", stderr.String())
 	}
 }
 

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/dziblo-music/agoraform/internal/provider"
 )
 
 // Format renders a plan as deterministic, reviewable terminal text.
@@ -27,10 +29,12 @@ func Format(p *Plan) string {
 		return finalizations[i].Address < finalizations[j].Address
 	})
 
-	create, update, destroy := Plan{Changes: changes}.Counts()
+	countPlan := Plan{Changes: changes}
+	create, update, destroy := countPlan.Counts()
+	adopt := countPlan.AdoptionCount()
 
 	var b strings.Builder
-	if create+update == 0 && len(finalizations) == 0 {
+	if create+adopt+update == 0 && len(finalizations) == 0 {
 		b.WriteString("No changes. Desired configuration matches live resources.\n\n")
 	} else {
 		b.WriteString("Agoraform will perform the following actions:\n\n")
@@ -53,7 +57,11 @@ func Format(p *Plan) string {
 		}
 	}
 
-	fmt.Fprintf(&b, "Plan: %d to create, %d to update, %d to destroy", create, update, destroy)
+	if adopt > 0 {
+		fmt.Fprintf(&b, "Plan: %d to create, %d to adopt, %d to update, %d to destroy", create, adopt, update, destroy)
+	} else {
+		fmt.Fprintf(&b, "Plan: %d to create, %d to update, %d to destroy", create, update, destroy)
+	}
 	if len(finalizations) > 0 {
 		fmt.Fprintf(&b, ", %d provider action", len(finalizations))
 		if len(finalizations) != 1 {
@@ -89,13 +97,17 @@ func normalizedFinalizations(p *Plan) []providerFinalization {
 }
 
 func writeChange(b *strings.Builder, c Change) {
-	switch c.Action {
-	case ActionCreate:
-		fmt.Fprintf(b, "+ %s\n", c.Address)
-	case ActionUpdate:
-		fmt.Fprintf(b, "~ %s\n", c.Address)
-	default:
-		fmt.Fprintf(b, "  %s\n", c.Address)
+	if c.Action == ActionCreate && c.Operation == string(provider.MissingResourceAdopt) {
+		fmt.Fprintf(b, "* %s (adopt)\n", c.Address)
+	} else {
+		switch c.Action {
+		case ActionCreate:
+			fmt.Fprintf(b, "+ %s\n", c.Address)
+		case ActionUpdate:
+			fmt.Fprintf(b, "~ %s\n", c.Address)
+		default:
+			fmt.Fprintf(b, "  %s\n", c.Address)
+		}
 	}
 
 	diffs := append([]AttributeDiff(nil), c.Diffs...)

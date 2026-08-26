@@ -41,6 +41,37 @@ type Normalizer interface {
 	NormalizeComparable(desired resource.Resource, live *resource.RemoteResource) (resource.Attributes, resource.Attributes, error)
 }
 
+// MissingResourceMode describes the provider-native operation represented by
+// an unbound desired resource that is absent from Read.
+type MissingResourceMode string
+
+const (
+	// MissingResourceCreate is the default: apply provisions a new remote
+	// object through Provider.Create.
+	MissingResourceCreate MissingResourceMode = "create"
+
+	// MissingResourceAdopt means the provider creates the remote object itself
+	// and apply should bind/reconcile that object rather than imply that
+	// Agoraform provisions it. Core still treats this as a new local binding.
+	MissingResourceAdopt MissingResourceMode = "adopt"
+)
+
+// MissingResourcePlanner is an optional read-only planning hook for resources
+// whose provider-native lifecycle differs from ordinary CRUD. Plan calls it
+// only after Read returns ErrNotFound for an unbound desired resource.
+// Implementations must not mutate remote state.
+type MissingResourcePlanner interface {
+	PlanMissingResource(res resource.Resource) (MissingResourceMode, error)
+}
+
+// ResourceSetValidator is an optional provider hook for validation that needs
+// to inspect relationships between multiple desired resources. It is called
+// by manifest validation and planning after the core reference graph has been
+// checked. Implementations must not mutate remote state.
+type ResourceSetValidator interface {
+	ValidateResourceSet(ctx context.Context, resources []resource.Resource) error
+}
+
 // ConnectionChecker is an optional provider hook for non-mutating
 // credential and endpoint validation.
 //

@@ -102,6 +102,18 @@ numeric ID in local state as `remoteId`. Do not copy it into YAML.
 agoraform import googleads.conversion_action.trial_started 123456789
 ```
 
+## Google Ads customer conversion goals
+
+Import a website customer conversion goal by its `CATEGORY~ORIGIN` identity,
+or by the Google Ads resource name
+`customers/{customerId}/customerConversionGoals/{category}~{origin}`.
+Agoraform stores `CATEGORY~ORIGIN` in local state as `remoteId`. Do not copy
+it into YAML.
+
+```bash
+agoraform import googleads.customer_conversion_goal.signup SIGNUP~WEBSITE
+```
+
 ## Matomo variables
 
 Import a Tag Manager variable by its numeric `idvariable` in the configured

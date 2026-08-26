@@ -466,7 +466,7 @@ func (p *Provider) queryConversionActions(ctx context.Context, where string) ([]
 
 func (p *Provider) requireCustomerID() error {
 	if p == nil || strings.TrimSpace(p.cfg.CustomerID) == "" {
-		return fmt.Errorf("%s is required to manage conversion actions", EnvCustomerID)
+		return fmt.Errorf("%s is required to manage Google Ads resources", EnvCustomerID)
 	}
 	return nil
 }
