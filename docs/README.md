@@ -13,6 +13,7 @@ guides lives here.
 - [Local state (0.1.0)](state.md)
 - [Releasing](release.md)
 - [Matomo provider](../providers/matomo/README.md)
+- [Google Ads provider](../providers/googleads/README.md)
 
 The 0.1.0 product release manages `matomo.goal` only. Unreleased work for
 v0.2.0 also manages Tag Manager `matomo.variable`, `matomo.trigger`, and

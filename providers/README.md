@@ -25,7 +25,7 @@ diffs. Computed/read-only fields belong on `RemoteResource.Computed`, not
 in comparable attributes.
 
 Register implementations with `provider.Registry`. The core never imports
-Matomo or other vendor API types.
+Matomo, Google Ads, or other vendor API types.
 
 ## Matomo
 
@@ -36,6 +36,17 @@ and Tag Manager `matomo.variable`, `matomo.trigger`, and `matomo.tag`.
 
 Tag Manager versions are not implemented yet. See
 [matomo/README.md](matomo/README.md).
+
+## Google Ads
+
+[`googleads/`](googleads/) registers as `googleads` and loads Google Ads
+credentials from `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`,
+`GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`,
+`GOOGLE_ADS_CUSTOMER_ID`, and optional `GOOGLE_ADS_LOGIN_CUSTOMER_ID`. It
+provides an authenticated REST client for query and mutate operations.
+Conversion-action resources are not implemented yet.
+
+See [googleads/README.md](googleads/README.md).
 
 ## Test provider
 

@@ -10,6 +10,10 @@ prints the SemVer identifier without the prefix (`0.2.0`).
 
 ## [Unreleased]
 
+### Added
+
+- Google Ads provider foundation (`googleads`) with environment-based OAuth and developer-token authentication, customer ID normalization, and a reusable REST client for query and mutate operations.
+
 ## [0.2.0] - 2026-08-26
 
 Agoraform 0.2.0 expands the Matomo provider from analytics goals into a
