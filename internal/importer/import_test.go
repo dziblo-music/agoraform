@@ -131,6 +131,84 @@ func TestRunYAMLIsDeterministic(t *testing.T) {
 	}
 }
 
+func TestRunNormalizesImportID(t *testing.T) {
+	t.Parallel()
+
+	inner := fake.New()
+	addr := mustAddress(t, "fake.widget.homepage")
+	seedImported(t, inner, addr, resource.Attributes{fake.AttrTitle: "Imported"}, resource.Attributes{fake.AttrSerial: 4})
+	p := &normalizingProvider{
+		Provider: inner,
+		normalize: func(_ resource.Address, raw string) (string, error) {
+			if raw != "alias-widget" {
+				t.Fatalf("NormalizeImportID raw = %q, want alias-widget", raw)
+			}
+			return "widget-imported", nil
+		},
+	}
+
+	st := mustStore(t)
+	got, err := importer.Run(context.Background(), addr, "alias-widget", lookupProvider(p), st)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got.Identity.ID != "widget-imported" {
+		t.Fatalf("identity = %q, want canonical widget-imported", got.Identity.ID)
+	}
+	id, ok, err := st.Identity(addr)
+	if err != nil || !ok || id.ID != "widget-imported" {
+		t.Fatalf("persisted identity = (%v,%v,%v), want widget-imported", id, ok, err)
+	}
+	if strings.Contains(got.YAML, "alias-widget") || strings.Contains(got.YAML, "widget-imported") {
+		t.Fatalf("identity leaked into YAML:\n%s", got.YAML)
+	}
+}
+
+func TestRunNormalizeImportIDError(t *testing.T) {
+	t.Parallel()
+
+	inner := fake.New()
+	addr := mustAddress(t, "fake.widget.homepage")
+	seedImported(t, inner, addr, resource.Attributes{fake.AttrTitle: "Imported"}, nil)
+	p := &normalizingProvider{
+		Provider: inner,
+		normalize: func(resource.Address, string) (string, error) {
+			return "", errors.New("not a valid import id")
+		},
+	}
+
+	st := mustStore(t)
+	_, err := importer.Run(context.Background(), addr, "bad-id", lookupProvider(p), st)
+	if err == nil || !strings.Contains(err.Error(), "not a valid import id") {
+		t.Fatalf("error = %v, want invalid import id", err)
+	}
+	if _, ok, _ := st.Identity(addr); ok {
+		t.Fatal("invalid import id persisted identity")
+	}
+	_, creates, updates, imports := inner.Calls()
+	if creates != 0 || updates != 0 || imports != 0 {
+		t.Fatalf("normalize failure called Import: creates=%d updates=%d imports=%d", creates, updates, imports)
+	}
+}
+
+func TestRunRejectsIdentityMismatch(t *testing.T) {
+	t.Parallel()
+
+	inner := fake.New()
+	addr := mustAddress(t, "fake.widget.homepage")
+	seedImported(t, inner, addr, resource.Attributes{fake.AttrTitle: "Imported"}, nil)
+	p := &scriptedProvider{Provider: inner, identityID: "other-remote"}
+
+	st := mustStore(t)
+	_, err := importer.Run(context.Background(), addr, "widget-imported", lookupProvider(p), st)
+	if err == nil || !strings.Contains(err.Error(), "refusing to bind a different remote resource") {
+		t.Fatalf("error = %v, want identity mismatch", err)
+	}
+	if _, ok, _ := st.Identity(addr); ok {
+		t.Fatal("mismatched identity was persisted")
+	}
+}
+
 func TestRunThenPlanIsUnchanged(t *testing.T) {
 	t.Parallel()
 
@@ -453,6 +531,7 @@ type scriptedProvider struct {
 	provider.Provider
 	importErr     error
 	stripIdentity bool
+	identityID    string
 	attrs         resource.Attributes
 }
 
@@ -467,10 +546,25 @@ func (p *scriptedProvider) Import(ctx context.Context, addr resource.Address, id
 	if p.stripIdentity {
 		live.Identity = resource.Identity{}
 	}
+	if p.identityID != "" {
+		live.Identity.ID = p.identityID
+	}
 	if p.attrs != nil {
 		live.Attributes = p.attrs.Clone()
 	}
 	return live, nil
+}
+
+type normalizingProvider struct {
+	provider.Provider
+	normalize func(resource.Address, string) (string, error)
+}
+
+func (p *normalizingProvider) NormalizeImportID(addr resource.Address, raw string) (string, error) {
+	if p.normalize != nil {
+		return p.normalize(addr, raw)
+	}
+	return strings.TrimSpace(raw), nil
 }
 
 type connFailProvider struct {

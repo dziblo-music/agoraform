@@ -233,22 +233,23 @@ supported schemas.
 
 ## Import existing resources
 
-`agoraform import` binds a supported existing Matomo resource to its logical
+`agoraform import` binds a supported existing remote resource to its logical
 Agoraform address, records the remote identity in `agoraform.state.json`, and
-prints canonical YAML. It does not mutate Matomo or edit your manifest.
-
-For a Tag Manager tag, import its dependencies first so Agoraform can
-reconstruct logical references:
+prints canonical YAML. It does not mutate the remote platform or edit your
+manifest.
 
 ```bash
 agoraform import matomo.variable.user_id VARIABLE_ID
 agoraform import matomo.trigger.trial_started TRIGGER_ID
 agoraform import matomo.tag.trial_started TAG_ID
+agoraform import googleads.conversion_action.trial_started 123456789
+agoraform import googleads.customer_conversion_goal.signup SIGNUP~WEBSITE
 ```
 
-Review the printed YAML, update your manifest if necessary, and run
-`agoraform plan`. An equivalent imported configuration should produce no
-changes.
+For a Tag Manager tag, import its dependencies first so Agoraform can
+reconstruct logical references. Review the printed YAML, update your manifest
+if necessary, and run `agoraform plan`. An equivalent imported configuration
+should produce no changes.
 
 ## Declarative Matomo Tag Manager publication
 

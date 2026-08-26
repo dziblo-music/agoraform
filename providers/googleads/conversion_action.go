@@ -366,22 +366,12 @@ func (p *Provider) updateConversionAction(ctx context.Context, desired resource.
 }
 
 func (p *Provider) importConversionAction(ctx context.Context, addr resource.Address, id string) (resource.RemoteResource, error) {
-	id, err := parseImportConversionActionID(addr, id)
+	id, err := p.canonicalConversionActionImportID(addr, id)
 	if err != nil {
 		return resource.RemoteResource{}, err
 	}
 	if err := p.requireCustomerID(); err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("googleads: import %s: %w", addr, err)
-	}
-	if customerID, restID, ok := splitConversionActionResourceName(id); ok {
-		configured, err := p.configuredCustomerID()
-		if err != nil {
-			return resource.RemoteResource{}, fmt.Errorf("googleads: import %s: %w", addr, err)
-		}
-		if customerID != configured {
-			return resource.RemoteResource{}, fmt.Errorf("googleads: import %s: resource name customer %s does not match configured %s", addr, customerID, configured)
-		}
-		id = restID
 	}
 	live, err := p.readConversionActionByID(ctx, addr, id)
 	if err != nil {
@@ -847,21 +837,51 @@ func parseConversionActionIdentity(addr resource.Address, raw string) (string, e
 	return raw, nil
 }
 
+func (p *Provider) canonicalConversionActionImportID(addr resource.Address, raw string) (string, error) {
+	id, err := parseImportConversionActionID(addr, raw)
+	if err != nil {
+		return "", err
+	}
+	if customerID, restID, ok := splitConversionActionResourceName(id); ok {
+		configured, err := p.configuredCustomerID()
+		if err != nil {
+			return "", fmt.Errorf("googleads: import %s: %w", addr, err)
+		}
+		got, err := NormalizeCustomerID(customerID)
+		if err != nil {
+			return "", fmt.Errorf("googleads: import %s: %w", addr, err)
+		}
+		if got != configured {
+			return "", fmt.Errorf("googleads: import %s: resource name customer %s does not match configured %s", addr, got, configured)
+		}
+		return restID, nil
+	}
+	return id, nil
+}
+
 func parseImportConversionActionID(addr resource.Address, raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return "", fmt.Errorf("resource %s: persisted identity is empty; a Google Ads conversion action id is required", addr)
+		return "", fmt.Errorf("googleads: import %s: remote identifier is empty; expected a numeric conversion action id or resource name customers/{customerId}/conversionActions/{id}", addr)
 	}
 	if _, id, ok := splitConversionActionResourceName(raw); ok {
-		if err := identityIDError(addr, id); err != nil {
+		if err := importConversionActionIDError(addr, id); err != nil {
 			return "", err
 		}
 		return raw, nil
 	}
-	if err := identityIDError(addr, raw); err != nil {
+	if err := importConversionActionIDError(addr, raw); err != nil {
 		return "", err
 	}
 	return raw, nil
+}
+
+func importConversionActionIDError(addr resource.Address, id string) error {
+	n, err := strconv.ParseInt(id, 10, 64)
+	if err != nil || n <= 0 {
+		return fmt.Errorf("googleads: import %s: %q is not a valid Google Ads conversion action id; expected a positive numeric id or resource name customers/{customerId}/conversionActions/{id}", addr, id)
+	}
+	return nil
 }
 
 func identityIDError(addr resource.Address, id string) error {

@@ -102,6 +102,9 @@ numeric ID in local state as `remoteId`. Do not copy it into YAML.
 agoraform import googleads.conversion_action.trial_started 123456789
 ```
 
+Unsupported remote conversion types, such as app or call conversions, fail
+with guidance instead of emitting a lossy website conversion-action manifest.
+
 ## Google Ads customer conversion goals
 
 Import a website customer conversion goal by its `CATEGORY~ORIGIN` identity,
@@ -113,6 +116,9 @@ it into YAML.
 ```bash
 agoraform import googleads.customer_conversion_goal.signup SIGNUP~WEBSITE
 ```
+
+Unsupported origins, such as app or Google-hosted goals, fail with guidance
+instead of reconstructing a website conversion-goal manifest.
 
 ## Matomo variables
 

@@ -20,9 +20,10 @@ Providers implement `internal/provider.Provider`:
 `Update` for the actions in that plan. `agoraform import` calls `Import`
 to read an existing remote identity; implementations must not create,
 update, or delete the remote resource. Providers may also implement
-`provider.Normalizer` so defaults and omitted values do not create false
-diffs. Computed/read-only fields belong on `RemoteResource.Computed`, not
-in comparable attributes.
+`provider.ImportIDNormalizer` so aliases such as resource names are stored
+as canonical identities, and `provider.Normalizer` so defaults and omitted
+values do not create false diffs. Computed/read-only fields belong on
+`RemoteResource.Computed`, not in comparable attributes.
 
 Register implementations with `provider.Registry`. The core never imports
 Matomo, Google Ads, or other vendor API types.

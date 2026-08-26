@@ -91,6 +91,9 @@ Import accepts the numeric conversion action ID or the resource name
 agoraform import googleads.conversion_action.trial_started 123456789
 ```
 
+App, call, and other non-`WEBPAGE` conversion actions fail import with
+actionable guidance instead of generating a lossy website configuration.
+
 ### `googleads.customer_conversion_goal`
 
 Account-default website conversion-goal biddability. Google Ads automatically
@@ -139,6 +142,11 @@ Import accepts `CATEGORY~ORIGIN` or the resource name
 ```bash
 agoraform import googleads.customer_conversion_goal.signup SIGNUP~WEBSITE
 ```
+
+Non-website origins fail import with guidance rather than reconstructing a
+lossy `WEBSITE` goal. Import does not emit a `conversionAction` `$ref`; add
+that optionally after import if the matching conversion action is also
+managed.
 
 ## HTTP client
 

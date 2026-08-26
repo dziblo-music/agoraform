@@ -31,10 +31,11 @@ type Provider struct {
 }
 
 var (
-	_ provider.Provider          = (*Provider)(nil)
-	_ provider.ConnectionChecker = (*Provider)(nil)
-	_ provider.Configurator      = (*Provider)(nil)
-	_ provider.Normalizer        = (*Provider)(nil)
+	_ provider.Provider           = (*Provider)(nil)
+	_ provider.ConnectionChecker  = (*Provider)(nil)
+	_ provider.Configurator       = (*Provider)(nil)
+	_ provider.Normalizer         = (*Provider)(nil)
+	_ provider.ImportIDNormalizer = (*Provider)(nil)
 )
 
 // New returns a Google Ads provider using cfg.
@@ -186,6 +187,25 @@ func (p *Provider) Import(ctx context.Context, addr resource.Address, id string)
 		return p.importCustomerConversionGoal(ctx, addr, id)
 	default:
 		return resource.RemoteResource{}, notImplemented("import", addr)
+	}
+}
+
+// NormalizeImportID implements provider.ImportIDNormalizer.
+//
+// Conversion actions accept a numeric id or customers/{customerId}/conversionActions/{id}
+// and store the numeric id. Customer conversion goals accept CATEGORY~ORIGIN
+// (any case) or the Google Ads resource name and store CATEGORY~ORIGIN.
+func (p *Provider) NormalizeImportID(addr resource.Address, raw string) (string, error) {
+	if p == nil {
+		return "", fmt.Errorf("googleads: provider is nil")
+	}
+	switch addr.Type {
+	case TypeConversionAction:
+		return p.canonicalConversionActionImportID(addr, raw)
+	case TypeCustomerConversionGoal:
+		return p.canonicalCustomerConversionGoalImportID(addr, raw)
+	default:
+		return "", notImplemented("import", addr)
 	}
 }
 

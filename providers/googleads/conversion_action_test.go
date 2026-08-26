@@ -7,14 +7,18 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/dziblo-music/agoraform/internal/importer"
+	"github.com/dziblo-music/agoraform/internal/manifest"
 	"github.com/dziblo-music/agoraform/internal/plan"
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/resource"
+	"github.com/dziblo-music/agoraform/internal/state"
 	"github.com/dziblo-music/agoraform/providers/googleads"
 )
 
@@ -511,6 +515,9 @@ func TestImportConversionAction(t *testing.T) {
 		"category": "SIGNUP",
 		"type":     "WEBPAGE",
 		"status":   "ENABLED",
+		"tagSnippets": []any{
+			map[string]any{"eventSnippet": "gtag('event', 'conversion', {'send_to': 'AW-9988776655/AbC-D_efG-h12_34-567'});"},
+		},
 	})
 	p, _ := testConversionActionProvider(t, fake)
 	addr := mustConversionActionAddress(t, "trial_started")
@@ -525,6 +532,20 @@ func TestImportConversionAction(t *testing.T) {
 	if live.Address != addr {
 		t.Fatalf("address = %s", live.Address)
 	}
+	if live.Attributes[googleads.AttrName] != "Trial Started" {
+		t.Fatalf("name = %v", live.Attributes[googleads.AttrName])
+	}
+	for _, key := range []string{"id", "resourceName", "type", "origin", "ownerCustomer", "tagSnippets", "conversionId", "conversionLabel"} {
+		if _, ok := live.Attributes[key]; ok {
+			t.Fatalf("computed %s leaked into attributes: %#v", key, live.Attributes)
+		}
+	}
+	if live.Computed["id"] != "12" {
+		t.Fatalf("computed id = %v", live.Computed["id"])
+	}
+	if live.Computed["conversionId"] != "9988776655" {
+		t.Fatalf("conversionId = %v", live.Computed["conversionId"])
+	}
 
 	named, err := p.Import(context.Background(), addr, "customers/"+testCustomerID+"/conversionActions/12")
 	if err != nil {
@@ -532,6 +553,9 @@ func TestImportConversionAction(t *testing.T) {
 	}
 	if named.Identity.ID != "12" {
 		t.Fatalf("resource-name import identity = %q, want numeric 12", named.Identity.ID)
+	}
+	if len(fake.mutates) != 0 {
+		t.Fatalf("import mutated remote: %v", fake.mutates)
 	}
 }
 
@@ -542,6 +566,146 @@ func TestImportConversionActionNotFound(t *testing.T) {
 	_, err := p.Import(context.Background(), mustConversionActionAddress(t, "trial_started"), "12")
 	if !errors.Is(err, provider.ErrNotFound) {
 		t.Fatalf("Import = %v, want ErrNotFound", err)
+	}
+}
+
+func TestNormalizeConversionActionImportID(t *testing.T) {
+	t.Parallel()
+
+	p, _ := testConversionActionProvider(t, nil)
+	addr := mustConversionActionAddress(t, "trial_started")
+
+	got, err := p.NormalizeImportID(addr, "12")
+	if err != nil || got != "12" {
+		t.Fatalf("numeric = (%q, %v), want 12", got, err)
+	}
+	got, err = p.NormalizeImportID(addr, "customers/"+testCustomerID+"/conversionActions/12")
+	if err != nil || got != "12" {
+		t.Fatalf("resource name = (%q, %v), want 12", got, err)
+	}
+
+	_, err = p.NormalizeImportID(addr, "abc")
+	if err == nil || !strings.Contains(err.Error(), "not a valid Google Ads conversion action id") {
+		t.Fatalf("invalid id error = %v", err)
+	}
+	_, err = p.NormalizeImportID(addr, "customers/0000000000/conversionActions/12")
+	if err == nil || !strings.Contains(err.Error(), "does not match configured") {
+		t.Fatalf("wrong customer error = %v", err)
+	}
+	assertNoProviderSecret(t, err.Error())
+}
+
+func TestImportConversionActionInvalidID(t *testing.T) {
+	t.Parallel()
+
+	p, _ := testConversionActionProvider(t, newConversionActionFake())
+	_, err := p.Import(context.Background(), mustConversionActionAddress(t, "trial_started"), "abc")
+	if err == nil || !strings.Contains(err.Error(), "not a valid Google Ads conversion action id") {
+		t.Fatalf("Import = %v, want invalid id", err)
+	}
+	assertNoProviderSecret(t, err.Error())
+}
+
+func TestImportConversionActionUnsupportedType(t *testing.T) {
+	t.Parallel()
+
+	fake := newConversionActionFake()
+	fake.seed(map[string]any{"id": "3", "name": "App Install", "category": "DOWNLOAD", "type": "GOOGLE_PLAY_DOWNLOAD"})
+	p, _ := testConversionActionProvider(t, fake)
+	_, err := p.Import(context.Background(), mustConversionActionAddress(t, "app_install"), "3")
+	if err == nil {
+		t.Fatal("expected unsupported type error")
+	}
+	if errors.Is(err, provider.ErrNotFound) {
+		t.Fatal("unsupported type must not look like not found")
+	}
+	if !strings.Contains(err.Error(), "WEBPAGE") {
+		t.Fatalf("error = %q, want WEBPAGE guidance", err)
+	}
+	if len(fake.mutates) != 0 {
+		t.Fatalf("unsupported import mutated remote: %v", fake.mutates)
+	}
+	assertNoProviderSecret(t, err.Error())
+}
+
+func TestImportConversionActionAPIError(t *testing.T) {
+	t.Parallel()
+
+	fake := newConversionActionFake()
+	fake.searchStatus = http.StatusForbidden
+	p, _ := testConversionActionProvider(t, fake)
+	_, err := p.Import(context.Background(), mustConversionActionAddress(t, "trial_started"), "12")
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+	if errors.Is(err, provider.ErrNotFound) {
+		t.Fatal("API failure must not be ErrNotFound")
+	}
+	assertNoProviderSecret(t, err.Error())
+}
+
+func TestImportConversionActionThenPlanUnchanged(t *testing.T) {
+	t.Parallel()
+
+	fake := newConversionActionFake()
+	fake.seed(map[string]any{
+		"id":             "12",
+		"name":           "Trial Started",
+		"category":       "SIGNUP",
+		"type":           "WEBPAGE",
+		"status":         "ENABLED",
+		"countingType":   "ONE_PER_CLICK",
+		"primaryForGoal": true,
+		"valueSettings": map[string]any{
+			"defaultValue":          0.0,
+			"defaultCurrencyCode":   "USD",
+			"alwaysUseDefaultValue": true,
+		},
+		"tagSnippets": []any{
+			map[string]any{"eventSnippet": "gtag('event', 'conversion', {'send_to': 'AW-1/" + testAccessToken + "'});"},
+		},
+	})
+	p, _ := testConversionActionProvider(t, fake)
+	addr := mustConversionActionAddress(t, "trial_started")
+
+	st := mustGoogleAdsImportStore(t)
+	got, err := importer.Run(context.Background(), addr, "customers/"+testCustomerID+"/conversionActions/12", lookupGoogleAds(p), st)
+	if err != nil {
+		t.Fatalf("importer.Run: %v", err)
+	}
+	if got.Identity.ID != "12" {
+		t.Fatalf("canonical identity = %q, want 12", got.Identity.ID)
+	}
+	assertNoProviderSecret(t, got.YAML)
+	for _, leak := range []string{"resourceName", "tagSnippets", "conversionId", "conversionLabel", "id:", testAccessToken} {
+		if strings.Contains(got.YAML, leak) {
+			t.Fatalf("generated YAML leaked %q:\n%s", leak, got.YAML)
+		}
+	}
+
+	parsed, err := manifest.Parse([]byte(got.YAML), "generated")
+	if err != nil {
+		t.Fatalf("generated YAML: %v\n%s", err, got.YAML)
+	}
+	planned, err := plan.BuildWithState(context.Background(), parsed.Resources, func(resource.Address) (provider.Reader, error) {
+		return p, nil
+	}, st)
+	if err != nil {
+		t.Fatalf("plan after import: %v", err)
+	}
+	if planned.HasChanges() {
+		t.Fatalf("plan after import has changes: %+v", planned.Changes)
+	}
+	if len(fake.mutates) != 0 {
+		t.Fatalf("import/plan mutated remote: %v", fake.mutates)
+	}
+
+	again, err := importer.Run(context.Background(), addr, "12", lookupGoogleAds(p), mustGoogleAdsImportStore(t))
+	if err != nil {
+		t.Fatalf("second import: %v", err)
+	}
+	if got.YAML != again.YAML {
+		t.Fatalf("YAML differed:\n%s\n---\n%s", got.YAML, again.YAML)
 	}
 }
 
@@ -725,6 +889,21 @@ func mustPlanConversionAction(t *testing.T, p *googleads.Provider, res resource.
 		t.Fatalf("plan.Build: %v", err)
 	}
 	return got
+}
+
+func mustGoogleAdsImportStore(t *testing.T) *state.Store {
+	t.Helper()
+	st, err := state.New(filepath.Join(t.TempDir(), state.DefaultFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return st
+}
+
+func lookupGoogleAds(p *googleads.Provider) importer.Lookup {
+	return func(resource.Address) (provider.Provider, error) {
+		return p, nil
+	}
 }
 
 func conversionActionResource(t *testing.T, name string, attrs resource.Attributes) resource.Resource {

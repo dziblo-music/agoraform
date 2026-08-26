@@ -164,22 +164,12 @@ func (p *Provider) updateCustomerConversionGoal(ctx context.Context, desired res
 }
 
 func (p *Provider) importCustomerConversionGoal(ctx context.Context, addr resource.Address, rawID string) (resource.RemoteResource, error) {
-	id, err := parseImportCustomerConversionGoalID(addr, rawID)
+	id, err := p.canonicalCustomerConversionGoalImportID(addr, rawID)
 	if err != nil {
 		return resource.RemoteResource{}, err
 	}
 	if err := p.requireCustomerID(); err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("googleads: import %s: %w", addr, err)
-	}
-	if customerID, restID, ok := splitCustomerConversionGoalResourceName(id); ok {
-		configured, err := p.configuredCustomerID()
-		if err != nil {
-			return resource.RemoteResource{}, fmt.Errorf("googleads: import %s: %w", addr, err)
-		}
-		if customerID != configured {
-			return resource.RemoteResource{}, fmt.Errorf("googleads: import %s: resource name customer %s does not match configured %s", addr, customerID, configured)
-		}
-		id = restID
 	}
 	live, err := p.readCustomerConversionGoalByID(ctx, addr, id)
 	if err != nil {
@@ -526,10 +516,32 @@ func parseCustomerConversionGoalIdentity(addr resource.Address, raw string) (str
 	return raw, nil
 }
 
+func (p *Provider) canonicalCustomerConversionGoalImportID(addr resource.Address, raw string) (string, error) {
+	id, err := parseImportCustomerConversionGoalID(addr, raw)
+	if err != nil {
+		return "", err
+	}
+	if customerID, restID, ok := splitCustomerConversionGoalResourceName(id); ok {
+		configured, err := p.configuredCustomerID()
+		if err != nil {
+			return "", fmt.Errorf("googleads: import %s: %w", addr, err)
+		}
+		got, err := NormalizeCustomerID(customerID)
+		if err != nil {
+			return "", fmt.Errorf("googleads: import %s: %w", addr, err)
+		}
+		if got != configured {
+			return "", fmt.Errorf("googleads: import %s: resource name customer %s does not match configured %s", addr, got, configured)
+		}
+		return restID, nil
+	}
+	return id, nil
+}
+
 func parseImportCustomerConversionGoalID(addr resource.Address, raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return "", fmt.Errorf("resource %s: persisted identity is empty; a Google Ads customer conversion goal id of the form CATEGORY~ORIGIN is required", addr)
+		return "", fmt.Errorf("googleads: import %s: remote identifier is empty; expected CATEGORY~ORIGIN or resource name customers/{customerId}/customerConversionGoals/{category}~{origin}", addr)
 	}
 	if _, id, ok := splitCustomerConversionGoalResourceName(raw); ok {
 		if _, _, err := parseCustomerConversionGoalID(addr, id); err != nil {
@@ -548,15 +560,15 @@ func parseCustomerConversionGoalID(addr resource.Address, raw string) (category,
 	raw = strings.TrimSpace(raw)
 	parts := strings.Split(raw, "~")
 	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
-		return "", "", fmt.Errorf("resource %s: persisted identity %q is not a valid Google Ads customer conversion goal id; expected CATEGORY~ORIGIN", addr, raw)
+		return "", "", fmt.Errorf("resource %s: %q is not a valid Google Ads customer conversion goal id; expected CATEGORY~ORIGIN", addr, raw)
 	}
 	category = normalizeEnum(parts[0])
 	origin = normalizeEnum(parts[1])
 	if _, ok := conversionActionCategories[category]; !ok {
-		return "", "", fmt.Errorf("resource %s: persisted identity %q has unsupported category %s", addr, raw, category)
+		return "", "", fmt.Errorf("resource %s: %q has unsupported category %s; googleads.customer_conversion_goal only manages website conversion categories", addr, raw, category)
 	}
 	if origin != customerConversionGoalOriginWebsite {
-		return "", "", fmt.Errorf("resource %s: persisted identity %q has origin %s; googleads.customer_conversion_goal only manages website (WEBSITE) conversion goals", addr, raw, origin)
+		return "", "", fmt.Errorf("resource %s: %q has origin %s; googleads.customer_conversion_goal only manages website (WEBSITE) conversion goals", addr, raw, origin)
 	}
 	return category, origin, nil
 }
