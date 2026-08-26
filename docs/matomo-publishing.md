@@ -1,5 +1,8 @@
 # Matomo Tag Manager publication (v0.2.0)
 
+Available in Agoraform v0.2.0. For a complete variable/trigger/tag workflow,
+see the [Matomo conversion-tracking quickstart](../examples/matomo-conversion/README.md).
+
 Agoraform keeps its CLI provider-neutral. Matomo Tag Manager publication is
 therefore declarative provider desired state, not a separate `publish`
 command.
@@ -86,9 +89,10 @@ that the version was created so the partial remote mutation is visible.
 
 An empty, JSON `null`, unreadable, oversized, or otherwise unrecognizable
 publish response is not treated as success. The publish request has already
-been sent, so Agoraform cannot know whether Matomo completed publication. The resulting error says
-the outcome is uncertain and tells you to inspect the remote container
-before retrying. Do not create another version until that status is known.
+been sent, so Agoraform cannot know whether Matomo completed publication. The
+resulting error says the outcome is uncertain and tells you to inspect the
+remote container before retrying. Do not create another version until that
+status is known.
 
 ## Permission and environment preflight
 
