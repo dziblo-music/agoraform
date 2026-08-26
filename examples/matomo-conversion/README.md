@@ -23,6 +23,15 @@ target environment. Find the site ID and container ID in Matomo; neither is a
 secret, but they are runtime settings so this reusable example does not embed
 them.
 
+The target container must also already contain a **Matomo Configuration**
+variable. Matomo Analytics tags reference that container-level variable for the
+Matomo URL, site ID, and tracking configuration; v0.2 does not manage
+`MatomoConfiguration` variables declaratively. In Matomo Tag Manager, create
+one under **Variables -> Create New Variable -> Matomo Configuration** before
+running this example if the container does not already have one. The variable
+may use Matomo's normal scalar or structured options such as domains, custom
+dimensions, and custom data.
+
 Set the four required environment variables:
 
 ```bash
