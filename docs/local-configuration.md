@@ -55,7 +55,13 @@ This makes `.agoraform.env` useful for normal local defaults while still allowin
 
 ## Security
 
-`.agoraform.env` is included in the repository `.gitignore`. Do not force-add it to Git.
+The Agoraform source repository ignores `.agoraform.env`. If you use Agoraform from another Git repository, add this entry to that project's `.gitignore` as well:
+
+```gitignore
+.agoraform.env
+```
+
+Do not force-add the file to Git.
 
 Treat the file like any other local secrets file:
 
