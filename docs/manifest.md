@@ -107,7 +107,7 @@ produce changes merely because provider-native IDs differ.
 
 ### `matomo.goal`
 
-v0.1.0 manages Matomo analytics goals. Common attributes:
+v0.1.0 introduced Matomo analytics goals. Common attributes:
 
 | Attribute | Required | Description |
 | --- | --- | --- |
@@ -120,7 +120,7 @@ Provider-native goal IDs live in local state, not attributes.
 
 ### `matomo.variable`
 
-Unreleased v0.2.0 supports Tag Manager Data Layer variables:
+v0.2.0 supports Tag Manager Data Layer variables:
 
 ```yaml
 - address: matomo.variable.user_id
@@ -134,7 +134,7 @@ Unreleased v0.2.0 supports Tag Manager Data Layer variables:
 
 ### `matomo.trigger`
 
-Unreleased v0.2.0 supports Custom Event triggers:
+v0.2.0 supports Custom Event triggers:
 
 ```yaml
 - address: matomo.trigger.trial_started
@@ -147,7 +147,7 @@ Unreleased v0.2.0 supports Custom Event triggers:
 
 ### `matomo.tag`
 
-Unreleased v0.2.0 supports Matomo Analytics event tags:
+v0.2.0 supports Matomo Analytics event tags:
 
 ```yaml
 - address: matomo.tag.trial_started
@@ -165,7 +165,7 @@ for the complete resource-specific schema and preservation behavior.
 
 ## Matomo provider desired state
 
-Unreleased v0.2.0 recognizes:
+v0.2.0 recognizes:
 
 ```yaml
 providers:
