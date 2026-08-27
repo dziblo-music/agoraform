@@ -22,8 +22,9 @@ const (
 //
 // It registers googleads.conversion_action,
 // googleads.customer_conversion_goal, googleads.campaign_budget,
-// googleads.campaign, and googleads.campaign_conversion_goal and shares a
-// reusable REST client for authenticated query and mutate operations.
+// googleads.campaign, googleads.campaign_conversion_goal, and
+// googleads.ad_group and shares a reusable REST client for authenticated
+// query and mutate operations.
 type Provider struct {
 	cfg    Config
 	once   sync.Once
@@ -74,7 +75,7 @@ func (p *Provider) Name() string { return Name }
 
 // ResourceTypes implements provider.Provider.
 func (p *Provider) ResourceTypes() []string {
-	return []string{TypeConversionAction, TypeCustomerConversionGoal, TypeCampaignBudget, TypeCampaign, TypeCampaignConversionGoal}
+	return []string{TypeConversionAction, TypeCustomerConversionGoal, TypeCampaignBudget, TypeCampaign, TypeCampaignConversionGoal, TypeAdGroup}
 }
 
 // Client returns the reusable Google Ads HTTP client, creating it on first use.
@@ -148,6 +149,8 @@ func (p *Provider) Validate(_ context.Context, res resource.Resource) error {
 		return p.validateCampaign(res)
 	case TypeCampaignConversionGoal:
 		return p.validateCampaignConversionGoal(res)
+	case TypeAdGroup:
+		return p.validateAdGroup(res)
 	default:
 		return nil
 	}
@@ -166,6 +169,8 @@ func (p *Provider) Read(ctx context.Context, res resource.Resource) (resource.Re
 		return p.readCampaign(ctx, res)
 	case TypeCampaignConversionGoal:
 		return p.readCampaignConversionGoal(ctx, res)
+	case TypeAdGroup:
+		return p.readAdGroup(ctx, res)
 	default:
 		return resource.RemoteResource{}, notImplemented("read", res.Address)
 	}
@@ -187,6 +192,8 @@ func (p *Provider) Create(ctx context.Context, res resource.Resource) (resource.
 		return p.createCampaign(ctx, res)
 	case TypeCampaignConversionGoal:
 		return p.createCampaignConversionGoal(ctx, res)
+	case TypeAdGroup:
+		return p.createAdGroup(ctx, res)
 	default:
 		return resource.RemoteResource{}, notImplemented("create", res.Address)
 	}
@@ -205,6 +212,8 @@ func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual
 		return p.updateCampaign(ctx, desired, actual)
 	case TypeCampaignConversionGoal:
 		return p.updateCampaignConversionGoal(ctx, desired, actual)
+	case TypeAdGroup:
+		return p.updateAdGroup(ctx, desired, actual)
 	default:
 		return resource.RemoteResource{}, notImplemented("update", desired.Address)
 	}
@@ -223,6 +232,8 @@ func (p *Provider) Import(ctx context.Context, addr resource.Address, id string)
 		return p.importCampaign(ctx, addr, id)
 	case TypeCampaignConversionGoal:
 		return p.importCampaignConversionGoal(ctx, addr, id)
+	case TypeAdGroup:
+		return p.importAdGroup(ctx, addr, id)
 	default:
 		return resource.RemoteResource{}, notImplemented("import", addr)
 	}
@@ -239,7 +250,8 @@ func (p *Provider) Import(ctx context.Context, addr resource.Address, id string)
 // customers/{customerId}/campaigns/{id} and store the numeric id.
 // Campaign conversion goals accept CAMPAIGN_ID~CATEGORY~ORIGIN
 // (any case for category/origin) or the Google Ads resource name and store
-// CAMPAIGN_ID~CATEGORY~ORIGIN.
+// CAMPAIGN_ID~CATEGORY~ORIGIN. Search ad groups accept a numeric id or
+// customers/{customerId}/adGroups/{id} and store the numeric id.
 func (p *Provider) NormalizeImportID(addr resource.Address, raw string) (string, error) {
 	if p == nil {
 		return "", fmt.Errorf("googleads: provider is nil")
@@ -255,6 +267,8 @@ func (p *Provider) NormalizeImportID(addr resource.Address, raw string) (string,
 		return p.canonicalCampaignImportID(addr, raw)
 	case TypeCampaignConversionGoal:
 		return p.canonicalCampaignConversionGoalImportID(addr, raw)
+	case TypeAdGroup:
+		return p.canonicalAdGroupImportID(addr, raw)
 	default:
 		return "", notImplemented("import", addr)
 	}
@@ -273,6 +287,8 @@ func (p *Provider) NormalizeComparable(desired resource.Resource, live *resource
 		return p.normalizeCampaignComparable(desired, live)
 	case TypeCampaignConversionGoal:
 		return p.normalizeCampaignConversionGoalComparable(desired, live)
+	case TypeAdGroup:
+		return p.normalizeAdGroupComparable(desired, live)
 	default:
 		want := desired.Attributes.Clone()
 		if live == nil {

@@ -1316,6 +1316,8 @@ func mutateCollection(path string) string {
 		return "campaignBudgets"
 	case strings.Contains(path, "/campaigns:mutate"):
 		return "campaigns"
+	case strings.Contains(path, "/adGroups:mutate"):
+		return "adGroups"
 	default:
 		return "unknown"
 	}
