@@ -242,12 +242,16 @@ comparison.
     explicitlyShared: false
 ```
 
-Search campaigns will reference the budget by logical address:
+Search campaigns reference the budget by logical address:
 
 ```yaml
-# Forthcoming googleads.campaign resource (not implemented yet):
-#   budget:
-#     $ref: googleads.campaign_budget.brand
+- address: googleads.campaign.brand
+  attributes:
+    name: Brand
+    budget:
+      $ref: googleads.campaign_budget.brand
+    bidding:
+      strategy: MANUAL_CPC
 ```
 
 Provider-native IDs, resource names, micros, period, and type are
@@ -255,6 +259,36 @@ computed. Updates use sparse field masks so unchanged sharing fields and
 Google-managed dedicated-budget names are not resent. Converting a dedicated
 budget to shared includes its name in the same mutation, as required by Google
 Ads. See the [Google Ads provider reference](../providers/googleads/README.md).
+
+### `googleads.campaign`
+
+Search campaigns. The advertising channel is `SEARCH`. New campaigns default
+to `PAUSED`. Campaigns must reference a `googleads.campaign_budget`.
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `name` | yes | Campaign name. |
+| `budget` | yes | `$ref` to a `googleads.campaign_budget`. |
+| `bidding` | yes | Search bidding strategy such as `MANUAL_CPC` or `MAXIMIZE_CONVERSIONS`. |
+| `status` | no | `PAUSED` (default) or `ENABLED`. |
+| `network` | no | Search network / partner flags. |
+| `startDate` / `endDate` | no | `YYYY-MM-DD`. |
+| `trackingUrlTemplate` / `finalUrlSuffix` | no | Optional URL tracking fields. |
+
+```yaml
+- address: googleads.campaign.brand
+  attributes:
+    name: Brand
+    status: PAUSED
+    budget:
+      $ref: googleads.campaign_budget.brand
+    bidding:
+      strategy: MANUAL_CPC
+```
+
+Unsupported channel types fail validation before mutation. Ad groups, ads,
+keywords, and targeting are out of scope. See the
+[Google Ads provider reference](../providers/googleads/README.md).
 
 ## Matomo provider desired state
 

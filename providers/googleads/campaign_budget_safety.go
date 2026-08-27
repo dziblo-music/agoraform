@@ -179,7 +179,7 @@ func (p *Provider) updateCampaignBudgetSafe(ctx context.Context, desired resourc
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("googleads: update %s succeeded but refreshing campaign budget %q failed: %w", desired.Address, actual.Identity.ID, err)
 	}
-	return refreshed, nil
+	return p.rememberLive(refreshed), nil
 }
 
 func campaignBudgetRemoteShared(addr resource.Address, live resource.RemoteResource) (bool, error) {

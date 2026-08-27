@@ -37,8 +37,8 @@ func TestProviderRegisterAndLookup(t *testing.T) {
 	if got.Name() != googleads.Name {
 		t.Fatalf("Name = %q", got.Name())
 	}
-	if len(got.ResourceTypes()) != 3 || got.ResourceTypes()[0] != googleads.TypeConversionAction || got.ResourceTypes()[1] != googleads.TypeCustomerConversionGoal || got.ResourceTypes()[2] != googleads.TypeCampaignBudget {
-		t.Fatalf("ResourceTypes = %v, want [%s %s %s]", got.ResourceTypes(), googleads.TypeConversionAction, googleads.TypeCustomerConversionGoal, googleads.TypeCampaignBudget)
+	if len(got.ResourceTypes()) != 4 || got.ResourceTypes()[0] != googleads.TypeConversionAction || got.ResourceTypes()[1] != googleads.TypeCustomerConversionGoal || got.ResourceTypes()[2] != googleads.TypeCampaignBudget || got.ResourceTypes()[3] != googleads.TypeCampaign {
+		t.Fatalf("ResourceTypes = %v, want [%s %s %s %s]", got.ResourceTypes(), googleads.TypeConversionAction, googleads.TypeCustomerConversionGoal, googleads.TypeCampaignBudget, googleads.TypeCampaign)
 	}
 
 	addr, err := resource.ParseAddress("googleads.conversion_action.trial_started")
@@ -65,12 +65,20 @@ func TestProviderRegisterAndLookup(t *testing.T) {
 		t.Fatalf("LookupFor campaign_budget: %v", err)
 	}
 
-	unknown, err := resource.ParseAddress("googleads.campaign.brand")
+	campaignAddr, err := resource.ParseAddress("googleads.campaign.brand")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.LookupFor(campaignAddr); err != nil {
+		t.Fatalf("LookupFor campaign: %v", err)
+	}
+
+	unknown, err := resource.ParseAddress("googleads.ad_group.brand")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := reg.LookupFor(unknown); err == nil {
-		t.Fatal("LookupFor campaign succeeded, want unknown type")
+		t.Fatal("LookupFor ad_group succeeded, want unknown type")
 	}
 }
 
@@ -122,7 +130,7 @@ func TestProviderValidateUnknownType(t *testing.T) {
 	t.Parallel()
 
 	p := googleads.New(validConfig("https://googleads.example.com"))
-	addr, err := resource.ParseAddress("googleads.campaign.brand")
+	addr, err := resource.ParseAddress("googleads.ad_group.brand")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +147,7 @@ func TestProviderLifecycleNotImplemented(t *testing.T) {
 	t.Parallel()
 
 	p := googleads.New(validConfig("https://googleads.example.com"))
-	addr, err := resource.ParseAddress("googleads.campaign.brand")
+	addr, err := resource.ParseAddress("googleads.ad_group.brand")
 	if err != nil {
 		t.Fatal(err)
 	}

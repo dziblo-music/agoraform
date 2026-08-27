@@ -27,7 +27,7 @@ supported website `googleads.conversion_action` and
 conversion measurement; see the [Google Ads setup guide](google-ads-setup.md)
 and [Google Ads conversion example](../examples/googleads-conversion/README.md).
 Current `main` also manages daily Search `googleads.campaign_budget`
-resources.
+resources and Search `googleads.campaign` resources.
 
 Provider credentials and connection settings can be stored locally in an
 optional [`.agoraform.env`](local-configuration.md) file instead of being

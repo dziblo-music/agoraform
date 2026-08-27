@@ -139,7 +139,7 @@ resources:
 
 const googleAdsUnknownResourceManifest = `apiVersion: agoraform.io/v1alpha1
 resources:
-  - address: googleads.campaign.brand
+  - address: googleads.ad_group.brand
     attributes:
       name: Brand
 `
@@ -160,6 +160,53 @@ resources:
     attributes:
       name: Brand daily budget
       explicitlyShared: false
+`
+
+const googleAdsSearchCampaignManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.campaign_budget.brand
+    attributes:
+      name: Brand daily budget
+      amount: 50
+      explicitlyShared: false
+  - address: googleads.campaign.brand
+    attributes:
+      name: Brand
+      budget:
+        $ref: googleads.campaign_budget.brand
+      bidding:
+        strategy: MANUAL_CPC
+`
+
+const googleAdsSearchCampaignIncompleteManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.campaign_budget.brand
+    attributes:
+      name: Brand daily budget
+      amount: 50
+      explicitlyShared: false
+  - address: googleads.campaign.brand
+    attributes:
+      name: Brand
+      budget:
+        $ref: googleads.campaign_budget.brand
+`
+
+const googleAdsSearchCampaignDisplayManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.campaign_budget.brand
+    attributes:
+      name: Brand daily budget
+      amount: 50
+      explicitlyShared: false
+  - address: googleads.campaign.brand
+    attributes:
+      name: Brand
+      advertisingChannelType: DISPLAY
+      budget:
+        $ref: googleads.campaign_budget.brand
+      bidding:
+        strategy: MANUAL_CPC
 `
 
 func TestValidateSuccess(t *testing.T) {
@@ -383,6 +430,66 @@ func TestValidateGoogleAdsCampaignBudgetMissingAmount(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "amount") {
 		t.Fatalf("stderr = %q, want amount validation error", stderr.String())
+	}
+}
+
+func TestValidateGoogleAdsSearchCampaignWithProvider(t *testing.T) {
+	t.Parallel()
+
+	p, _ := googleAdsTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsSearchCampaignManifest)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitOK, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "2 resources") {
+		t.Fatalf("stdout = %q, want 2 resources", stdout.String())
+	}
+}
+
+func TestValidateGoogleAdsSearchCampaignMissingBidding(t *testing.T) {
+	t.Parallel()
+
+	p, _ := googleAdsTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsSearchCampaignIncompleteManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "bidding") {
+		t.Fatalf("stderr = %q, want bidding validation error", stderr.String())
+	}
+}
+
+func TestValidateGoogleAdsSearchCampaignRejectsDisplay(t *testing.T) {
+	t.Parallel()
+
+	p, _ := googleAdsTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsSearchCampaignDisplayManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "SEARCH") {
+		t.Fatalf("stderr = %q, want SEARCH guidance", stderr.String())
 	}
 }
 
