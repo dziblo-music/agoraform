@@ -29,7 +29,7 @@ for website tag execution or conversion-event delivery.
 
 - Google Ads provider foundation (`googleads`) with environment-based OAuth and developer-token authentication, customer ID normalization, and a reusable REST client for query and mutate operations.
 - `googleads.conversion_action` for website conversion actions such as Trial Started (read, create, update, import), with Google Ads enum/default normalization so equivalent remote state produces no plan diff.
-- `googleads.customer_conversion_goal` for account-default website conversion-goal biddability (read, adopt, update, import). Google Ads creates these objects automatically; Agoraform reconciles `biddable` and never attempts unsupported create or delete them.
+- `googleads.customer_conversion_goal` for account-default website conversion-goal biddability (read, adopt, update, import). Google Ads creates these objects automatically; Agoraform reconciles `biddable` and never attempts unsupported create or delete operations.
 - `agoraform import` for Google Ads conversion measurement. Existing website conversion actions and supported customer conversion-goal settings can be bound without mutation; resource names and `CATEGORY~ORIGIN` aliases are stored as canonical identities, computed fields and secrets are omitted, and unsupported remote types or settings fail with guidance instead of emitting lossy YAML.
 - Computed Google Ads conversion metadata, including conversion ID/label when returned by tag snippets, for use by external website/tag-manager configuration without placing provider-native values in normal manifest attributes.
 - A complete secret-free Google Ads conversion-measurement quickstart under `examples/googleads-conversion/`, automatically validated by the test suite.
