@@ -228,10 +228,10 @@ comparison.
 
 | Attribute | Required | Description |
 | --- | --- | --- |
-| `name` | yes | Budget name. |
+| `name` | yes | Budget name used for creation and unmanaged discovery. For dedicated budgets, Google synchronizes the live name with the attached campaign and Agoraform does not treat that synchronization as drift. |
 | `amount` | yes | Daily budget in account-currency units. |
-| `explicitlyShared` | yes | `false` for a dedicated budget; `true` for a shared budget. |
-| `deliveryMethod` | no | `STANDARD` or `ACCELERATED`. |
+| `explicitlyShared` | yes | `false` for a dedicated budget; `true` for a shared budget. A shared budget cannot be changed back to dedicated. |
+| `deliveryMethod` | no | `STANDARD` only for the supported Search workflow. `ACCELERATED` is rejected. |
 
 ```yaml
 - address: googleads.campaign_budget.brand
@@ -251,7 +251,10 @@ Search campaigns will reference the budget by logical address:
 ```
 
 Provider-native IDs, resource names, micros, period, and type are
-computed. See the [Google Ads provider reference](../providers/googleads/README.md).
+computed. Updates use sparse field masks so unchanged sharing fields and
+Google-managed dedicated-budget names are not resent. Converting a dedicated
+budget to shared includes its name in the same mutation, as required by Google
+Ads. See the [Google Ads provider reference](../providers/googleads/README.md).
 
 ## Matomo provider desired state
 
