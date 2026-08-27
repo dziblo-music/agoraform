@@ -330,6 +330,38 @@ func TestMutateSuccess(t *testing.T) {
 	}
 }
 
+func TestSuggestGeoTargetConstants(t *testing.T) {
+	t.Parallel()
+
+	f := &fakeAds{}
+	srv := startFakeAds(t, f)
+	c := mustClient(t, srv)
+
+	got, err := c.SuggestGeoTargetConstants(context.Background(), []string{"United States"})
+	if err != nil {
+		t.Fatalf("SuggestGeoTargetConstants: %v", err)
+	}
+	if len(got) != 1 || got[0].Constant.ID != "2840" || got[0].Constant.CanonicalName != "United States" {
+		t.Fatalf("suggestions = %#v", got)
+	}
+	if !strings.HasSuffix(f.lastPath, "/"+client.Version+"/geoTargetConstants:suggest") {
+		t.Fatalf("path = %q", f.lastPath)
+	}
+	if !strings.Contains(f.lastJSON, "United States") {
+		t.Fatalf("body = %s", f.lastJSON)
+	}
+}
+
+func TestSuggestGeoTargetConstantsRequiresName(t *testing.T) {
+	t.Parallel()
+
+	c := mustClient(t, startFakeAds(t, &fakeAds{}))
+	_, err := c.SuggestGeoTargetConstants(context.Background(), []string{"  "})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
 func TestMutateRejectsInvalidCollection(t *testing.T) {
 	t.Parallel()
 

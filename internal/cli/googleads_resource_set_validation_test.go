@@ -85,6 +85,32 @@ resources:
       matchType: EXACT
 `
 
+const googleAdsDuplicateLocationManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.campaign_budget.brand
+    attributes:
+      name: Brand daily budget
+      amount: 50
+      explicitlyShared: false
+  - address: googleads.campaign.brand
+    attributes:
+      name: Brand
+      budget:
+        $ref: googleads.campaign_budget.brand
+      bidding:
+        strategy: MANUAL_CPC
+  - address: googleads.campaign_location.us
+    attributes:
+      campaign:
+        $ref: googleads.campaign.brand
+      location: United States
+  - address: googleads.campaign_location.us_dup
+    attributes:
+      campaign:
+        $ref: googleads.campaign.brand
+      location: united states
+`
+
 func TestValidateGoogleAdsCustomerGoalReferenceCategoryMismatch(t *testing.T) {
 	p, _ := googleAdsTestProvider(t)
 	reg := provider.NewRegistry()
@@ -139,5 +165,24 @@ func TestValidateGoogleAdsDuplicateKeywords(t *testing.T) {
 	errOut := stderr.String()
 	if !strings.Contains(errOut, "duplicates") || !strings.Contains(errOut, "EXACT") {
 		t.Fatalf("stderr = %q, want duplicate keyword diagnostic", errOut)
+	}
+}
+
+func TestValidateGoogleAdsDuplicateLocations(t *testing.T) {
+	p, _ := googleAdsTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsDuplicateLocationManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d", code, cli.ExitError)
+	}
+	errOut := stderr.String()
+	if !strings.Contains(errOut, "duplicates") || !strings.Contains(strings.ToLower(errOut), "united states") {
+		t.Fatalf("stderr = %q, want duplicate location diagnostic", errOut)
 	}
 }

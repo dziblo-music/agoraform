@@ -23,7 +23,8 @@ const (
 // It registers googleads.conversion_action,
 // googleads.customer_conversion_goal, googleads.campaign_budget,
 // googleads.campaign, googleads.campaign_conversion_goal,
-// googleads.ad_group, and googleads.keyword and shares a reusable REST
+// googleads.ad_group, googleads.keyword, googleads.campaign_location,
+// and googleads.campaign_language and shares a reusable REST
 // client for authenticated query and mutate operations.
 type Provider struct {
 	cfg    Config
@@ -34,6 +35,8 @@ type Provider struct {
 	mu         sync.Mutex
 	known      map[string]remoteBinding
 	identities IdentityCatalog
+	geoCache   map[string]geoTargetConstant
+	langCache  map[string]languageConstant
 }
 
 var (
@@ -75,7 +78,7 @@ func (p *Provider) Name() string { return Name }
 
 // ResourceTypes implements provider.Provider.
 func (p *Provider) ResourceTypes() []string {
-	return []string{TypeConversionAction, TypeCustomerConversionGoal, TypeCampaignBudget, TypeCampaign, TypeCampaignConversionGoal, TypeAdGroup, TypeKeyword}
+	return []string{TypeConversionAction, TypeCustomerConversionGoal, TypeCampaignBudget, TypeCampaign, TypeCampaignConversionGoal, TypeAdGroup, TypeKeyword, TypeCampaignLocation, TypeCampaignLanguage}
 }
 
 // Client returns the reusable Google Ads HTTP client, creating it on first use.
@@ -153,6 +156,10 @@ func (p *Provider) Validate(_ context.Context, res resource.Resource) error {
 		return p.validateAdGroup(res)
 	case TypeKeyword:
 		return p.validateKeyword(res)
+	case TypeCampaignLocation:
+		return p.validateCampaignLocation(res)
+	case TypeCampaignLanguage:
+		return p.validateCampaignLanguage(res)
 	default:
 		return nil
 	}
@@ -175,6 +182,10 @@ func (p *Provider) Read(ctx context.Context, res resource.Resource) (resource.Re
 		return p.readAdGroup(ctx, res)
 	case TypeKeyword:
 		return p.readKeyword(ctx, res)
+	case TypeCampaignLocation:
+		return p.readCampaignLocation(ctx, res)
+	case TypeCampaignLanguage:
+		return p.readCampaignLanguage(ctx, res)
 	default:
 		return resource.RemoteResource{}, notImplemented("read", res.Address)
 	}
@@ -200,6 +211,10 @@ func (p *Provider) Create(ctx context.Context, res resource.Resource) (resource.
 		return p.createAdGroup(ctx, res)
 	case TypeKeyword:
 		return p.createKeywordLifecycle(ctx, res)
+	case TypeCampaignLocation:
+		return p.createCampaignLocation(ctx, res)
+	case TypeCampaignLanguage:
+		return p.createCampaignLanguage(ctx, res)
 	default:
 		return resource.RemoteResource{}, notImplemented("create", res.Address)
 	}
@@ -222,6 +237,10 @@ func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual
 		return p.updateAdGroup(ctx, desired, actual)
 	case TypeKeyword:
 		return p.updateKeywordLifecycle(ctx, desired, actual)
+	case TypeCampaignLocation:
+		return p.updateCampaignLocation(ctx, desired, actual)
+	case TypeCampaignLanguage:
+		return p.updateCampaignLanguage(ctx, desired, actual)
 	default:
 		return resource.RemoteResource{}, notImplemented("update", desired.Address)
 	}
@@ -244,6 +263,10 @@ func (p *Provider) Import(ctx context.Context, addr resource.Address, id string)
 		return p.importAdGroup(ctx, addr, id)
 	case TypeKeyword:
 		return p.importKeyword(ctx, addr, id)
+	case TypeCampaignLocation:
+		return p.importCampaignLocation(ctx, addr, id)
+	case TypeCampaignLanguage:
+		return p.importCampaignLanguage(ctx, addr, id)
 	default:
 		return resource.RemoteResource{}, notImplemented("import", addr)
 	}
@@ -264,7 +287,10 @@ func (p *Provider) Import(ctx context.Context, addr resource.Address, id string)
 // customers/{customerId}/adGroups/{id} and store the numeric id. Search
 // keywords accept adGroupId~criterionId or
 // customers/{customerId}/adGroupCriteria/{adGroupId}~{criterionId} and
-// store adGroupId~criterionId.
+// store adGroupId~criterionId. Campaign location and language criteria
+// accept campaignId~criterionId or
+// customers/{customerId}/campaignCriteria/{campaignId}~{criterionId} and
+// store campaignId~criterionId.
 func (p *Provider) NormalizeImportID(addr resource.Address, raw string) (string, error) {
 	if p == nil {
 		return "", fmt.Errorf("googleads: provider is nil")
@@ -284,6 +310,8 @@ func (p *Provider) NormalizeImportID(addr resource.Address, raw string) (string,
 		return p.canonicalAdGroupImportID(addr, raw)
 	case TypeKeyword:
 		return p.canonicalKeywordImportID(addr, raw)
+	case TypeCampaignLocation, TypeCampaignLanguage:
+		return p.canonicalCampaignCriterionImportID(addr, raw)
 	default:
 		return "", notImplemented("import", addr)
 	}
@@ -306,6 +334,10 @@ func (p *Provider) NormalizeComparable(desired resource.Resource, live *resource
 		return p.normalizeAdGroupComparable(desired, live)
 	case TypeKeyword:
 		return p.normalizeKeywordComparableLifecycle(desired, live)
+	case TypeCampaignLocation:
+		return p.normalizeCampaignLocationComparable(context.Background(), desired, live)
+	case TypeCampaignLanguage:
+		return p.normalizeCampaignLanguageComparable(context.Background(), desired, live)
 	default:
 		want := desired.Attributes.Clone()
 		if live == nil {

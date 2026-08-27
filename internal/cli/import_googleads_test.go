@@ -771,6 +771,125 @@ func TestImportGoogleAdsKeywordThenPlanUnchanged(t *testing.T) {
 	}
 }
 
+func TestImportGoogleAdsCampaignLocationAndLanguage(t *testing.T) {
+	t.Parallel()
+
+	p, srv := googleAdsImportProvider(t)
+	srv.seedBudget(map[string]any{
+		"id":               "11",
+		"name":             "Brand daily budget",
+		"amountMicros":     "50000000",
+		"deliveryMethod":   "STANDARD",
+		"explicitlyShared": false,
+		"period":           "DAILY",
+		"type":             "STANDARD",
+	})
+	srv.seedCampaign(map[string]any{
+		"id":                     "21",
+		"name":                   "Brand",
+		"status":                 "PAUSED",
+		"advertisingChannelType": "SEARCH",
+		"campaignBudget":         "customers/" + cliGoogleAdsCustomerID + "/campaignBudgets/11",
+		"biddingStrategyType":    "MANUAL_CPC",
+		"manualCpc":              map[string]any{"enhancedCpcEnabled": false},
+		"geoTargetTypeSetting": map[string]any{
+			"positiveGeoTargetType": "PRESENCE",
+			"negativeGeoTargetType": "PRESENCE",
+		},
+	})
+	srv.seedGeo(map[string]any{
+		"id":            "2840",
+		"name":          "United States",
+		"canonicalName": "United States",
+		"countryCode":   "US",
+		"targetType":    "Country",
+		"status":        "ENABLED",
+	})
+	srv.seedLanguage(map[string]any{
+		"id":         "1000",
+		"code":       "en",
+		"name":       "English",
+		"targetable": true,
+	})
+	srv.seedCriterion(map[string]any{
+		"criterionId": "41",
+		"campaign":    "customers/" + cliGoogleAdsCustomerID + "/campaigns/21",
+		"type":        "LOCATION",
+		"status":      "ENABLED",
+		"negative":    false,
+		"location":    map[string]any{"geoTargetConstant": "geoTargetConstants/2840"},
+	})
+	srv.seedCriterion(map[string]any{
+		"criterionId": "51",
+		"campaign":    "customers/" + cliGoogleAdsCustomerID + "/campaigns/21",
+		"type":        "LANGUAGE",
+		"status":      "ENABLED",
+		"language":    map[string]any{"languageConstant": "languageConstants/1000"},
+	})
+
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "agoraform.yaml")
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "googleads.campaign_budget.brand", "11"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("budget import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "googleads.campaign.brand", "21"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("campaign import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	campaignYAML := extractYAML(stdout.String())
+	if !strings.Contains(campaignYAML, "locationTargeting") || !strings.Contains(campaignYAML, "PRESENCE") {
+		t.Fatalf("campaign YAML missing location targeting:\n%s", campaignYAML)
+	}
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "googleads.campaign_location.united_states", "21~41"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("location import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	out := stdout.String()
+	assertGoogleAdsImportOutputClean(t, out)
+	if !strings.Contains(out, "Imported googleads.campaign_location.united_states (remote identity 21~41).") {
+		t.Fatalf("stdout missing location import confirmation:\n%s", out)
+	}
+	locationYAML := extractYAML(out)
+	if !strings.Contains(locationYAML, "$ref: googleads.campaign.brand") {
+		t.Fatalf("location YAML missing campaign $ref:\n%s", locationYAML)
+	}
+	if !strings.Contains(locationYAML, "United States") {
+		t.Fatalf("location YAML missing canonical name:\n%s", locationYAML)
+	}
+	if strings.Contains(locationYAML, "geoTargetConstants") {
+		t.Fatalf("location YAML leaked geo target constant:\n%s", locationYAML)
+	}
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "googleads.campaign_language.english", "21~51"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("language import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	out = stdout.String()
+	assertGoogleAdsImportOutputClean(t, out)
+	languageYAML := extractYAML(out)
+	if !strings.Contains(languageYAML, "language: en") {
+		t.Fatalf("language YAML missing ISO code:\n%s", languageYAML)
+	}
+	if strings.Contains(languageYAML, "languageConstants") {
+		t.Fatalf("language YAML leaked language constant:\n%s", languageYAML)
+	}
+	if srv.mutateCount() != 0 {
+		t.Fatalf("targeting import mutated remote: %d", srv.mutateCount())
+	}
+}
+
 func TestImportGoogleAdsYAMLIsDeterministic(t *testing.T) {
 	t.Parallel()
 
@@ -850,6 +969,9 @@ func newCLIGoogleAdsServer(t *testing.T) *cliGoogleAdsServer {
 		campaigns:     map[string]map[string]any{},
 		adGroups:      map[string]map[string]any{},
 		keywords:      map[string]map[string]any{},
+		criteria:      map[string]map[string]any{},
+		geos:          map[string]map[string]any{},
+		languages:     map[string]map[string]any{},
 	}
 	srv := httptest.NewServer(http.HandlerFunc(fake.handler))
 	t.Cleanup(srv.Close)
@@ -865,6 +987,9 @@ type cliGoogleAdsFake struct {
 	campaigns     map[string]map[string]any
 	adGroups      map[string]map[string]any
 	keywords      map[string]map[string]any
+	criteria      map[string]map[string]any
+	geos          map[string]map[string]any
+	languages     map[string]map[string]any
 	searchStatus  int
 	mutates       int
 }
@@ -968,6 +1093,42 @@ func (f *cliGoogleAdsFake) seedKeyword(item map[string]any) {
 	f.keywords[id] = cloned
 }
 
+func (f *cliGoogleAdsFake) seedCriterion(item map[string]any) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cloned := cloneAnyMap(item)
+	campaign := stringifyAny(cloned["campaign"])
+	campaignID := strings.TrimPrefix(campaign, "customers/"+cliGoogleAdsCustomerID+"/campaigns/")
+	criterionID := stringifyAny(cloned["criterionId"])
+	id := campaignID + "~" + criterionID
+	if stringifyAny(cloned["resourceName"]) == "" {
+		cloned["resourceName"] = "customers/" + cliGoogleAdsCustomerID + "/campaignCriteria/" + id
+	}
+	f.criteria[id] = cloned
+}
+
+func (f *cliGoogleAdsFake) seedGeo(item map[string]any) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cloned := cloneAnyMap(item)
+	id := stringifyAny(cloned["id"])
+	if stringifyAny(cloned["resourceName"]) == "" {
+		cloned["resourceName"] = "geoTargetConstants/" + id
+	}
+	f.geos[id] = cloned
+}
+
+func (f *cliGoogleAdsFake) seedLanguage(item map[string]any) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cloned := cloneAnyMap(item)
+	id := stringifyAny(cloned["id"])
+	if stringifyAny(cloned["resourceName"]) == "" {
+		cloned["resourceName"] = "languageConstants/" + id
+	}
+	f.languages[id] = cloned
+}
+
 func (f *cliGoogleAdsFake) mutateCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -989,6 +1150,10 @@ func (f *cliGoogleAdsFake) handler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":{"message":"unexpected mutate `+cliGoogleAdsDeveloperToken+`"}}`, http.StatusBadRequest)
 		return
 	}
+	if strings.Contains(r.URL.Path, "geoTargetConstants:suggest") {
+		http.NotFound(w, r)
+		return
+	}
 	if !strings.Contains(r.URL.Path, "/googleAds:search") {
 		http.NotFound(w, r)
 		return
@@ -1007,6 +1172,18 @@ func (f *cliGoogleAdsFake) handler(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.Contains(query, "from customer_conversion_goal") {
 		_ = json.NewEncoder(w).Encode(map[string]any{"results": f.searchGoalsLocked(req.Query)})
+		return
+	}
+	if strings.Contains(query, "from campaign_criterion") {
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": f.searchCriteriaLocked(req.Query)})
+		return
+	}
+	if strings.Contains(query, "from geo_target_constant") {
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": f.searchGeosLocked(req.Query)})
+		return
+	}
+	if strings.Contains(query, "from language_constant") {
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": f.searchLanguagesLocked(req.Query)})
 		return
 	}
 	if strings.Contains(query, "from ad_group_criterion") {
@@ -1155,6 +1332,62 @@ func (f *cliGoogleAdsFake) searchCampaignGoalsLocked(query string) []any {
 			}
 		}
 		out = append(out, map[string]any{"campaignConversionGoal": cloneAnyMap(goal)})
+	}
+	return out
+}
+
+func (f *cliGoogleAdsFake) searchCriteriaLocked(query string) []any {
+	var out []any
+	for id, item := range f.criteria {
+		if strings.Contains(query, "campaign_criterion.criterion_id = ") {
+			want := strings.TrimSpace(query[strings.Index(query, "campaign_criterion.criterion_id = ")+len("campaign_criterion.criterion_id = "):])
+			if i := strings.IndexAny(want, " \n"); i >= 0 {
+				want = want[:i]
+			}
+			parts := strings.Split(id, "~")
+			if len(parts) != 2 || parts[1] != want {
+				continue
+			}
+		}
+		if strings.Contains(query, "campaign.id = ") {
+			want := strings.TrimSpace(query[strings.Index(query, "campaign.id = ")+len("campaign.id = "):])
+			if i := strings.IndexAny(want, " \n"); i >= 0 {
+				want = want[:i]
+			}
+			parts := strings.Split(id, "~")
+			if len(parts) != 2 || parts[0] != want {
+				continue
+			}
+		}
+		out = append(out, map[string]any{"campaignCriterion": cloneAnyMap(item)})
+	}
+	return out
+}
+
+func (f *cliGoogleAdsFake) searchGeosLocked(query string) []any {
+	var out []any
+	for _, geo := range f.geos {
+		resourceName := stringifyAny(geo["resourceName"])
+		if strings.Contains(query, "geo_target_constant.resource_name = ") {
+			if !strings.Contains(query, resourceName) {
+				continue
+			}
+		}
+		out = append(out, map[string]any{"geoTargetConstant": cloneAnyMap(geo)})
+	}
+	return out
+}
+
+func (f *cliGoogleAdsFake) searchLanguagesLocked(query string) []any {
+	var out []any
+	for _, lang := range f.languages {
+		resourceName := stringifyAny(lang["resourceName"])
+		if strings.Contains(query, "language_constant.resource_name = ") {
+			if !strings.Contains(query, resourceName) {
+				continue
+			}
+		}
+		out = append(out, map[string]any{"languageConstant": cloneAnyMap(lang)})
 	}
 	return out
 }

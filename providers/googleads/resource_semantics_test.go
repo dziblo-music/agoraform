@@ -74,6 +74,24 @@ func TestCustomerConversionGoalMissingResourceUsesAdoptSemantics(t *testing.T) {
 	if mode != provider.MissingResourceCreate {
 		t.Fatalf("keyword mode = %q, want %q", mode, provider.MissingResourceCreate)
 	}
+
+	location := semanticResource(t, "googleads.campaign_location.united_states", resource.Attributes{})
+	mode, err = p.PlanMissingResource(location)
+	if err != nil {
+		t.Fatalf("PlanMissingResource campaign location: %v", err)
+	}
+	if mode != provider.MissingResourceCreate {
+		t.Fatalf("campaign-location mode = %q, want %q", mode, provider.MissingResourceCreate)
+	}
+
+	language := semanticResource(t, "googleads.campaign_language.english", resource.Attributes{})
+	mode, err = p.PlanMissingResource(language)
+	if err != nil {
+		t.Fatalf("PlanMissingResource campaign language: %v", err)
+	}
+	if mode != provider.MissingResourceCreate {
+		t.Fatalf("campaign-language mode = %q, want %q", mode, provider.MissingResourceCreate)
+	}
 }
 
 func TestCustomerConversionGoalReferenceCategoryMustMatch(t *testing.T) {
@@ -235,6 +253,67 @@ func TestKeywordSameTextDifferentAdGroupAllowed(t *testing.T) {
 
 	if err := p.ValidateResourceSet(context.Background(), []resource.Resource{first, second}); err != nil {
 		t.Fatalf("ValidateResourceSet: %v", err)
+	}
+}
+
+func TestCampaignLocationDuplicateRejected(t *testing.T) {
+	p := googleads.New(googleads.Config{})
+	campaignAddr := semanticAddress(t, "googleads.campaign.brand")
+	first := semanticResource(t, "googleads.campaign_location.us", resource.Attributes{
+		googleads.AttrCampaign: resource.Ref{Address: campaignAddr},
+		googleads.AttrLocation: "United States",
+	})
+	second := semanticResource(t, "googleads.campaign_location.us_dup", resource.Attributes{
+		googleads.AttrCampaign: resource.Ref{Address: campaignAddr},
+		googleads.AttrLocation: "united states",
+		googleads.AttrNegative: true,
+	})
+
+	err := p.ValidateResourceSet(context.Background(), []resource.Resource{first, second})
+	if err == nil {
+		t.Fatal("expected duplicate location error")
+	}
+	if !strings.Contains(err.Error(), "duplicates") || !strings.Contains(err.Error(), "United States") && !strings.Contains(err.Error(), "united states") {
+		t.Fatalf("error = %q, want duplicate location diagnostic", err)
+	}
+}
+
+func TestCampaignLocationSameNameDifferentCampaignAllowed(t *testing.T) {
+	p := googleads.New(googleads.Config{})
+	brand := semanticAddress(t, "googleads.campaign.brand")
+	generic := semanticAddress(t, "googleads.campaign.generic")
+	first := semanticResource(t, "googleads.campaign_location.brand_us", resource.Attributes{
+		googleads.AttrCampaign: resource.Ref{Address: brand},
+		googleads.AttrLocation: "United States",
+	})
+	second := semanticResource(t, "googleads.campaign_location.generic_us", resource.Attributes{
+		googleads.AttrCampaign: resource.Ref{Address: generic},
+		googleads.AttrLocation: "United States",
+	})
+
+	if err := p.ValidateResourceSet(context.Background(), []resource.Resource{first, second}); err != nil {
+		t.Fatalf("ValidateResourceSet: %v", err)
+	}
+}
+
+func TestCampaignLanguageDuplicateRejected(t *testing.T) {
+	p := googleads.New(googleads.Config{})
+	campaignAddr := semanticAddress(t, "googleads.campaign.brand")
+	first := semanticResource(t, "googleads.campaign_language.en", resource.Attributes{
+		googleads.AttrCampaign: resource.Ref{Address: campaignAddr},
+		googleads.AttrLanguage: "en",
+	})
+	second := semanticResource(t, "googleads.campaign_language.english", resource.Attributes{
+		googleads.AttrCampaign: resource.Ref{Address: campaignAddr},
+		googleads.AttrLanguage: "EN",
+	})
+
+	err := p.ValidateResourceSet(context.Background(), []resource.Resource{first, second})
+	if err == nil {
+		t.Fatal("expected duplicate language error")
+	}
+	if !strings.Contains(err.Error(), "duplicates") {
+		t.Fatalf("error = %q, want duplicate language diagnostic", err)
 	}
 }
 

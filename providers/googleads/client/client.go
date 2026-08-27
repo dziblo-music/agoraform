@@ -16,8 +16,9 @@ import (
 
 // Client is a reusable Google Ads REST client.
 //
-// Resource implementations should call Query and Mutate instead of issuing
-// raw HTTP requests. API version selection is centralized on Version.
+// Resource implementations should call Query, Mutate, and
+// SuggestGeoTargetConstants instead of issuing raw HTTP requests. API version
+// selection is centralized on Version.
 type Client struct {
 	cfg      Config
 	baseURL  string

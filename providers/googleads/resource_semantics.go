@@ -91,5 +91,39 @@ func (p *Provider) ValidateResourceSet(_ context.Context, resources []resource.R
 		}
 		seenKeywords[key] = res.Address
 	}
+
+	seenLocations := map[string]resource.Address{}
+	for _, res := range resources {
+		if res.Address.Provider != Name || res.Address.Type != TypeCampaignLocation {
+			continue
+		}
+		key, err := campaignLocationNaturalKey(res)
+		if err != nil {
+			continue
+		}
+		if other, ok := seenLocations[key]; ok {
+			location, _ := requiredLocationValue(res)
+			ref, _ := requiredCampaignRef(res)
+			return fmt.Errorf("resource %s: duplicates %s; location %q is already declared for campaign %s", res.Address, other, location, ref.Address)
+		}
+		seenLocations[key] = res.Address
+	}
+
+	seenLanguages := map[string]resource.Address{}
+	for _, res := range resources {
+		if res.Address.Provider != Name || res.Address.Type != TypeCampaignLanguage {
+			continue
+		}
+		key, err := campaignLanguageNaturalKey(res)
+		if err != nil {
+			continue
+		}
+		if other, ok := seenLanguages[key]; ok {
+			language, _ := requiredLanguageValue(res)
+			ref, _ := requiredCampaignRef(res)
+			return fmt.Errorf("resource %s: duplicates %s; language %q is already declared for campaign %s", res.Address, other, language, ref.Address)
+		}
+		seenLanguages[key] = res.Address
+	}
 	return nil
 }

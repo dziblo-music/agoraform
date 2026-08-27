@@ -38,6 +38,9 @@ const (
 	// AttrAdvertisingChannelType may be set to SEARCH; other channel types
 	// are rejected before mutation.
 	AttrAdvertisingChannelType = "advertisingChannelType"
+	// AttrLocationTargeting is optional presence vs interest geotargeting
+	// mode for Search campaigns.
+	AttrLocationTargeting = "locationTargeting"
 
 	campaignChannelSearch          = "SEARCH"
 	campaignStatusPaused           = "PAUSED"
@@ -64,6 +67,15 @@ const (
 	networkKeySearchNetwork        = "searchNetwork"
 	networkKeyContentNetwork       = "contentNetwork"
 	networkKeyPartnerSearchNetwork = "partnerSearchNetwork"
+
+	locationTargetingKeyPositive = "positive"
+	locationTargetingKeyNegative = "negative"
+
+	positiveGeoTargetPresence           = "PRESENCE"
+	positiveGeoTargetPresenceOrInterest = "PRESENCE_OR_INTEREST"
+	positiveGeoTargetSearchInterest     = "SEARCH_INTEREST"
+	negativeGeoTargetPresence           = "PRESENCE"
+	negativeGeoTargetPresenceOrInterest = "PRESENCE_OR_INTEREST"
 )
 
 var (
@@ -78,6 +90,7 @@ var (
 		AttrTrackingUrlTemplate:    {},
 		AttrFinalUrlSuffix:         {},
 		AttrAdvertisingChannelType: {},
+		AttrLocationTargeting:      {},
 	}
 
 	computedCampaignAttrs = map[string]struct{}{
@@ -115,6 +128,17 @@ var (
 		biddingStrategyMaximizeConvVal: {},
 	}
 
+	positiveGeoTargetTypes = map[string]struct{}{
+		positiveGeoTargetPresence:           {},
+		positiveGeoTargetPresenceOrInterest: {},
+		positiveGeoTargetSearchInterest:     {},
+	}
+
+	negativeGeoTargetTypes = map[string]struct{}{
+		negativeGeoTargetPresence:           {},
+		negativeGeoTargetPresenceOrInterest: {},
+	}
+
 	datePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
 	campaignSelect = strings.Join([]string{
@@ -138,6 +162,8 @@ var (
 		"campaign.network_settings.target_search_network,",
 		"campaign.network_settings.target_content_network,",
 		"campaign.network_settings.target_partner_search_network,",
+		"campaign.geo_target_type_setting.positive_geo_target_type,",
+		"campaign.geo_target_type_setting.negative_geo_target_type,",
 		"campaign.start_date_time,",
 		"campaign.end_date_time,",
 		"campaign.tracking_url_template,",
@@ -194,6 +220,9 @@ func (p *Provider) validateCampaign(res resource.Resource) error {
 		return err
 	}
 	if _, _, err := optionalCampaignNetwork(res); err != nil {
+		return err
+	}
+	if _, _, err := optionalCampaignLocationTargeting(res); err != nil {
 		return err
 	}
 
@@ -498,6 +527,8 @@ type campaignData struct {
 	TargetSearchNetwork            *bool
 	TargetContentNetwork           *bool
 	TargetPartnerSearchNetwork     *bool
+	PositiveGeoTargetType          string
+	NegativeGeoTargetType          string
 	StartDateTime                  string
 	EndDateTime                    string
 	TrackingURLTemplate            string
@@ -546,6 +577,10 @@ type campaignJSON struct {
 		TargetContentNetwork       *bool `json:"targetContentNetwork"`
 		TargetPartnerSearchNetwork *bool `json:"targetPartnerSearchNetwork"`
 	} `json:"networkSettings"`
+	GeoTargetTypeSetting *struct {
+		PositiveGeoTargetType string `json:"positiveGeoTargetType"`
+		NegativeGeoTargetType string `json:"negativeGeoTargetType"`
+	} `json:"geoTargetTypeSetting"`
 }
 
 func decodeCampaignRow(raw json.RawMessage, configuredCustomerID string) (campaignData, error) {
@@ -666,6 +701,10 @@ func decodeCampaignRow(raw json.RawMessage, configuredCustomerID string) (campai
 		item.TargetContentNetwork = body.NetworkSettings.TargetContentNetwork
 		item.TargetPartnerSearchNetwork = body.NetworkSettings.TargetPartnerSearchNetwork
 	}
+	if body.GeoTargetTypeSetting != nil {
+		item.PositiveGeoTargetType = normalizeEnum(body.GeoTargetTypeSetting.PositiveGeoTargetType)
+		item.NegativeGeoTargetType = normalizeEnum(body.GeoTargetTypeSetting.NegativeGeoTargetType)
+	}
 	return item, nil
 }
 
@@ -699,6 +738,9 @@ func (p *Provider) remoteCampaign(addr resource.Address, item campaignData, desi
 	}
 	if network := liveNetworkAttr(item, desired[AttrNetwork]); network != nil {
 		attrs[AttrNetwork] = network
+	}
+	if targeting := liveLocationTargetingAttr(item, desired[AttrLocationTargeting]); targeting != nil {
+		attrs[AttrLocationTargeting] = targeting
 	}
 	if date := campaignDateFromDateTime(item.StartDateTime); date != "" {
 		attrs[AttrStartDate] = date
@@ -806,6 +848,13 @@ func (p *Provider) comparableCampaign(attrs resource.Attributes) (resource.Attri
 		}
 		out[AttrNetwork] = network
 	}
+	if _, ok := attrs[AttrLocationTargeting]; ok {
+		targeting, err := comparableLocationTargetingAttr(attrs[AttrLocationTargeting])
+		if err != nil {
+			return nil, fmt.Errorf("attribute %q %w", AttrLocationTargeting, err)
+		}
+		out[AttrLocationTargeting] = targeting
+	}
 	if _, ok := attrs[AttrStartDate]; ok {
 		date, err := coerceCampaignDate(attrs[AttrStartDate])
 		if err != nil {
@@ -891,6 +940,20 @@ func (p *Provider) campaignMutateBody(res resource.Resource, resourceName string
 		}
 		if len(settings) > 0 {
 			body["networkSettings"] = settings
+		}
+	}
+	if targeting, ok := comparable[AttrLocationTargeting].(map[string]any); ok {
+		settings := map[string]any{}
+		if v, ok := targeting[locationTargetingKeyPositive]; ok {
+			settings["positiveGeoTargetType"] = v
+			mask = append(mask, "geoTargetTypeSetting.positiveGeoTargetType")
+		}
+		if v, ok := targeting[locationTargetingKeyNegative]; ok {
+			settings["negativeGeoTargetType"] = v
+			mask = append(mask, "geoTargetTypeSetting.negativeGeoTargetType")
+		}
+		if len(settings) > 0 {
+			body["geoTargetTypeSetting"] = settings
 		}
 	}
 	if date, ok := comparable[AttrStartDate].(string); ok {
@@ -1247,6 +1310,91 @@ func optionalCampaignNetwork(res resource.Resource) (map[string]any, bool, error
 	return network, true, nil
 }
 
+func optionalCampaignLocationTargeting(res resource.Resource) (map[string]any, bool, error) {
+	v, ok := res.Attributes[AttrLocationTargeting]
+	if !ok {
+		return nil, false, nil
+	}
+	targeting, err := comparableLocationTargetingAttr(v)
+	if err != nil {
+		return nil, true, fmt.Errorf("resource %s: attribute %q %w", res.Address, AttrLocationTargeting, err)
+	}
+	return targeting, true, nil
+}
+
+func comparableLocationTargetingAttr(v any) (map[string]any, error) {
+	raw, err := asStringMap(v)
+	if err != nil {
+		return nil, fmt.Errorf("must be an object with positive and/or negative geo target types")
+	}
+	allowed := map[string]struct{}{
+		locationTargetingKeyPositive: {},
+		locationTargetingKeyNegative: {},
+	}
+	for key := range raw {
+		if _, ok := allowed[key]; !ok {
+			return nil, fmt.Errorf("unsupported locationTargeting field %q", key)
+		}
+	}
+	out := map[string]any{}
+	if _, ok := raw[locationTargetingKeyPositive]; ok {
+		s, err := coerceString(raw[locationTargetingKeyPositive])
+		if err != nil || strings.TrimSpace(s) == "" {
+			return nil, fmt.Errorf("%s must be one of %s", locationTargetingKeyPositive, joinSorted(keys(positiveGeoTargetTypes)))
+		}
+		s = normalizeEnum(s)
+		if _, ok := positiveGeoTargetTypes[s]; !ok {
+			return nil, fmt.Errorf("%s must be one of %s", locationTargetingKeyPositive, joinSorted(keys(positiveGeoTargetTypes)))
+		}
+		out[locationTargetingKeyPositive] = s
+	}
+	if _, ok := raw[locationTargetingKeyNegative]; ok {
+		s, err := coerceString(raw[locationTargetingKeyNegative])
+		if err != nil || strings.TrimSpace(s) == "" {
+			return nil, fmt.Errorf("%s must be one of %s", locationTargetingKeyNegative, joinSorted(keys(negativeGeoTargetTypes)))
+		}
+		s = normalizeEnum(s)
+		if _, ok := negativeGeoTargetTypes[s]; !ok {
+			return nil, fmt.Errorf("%s must be one of %s", locationTargetingKeyNegative, joinSorted(keys(negativeGeoTargetTypes)))
+		}
+		out[locationTargetingKeyNegative] = s
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("must set %s and/or %s", locationTargetingKeyPositive, locationTargetingKeyNegative)
+	}
+	return out, nil
+}
+
+func liveLocationTargetingAttr(item campaignData, desired any) any {
+	positive := usableGeoTargetType(item.PositiveGeoTargetType, positiveGeoTargetTypes)
+	negative := usableGeoTargetType(item.NegativeGeoTargetType, negativeGeoTargetTypes)
+	if desired == nil && positive == "" && negative == "" {
+		return nil
+	}
+	out := map[string]any{}
+	if positive != "" {
+		out[locationTargetingKeyPositive] = positive
+	}
+	if negative != "" {
+		out[locationTargetingKeyNegative] = negative
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func usableGeoTargetType(raw string, allowed map[string]struct{}) string {
+	value := normalizeEnum(raw)
+	if value == "" || value == "UNSPECIFIED" || value == "UNKNOWN" {
+		return ""
+	}
+	if _, ok := allowed[value]; !ok {
+		return ""
+	}
+	return value
+}
+
 func comparableNetworkAttr(v any, fillDefaults bool) (map[string]any, error) {
 	raw, err := asStringMap(v)
 	if err != nil {
@@ -1438,6 +1586,14 @@ func changedCampaignAPIFields(want, got resource.Attributes) map[string]struct{}
 		changed["networkSettings.targetSearchNetwork"] = struct{}{}
 		changed["networkSettings.targetContentNetwork"] = struct{}{}
 		changed["networkSettings.targetPartnerSearchNetwork"] = struct{}{}
+	}
+	wantTargeting, _ := asMapValue(want[AttrLocationTargeting])
+	gotTargeting, _ := asMapValue(got[AttrLocationTargeting])
+	if !reflect.DeepEqual(wantTargeting[locationTargetingKeyPositive], gotTargeting[locationTargetingKeyPositive]) {
+		changed["geoTargetTypeSetting.positiveGeoTargetType"] = struct{}{}
+	}
+	if !reflect.DeepEqual(wantTargeting[locationTargetingKeyNegative], gotTargeting[locationTargetingKeyNegative]) {
+		changed["geoTargetTypeSetting.negativeGeoTargetType"] = struct{}{}
 	}
 	if !reflect.DeepEqual(want[AttrStartDate], got[AttrStartDate]) {
 		changed["startDateTime"] = struct{}{}

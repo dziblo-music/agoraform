@@ -310,6 +310,8 @@ agoraform import googleads.campaign_budget.brand 123456789
 agoraform import googleads.campaign.brand 987654321
 agoraform import googleads.ad_group.brand 555666777
 agoraform import googleads.keyword.brand_exact 555666777~888999000
+agoraform import googleads.campaign_location.united_states 987654321~888999000
+agoraform import googleads.campaign_language.english 987654321~888999001
 agoraform import googleads.campaign_conversion_goal.trial_signup 987654321~SIGNUP~WEBSITE
 ```
 
@@ -320,9 +322,10 @@ should produce no changes.
 
 Google Ads import accepts supported website conversion actions, supported
 `WEBSITE` customer conversion goals, daily Search campaign budgets, Search
-campaigns, Search ad groups, Search keywords, and campaign conversion
-goals. Import a campaign budget before the campaign, the campaign before
-an ad group or campaign conversion goal, and the ad group before a
+campaigns, Search ad groups, Search keywords, campaign location and
+language criteria, and campaign conversion goals. Import a campaign
+budget before the campaign, the campaign before an ad group, campaign
+conversion goal, location, or language, and the ad group before a
 keyword, so Agoraform can reconstruct logical `$ref`s.
 Unsupported conversion types, origins, channel types, ad group types,
 criterion types, and budget periods fail with actionable diagnostics
@@ -394,8 +397,9 @@ agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
 - Google Ads support includes website conversion measurement, daily Search
   `googleads.campaign_budget` resources, Search `googleads.campaign`
   resources, Search `googleads.ad_group` resources, Search
-  `googleads.keyword` criteria, and campaign
-  `googleads.campaign_conversion_goal` biddability. Targeting, ads,
+  `googleads.keyword` criteria, campaign location and language targeting,
+  and campaign
+  `googleads.campaign_conversion_goal` biddability. Ads,
   offline/call/app conversion workflows, and conversion-event uploads
   are not implemented.
 - Agoraform v0.3.0 Google Ads authentication uses developer-token + single-user
