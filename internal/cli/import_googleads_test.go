@@ -364,6 +364,86 @@ func TestImportGoogleAdsCampaignBudgetByResourceName(t *testing.T) {
 	}
 }
 
+func TestImportGoogleAdsSearchCampaignThenPlanUnchanged(t *testing.T) {
+	t.Parallel()
+
+	p, srv := googleAdsImportProvider(t)
+	srv.seedBudget(map[string]any{
+		"id":               "11",
+		"name":             "Brand daily budget",
+		"amountMicros":     "50000000",
+		"deliveryMethod":   "STANDARD",
+		"explicitlyShared": false,
+		"period":           "DAILY",
+		"type":             "STANDARD",
+	})
+	srv.seedCampaign(map[string]any{
+		"id":                     "21",
+		"name":                   "Brand",
+		"status":                 "PAUSED",
+		"advertisingChannelType": "SEARCH",
+		"campaignBudget":         "customers/" + cliGoogleAdsCustomerID + "/campaignBudgets/11",
+		"biddingStrategyType":    "MANUAL_CPC",
+		"manualCpc":              map[string]any{"enhancedCpcEnabled": false},
+		"networkSettings": map[string]any{
+			"targetGoogleSearch":         true,
+			"targetSearchNetwork":        true,
+			"targetContentNetwork":       false,
+			"targetPartnerSearchNetwork": false,
+		},
+	})
+
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "agoraform.yaml")
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "googleads.campaign_budget.brand", "11"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("budget import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	budgetYAML := extractYAML(stdout.String())
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "googleads.campaign.brand", "21"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("campaign import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	out := stdout.String()
+	assertGoogleAdsImportOutputClean(t, out)
+	if !strings.Contains(out, "Imported googleads.campaign.brand (remote identity 21).") {
+		t.Fatalf("stdout missing import confirmation:\n%s", out)
+	}
+	campaignYAML := extractYAML(out)
+	if !strings.Contains(campaignYAML, "$ref: googleads.campaign_budget.brand") {
+		t.Fatalf("campaign YAML missing budget $ref:\n%s", campaignYAML)
+	}
+
+	itemStart := strings.Index(campaignYAML, "  - address:")
+	if itemStart < 0 {
+		t.Fatalf("campaign YAML missing resource item:\n%s", campaignYAML)
+	}
+	combined := strings.TrimRight(budgetYAML, "\n") + "\n" + campaignYAML[itemStart:]
+	if err := os.WriteFile(manifestPath, []byte(combined), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"plan", "-f", manifestPath}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("plan after import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "No changes.") {
+		t.Fatalf("plan after import = %q, want no changes", stdout.String())
+	}
+	if srv.mutateCount() != 0 {
+		t.Fatalf("search campaign import mutated remote: %d", srv.mutateCount())
+	}
+}
+
 func TestImportGoogleAdsYAMLIsDeterministic(t *testing.T) {
 	t.Parallel()
 
@@ -436,9 +516,10 @@ type cliGoogleAdsServer struct {
 func newCLIGoogleAdsServer(t *testing.T) *cliGoogleAdsServer {
 	t.Helper()
 	fake := &cliGoogleAdsFake{
-		actions: map[string]map[string]any{},
-		goals:   map[string]map[string]any{},
-		budgets: map[string]map[string]any{},
+		actions:   map[string]map[string]any{},
+		goals:     map[string]map[string]any{},
+		budgets:   map[string]map[string]any{},
+		campaigns: map[string]map[string]any{},
 	}
 	srv := httptest.NewServer(http.HandlerFunc(fake.handler))
 	t.Cleanup(srv.Close)
@@ -450,6 +531,7 @@ type cliGoogleAdsFake struct {
 	actions      map[string]map[string]any
 	goals        map[string]map[string]any
 	budgets      map[string]map[string]any
+	campaigns    map[string]map[string]any
 	searchStatus int
 	mutates      int
 }
@@ -491,6 +573,20 @@ func (f *cliGoogleAdsFake) seedBudget(budget map[string]any) {
 		cloned["type"] = "STANDARD"
 	}
 	f.budgets[id] = cloned
+}
+
+func (f *cliGoogleAdsFake) seedCampaign(campaign map[string]any) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cloned := cloneAnyMap(campaign)
+	id := stringifyAny(cloned["id"])
+	if stringifyAny(cloned["resourceName"]) == "" {
+		cloned["resourceName"] = "customers/" + cliGoogleAdsCustomerID + "/campaigns/" + id
+	}
+	if stringifyAny(cloned["advertisingChannelType"]) == "" {
+		cloned["advertisingChannelType"] = "SEARCH"
+	}
+	f.campaigns[id] = cloned
 }
 
 func (f *cliGoogleAdsFake) mutateCount() int {
@@ -538,6 +634,10 @@ func (f *cliGoogleAdsFake) handler(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"results": f.searchBudgetsLocked(req.Query)})
 		return
 	}
+	if strings.Contains(query, "from campaign") {
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": f.searchCampaignsLocked(req.Query)})
+		return
+	}
 	if strings.Contains(query, "from customer") {
 		_, _ = io.WriteString(w, `{"results":[{"customer":{"id":"`+cliGoogleAdsCustomerID+`"}}]}`)
 		return
@@ -575,6 +675,23 @@ func (f *cliGoogleAdsFake) searchBudgetsLocked(query string) []any {
 			}
 		}
 		out = append(out, map[string]any{"campaignBudget": cloneAnyMap(budget)})
+	}
+	return out
+}
+
+func (f *cliGoogleAdsFake) searchCampaignsLocked(query string) []any {
+	var out []any
+	for id, campaign := range f.campaigns {
+		if strings.Contains(query, "campaign.id = ") {
+			want := strings.TrimSpace(query[strings.Index(query, "campaign.id = ")+len("campaign.id = "):])
+			if i := strings.IndexAny(want, " \n"); i >= 0 {
+				want = want[:i]
+			}
+			if want != id {
+				continue
+			}
+		}
+		out = append(out, map[string]any{"campaign": cloneAnyMap(campaign)})
 	}
 	return out
 }

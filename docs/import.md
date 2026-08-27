@@ -135,6 +135,23 @@ Lifetime/`CUSTOM_PERIOD` budgets and non-`STANDARD` budget types fail with
 guidance instead of emitting a lossy daily Search budget manifest.
 Generated YAML uses `amount` in account-currency units, not micros.
 
+## Google Ads Search campaigns
+
+Import a Search campaign by its numeric campaign ID, or by the Google Ads
+resource name `customers/{customerId}/campaigns/{id}`. Agoraform stores the
+numeric ID in local state as `remoteId`. Do not copy it into YAML.
+
+Import the campaign budget first so Agoraform can reconstruct `budget` as a
+logical `$ref`:
+
+```bash
+agoraform import googleads.campaign_budget.brand 123456789
+agoraform import googleads.campaign.brand 987654321
+```
+
+Non-Search campaigns, portfolio bidding strategies, and removed campaigns
+fail with guidance instead of emitting a lossy Search campaign manifest.
+
 See the [Google Ads conversion example](../examples/googleads-conversion/README.md)
 for a complete greenfield apply and adoption workflow.
 

@@ -144,7 +144,7 @@ func (p *Provider) readCampaignBudget(ctx context.Context, res resource.Resource
 		if err != nil {
 			return resource.RemoteResource{}, fmt.Errorf("googleads: read %s: %w", res.Address, err)
 		}
-		return live, nil
+		return p.rememberLive(live), nil
 	}
 
 	name, _, _ := optionalString(res, AttrName)
@@ -160,7 +160,7 @@ func (p *Provider) readCampaignBudget(ctx context.Context, res resource.Resource
 		if err != nil {
 			return resource.RemoteResource{}, fmt.Errorf("googleads: read %s: %w", res.Address, err)
 		}
-		return live, nil
+		return p.rememberLive(live), nil
 	default:
 		ids := make([]string, 0, len(matches))
 		for _, item := range matches {
@@ -206,13 +206,13 @@ func (p *Provider) createCampaignBudget(ctx context.Context, res resource.Resour
 
 	live, err := p.readCampaignBudgetByID(ctx, res.Address, id)
 	if err == nil {
-		return live, nil
+		return p.rememberLive(live), nil
 	}
 	fallback, ferr := remoteCampaignBudgetFromDesired(res, id, c.CustomerID())
 	if ferr != nil {
 		return resource.RemoteResource{}, fmt.Errorf("googleads: create %s succeeded but refreshing campaign budget %q failed: %w", res.Address, id, err)
 	}
-	return fallback, nil
+	return p.rememberLive(fallback), nil
 }
 
 func (p *Provider) updateCampaignBudget(ctx context.Context, desired resource.Resource, actual resource.RemoteResource) (resource.RemoteResource, error) {
@@ -243,7 +243,7 @@ func (p *Provider) updateCampaignBudget(ctx context.Context, desired resource.Re
 		if err != nil {
 			return resource.RemoteResource{}, fmt.Errorf("googleads: update %s: %w", desired.Address, err)
 		}
-		return live, nil
+		return p.rememberLive(live), nil
 	}
 
 	_, err = c.Mutate(ctx, campaignBudgetsCollection, []map[string]any{
@@ -260,7 +260,7 @@ func (p *Provider) updateCampaignBudget(ctx context.Context, desired resource.Re
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("googleads: update %s succeeded but refreshing campaign budget %q failed: %w", desired.Address, actual.Identity.ID, err)
 	}
-	return live, nil
+	return p.rememberLive(live), nil
 }
 
 func (p *Provider) importCampaignBudget(ctx context.Context, addr resource.Address, rawID string) (resource.RemoteResource, error) {
@@ -278,7 +278,7 @@ func (p *Provider) importCampaignBudget(ctx context.Context, addr resource.Addre
 		}
 		return resource.RemoteResource{}, fmt.Errorf("googleads: import %s: %w", addr, err)
 	}
-	return live, nil
+	return p.rememberLive(live), nil
 }
 
 func (p *Provider) normalizeCampaignBudgetComparable(desired resource.Resource, live *resource.RemoteResource) (resource.Attributes, resource.Attributes, error) {

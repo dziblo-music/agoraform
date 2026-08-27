@@ -1,9 +1,10 @@
 # Google Ads provider
 
 The Google Ads provider registers as `googleads` and manages website
-conversion actions, customer conversion-goal biddability, and daily Search
-campaign budgets. Credentials come from the environment. The Agoraform CLI
-remains provider-neutral; there is no Google Ads-specific command.
+conversion actions, customer conversion-goal biddability, daily Search
+campaign budgets, and Search campaigns. Credentials come from the
+environment. The Agoraform CLI remains provider-neutral; there is no Google
+Ads-specific command.
 
 See the [Google Ads account and OAuth setup guide](../../docs/google-ads-setup.md)
 for the Manager Account, developer-token, Google Cloud, OAuth, refresh-token,
@@ -172,15 +173,9 @@ resources:
       explicitlyShared: false
 ```
 
-Search campaigns will attach a budget with a logical `$ref` to this
+Search campaigns attach a budget with a logical `$ref` to this
 address. Budget behavior stays on `googleads.campaign_budget`; do not embed
 amount or sharing fields on the campaign resource.
-
-```yaml
-# Forthcoming googleads.campaign resource (not implemented yet):
-#   budget:
-#     $ref: googleads.campaign_budget.brand
-```
 
 | Attribute | Required | Description |
 | --- | --- | --- |
@@ -210,6 +205,87 @@ agoraform import googleads.campaign_budget.brand 123456789
 
 Lifetime, Smart, and other non-standard budgets fail import with guidance
 instead of generating a lossy daily Search budget.
+
+### `googleads.campaign`
+
+Search campaigns. Agoraform creates and updates `SEARCH` campaigns only.
+Performance Max, Display, Video, Shopping, App, and other channel types are
+out of scope. Ad groups, ads, keywords, and targeting are separate
+resources.
+
+```yaml
+resources:
+  - address: googleads.campaign_budget.brand
+    attributes:
+      name: Brand daily budget
+      amount: 50
+      explicitlyShared: false
+  - address: googleads.campaign.brand
+    attributes:
+      name: Brand
+      status: PAUSED
+      budget:
+        $ref: googleads.campaign_budget.brand
+      bidding:
+        strategy: MANUAL_CPC
+      network:
+        googleSearch: true
+        searchNetwork: true
+        contentNetwork: false
+        partnerSearchNetwork: false
+```
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `name` | yes | Campaign name. Must be unique in the customer. |
+| `budget` | yes | `$ref` to a `googleads.campaign_budget`. Resolved to the provider-native budget at apply time. |
+| `bidding` | yes | Search bidding strategy and optional settings. |
+| `status` | no | `PAUSED` (default for new campaigns) or `ENABLED`. Omitted status is treated as `PAUSED`. |
+| `advertisingChannelType` | no | Must be `SEARCH` when set. The provider always creates Search campaigns. |
+| `network` | no | Search network / partner flags. When set, `googleSearch` must be `true`. Omitted network settings are not forced onto the remote resource. |
+| `startDate` / `endDate` | no | `YYYY-MM-DD` campaign dates. |
+| `trackingUrlTemplate` / `finalUrlSuffix` | no | Optional URL tracking fields. |
+
+Supported `bidding.strategy` values:
+
+| Strategy | Optional settings |
+| --- | --- |
+| `MANUAL_CPC` | `enhancedCpc` |
+| `MAXIMIZE_CLICKS` | `cpcBidCeiling` in account-currency units |
+| `MAXIMIZE_CONVERSIONS` | `targetCpa` in account-currency units |
+| `TARGET_CPA` | `targetCpa` (required) |
+| `TARGET_ROAS` | `targetRoas` (required) |
+| `MAXIMIZE_CONVERSION_VALUE` | `targetRoas` |
+
+New campaigns are created `PAUSED` unless configuration explicitly sets
+`ENABLED`. Creates also send Search-safe network defaults when `network` is
+omitted (`googleSearch` and `searchNetwork` true; Display and partner
+networks false) and declare that the campaign does not contain EU political
+advertising.
+
+`advertisingChannelType` is always `SEARCH`. Provider-native IDs, resource
+names, serving status, and related API defaults live in local state and on
+`RemoteResource.Computed`, not in the manifest. Portfolio bidding
+strategies, EU political advertising, and removed campaigns are rejected
+with guidance.
+
+Equivalent live values, including bidding enum aliases such as
+`MANUAL_CPC` / `manual_cpc`, produce no plan diff. Updates use sparse field
+masks.
+
+Import accepts the numeric campaign ID or the resource name
+`customers/{customerId}/campaigns/{id}` and stores the numeric ID.
+Import reconstructs `budget` as a logical `$ref` when the campaign budget
+is already bound in local state:
+
+```bash
+agoraform import googleads.campaign_budget.brand 123456789
+agoraform import googleads.campaign.brand 987654321
+```
+
+Non-Search campaigns fail import with guidance instead of generating a
+lossy Search configuration. Import the budget first, or apply it, then
+re-import the campaign.
 
 ## HTTP client
 

@@ -59,8 +59,9 @@ credentials from `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`,
 `GOOGLE_ADS_CUSTOMER_ID`, and optional `GOOGLE_ADS_LOGIN_CUSTOMER_ID`. It
 manages website `googleads.conversion_action` resources, customer
 `googleads.customer_conversion_goal` biddability, daily Search
-`googleads.campaign_budget` resources, and uses an authenticated REST
-client for query and mutate operations.
+`googleads.campaign_budget` resources, Search `googleads.campaign`
+resources, and uses an authenticated REST client for query and mutate
+operations.
 
 See [googleads/README.md](googleads/README.md) and the
 [conversion-measurement example](../examples/googleads-conversion/README.md).

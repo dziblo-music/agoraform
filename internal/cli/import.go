@@ -9,6 +9,7 @@ import (
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/resource"
 	"github.com/dziblo-music/agoraform/internal/state"
+	"github.com/dziblo-music/agoraform/providers/googleads"
 	"github.com/dziblo-music/agoraform/providers/matomo"
 	"github.com/spf13/cobra"
 )
@@ -84,10 +85,16 @@ Exit codes:
 }
 
 func attachImportIdentityCatalog(p provider.Provider, st *state.Store) {
-	type catalogSetter interface {
+	type matomoCatalogSetter interface {
 		SetIdentityCatalog(matomo.IdentityCatalog)
 	}
-	if s, ok := p.(catalogSetter); ok {
+	type googleAdsCatalogSetter interface {
+		SetIdentityCatalog(googleads.IdentityCatalog)
+	}
+	if s, ok := p.(matomoCatalogSetter); ok {
+		s.SetIdentityCatalog(st)
+	}
+	if s, ok := p.(googleAdsCatalogSetter); ok {
 		s.SetIdentityCatalog(st)
 	}
 }
