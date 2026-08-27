@@ -332,7 +332,7 @@ immutable after create.
 | `text` | yes | Keyword text without match-type punctuation. |
 | `matchType` | yes | `EXACT`, `PHRASE`, or `BROAD`. |
 | `negative` | no | `true` for a negative keyword. Defaults to `false`. |
-| `status` | no | `PAUSED` (default) or `ENABLED`. |
+| `status` | no | Positive keywords default to `PAUSED` and may use `PAUSED` or `ENABLED`. Negative keywords default to `ENABLED`; their status is immutable after creation. |
 | `cpcBid` | no | Optional max CPC bid override in account-currency units. Not allowed on negative keywords. |
 
 ```yaml
@@ -352,6 +352,12 @@ immutable after create.
     matchType: PHRASE
     negative: true
 ```
+
+New negative keywords are created `ENABLED` when `status` is omitted. Creating
+a new negative keyword as `PAUSED` is rejected because Google Ads does not
+allow negative ad-group criteria to be updated later. For an existing negative
+keyword, a requested status change fails during planning before any mutation.
+Positive keyword status remains mutable.
 
 Campaign-level negative keywords, Keyword Planner, and audience or DSA
 criteria are out of scope. See the
