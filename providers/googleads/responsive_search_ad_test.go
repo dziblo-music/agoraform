@@ -110,6 +110,16 @@ func TestValidateResponsiveSearchAdErrors(t *testing.T) {
 			want: "http or https",
 		},
 		{
+			name: "final url too long",
+			attrs: resource.Attributes{
+				googleads.AttrAdGroup:      adGroup,
+				googleads.AttrFinalUrls:    []any{"https://example.com/" + strings.Repeat("a", 2084)},
+				googleads.AttrHeadlines:    defaultRSAHeadlines(),
+				googleads.AttrDescriptions: defaultRSADescriptions(),
+			},
+			want: "at most 2084 bytes",
+		},
+		{
 			name: "path2 without path1",
 			attrs: resource.Attributes{
 				googleads.AttrAdGroup:      adGroup,
@@ -142,7 +152,7 @@ func TestValidateResponsiveSearchAdErrors(t *testing.T) {
 			want: "duplicate",
 		},
 		{
-			name: "duplicate pin",
+			name: "multiple assets same pin accepted",
 			attrs: resource.Attributes{
 				googleads.AttrAdGroup:   adGroup,
 				googleads.AttrFinalUrls: []any{"https://example.com/"},
@@ -153,7 +163,7 @@ func TestValidateResponsiveSearchAdErrors(t *testing.T) {
 				},
 				googleads.AttrDescriptions: defaultRSADescriptions(),
 			},
-			want: "at most once",
+			want: "",
 		},
 		{
 			name: "invalid pin",
@@ -508,6 +518,37 @@ func TestUpdateResponsiveSearchAdReplacesCreative(t *testing.T) {
 	}
 }
 
+func TestUpdateResponsiveSearchAdRemovesPin(t *testing.T) {
+	t.Parallel()
+
+	fake := newRSAFake()
+	item := sampleSearchRSA("31", "71")
+	headlines := item["ad"].(map[string]any)["responsiveSearchAd"].(map[string]any)["headlines"].([]any)
+	headlines[0] = map[string]any{"text": "Buy shoes online", "pinnedField": "HEADLINE_1"}
+	fake.seedRSA(item)
+	p, _ := testRSAProvider(t, fake)
+	bindAdGroupIdentity(t, p, "31")
+
+	desired := rsaResource(t, "brand", resolvedRSAAttrs(t, "31"))
+	live, err := p.Update(context.Background(), desired, resource.RemoteResource{
+		Address:  desired.Address,
+		Identity: resource.Identity{ID: "31~71"},
+	})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if len(fake.mutates) != 1 || fake.mutates[0] != "ads" {
+		t.Fatalf("mutates = %v, want ads creative update", fake.mutates)
+	}
+	if strings.Contains(fake.lastMutate, "pinnedField") {
+		t.Fatalf("unpin mutate must omit pinnedField: %s", fake.lastMutate)
+	}
+	gotHeadlines, _ := live.Attributes[googleads.AttrHeadlines].([]any)
+	if len(gotHeadlines) == 0 || gotHeadlines[0] != "Buy shoes online" {
+		t.Fatalf("headlines after unpin = %#v", live.Attributes[googleads.AttrHeadlines])
+	}
+}
+
 func TestUpdateResponsiveSearchAdNoOp(t *testing.T) {
 	t.Parallel()
 
@@ -726,7 +767,7 @@ func TestPlanResponsiveSearchAdUnchangedEquivalentRemote(t *testing.T) {
 	}
 }
 
-func TestPlanResponsiveSearchAdIgnoresAssetMetadataAndUnpinnedLivePin(t *testing.T) {
+func TestPlanResponsiveSearchAdUnpinnedDesiredRemovesLivePin(t *testing.T) {
 	t.Parallel()
 
 	fake := newRSAFake()
@@ -744,9 +785,40 @@ func TestPlanResponsiveSearchAdIgnoresAssetMetadataAndUnpinnedLivePin(t *testing
 	fake.seedRSA(item)
 	p, _ := testRSAProvider(t, fake)
 
-	got := mustPlanRSA(t, p, rsaStack(t, defaultRSAAttrs(t))...)
-	if got.HasChanges() {
-		t.Fatalf("unmanaged pin and asset metadata produced changes: %+v", got.Changes)
+	st := mustGoogleAdsImportStore(t)
+	if err := st.Bind(mustCampaignBudgetAddress(t, "brand"), resource.Identity{ID: "11"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Bind(mustCampaignAddress(t, "brand"), resource.Identity{ID: "21"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Bind(mustAdGroupAddress(t, "brand"), resource.Identity{ID: "31"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Bind(mustRSAAddress(t, "brand"), resource.Identity{ID: "31~71"}); err != nil {
+		t.Fatal(err)
+	}
+	p.SetIdentityCatalog(st)
+
+	got, err := plan.BuildWithState(context.Background(), rsaStack(t, defaultRSAAttrs(t)), func(resource.Address) (provider.Reader, error) {
+		return p, nil
+	}, st)
+	if err != nil {
+		t.Fatalf("plan.BuildWithState: %v", err)
+	}
+	change := rsaChange(t, got)
+	if change.Action != plan.ActionUpdate {
+		t.Fatalf("change = %+v, want pin-removal update", change)
+	}
+	found := false
+	for _, diff := range change.Diffs {
+		if strings.HasPrefix(diff.Path, googleads.AttrHeadlines) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("missing headline pin-removal diff: %+v", change.Diffs)
 	}
 }
 
