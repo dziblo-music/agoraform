@@ -159,7 +159,8 @@ managed.
 
 Daily Search campaign budgets. Agoraform creates and updates `STANDARD`
 daily budgets only. Lifetime/`CUSTOM_PERIOD` budgets, portfolio bidding
-strategies, and non-standard budget types are out of scope.
+strategies, accelerated delivery, and non-standard budget types are out of
+scope.
 
 ```yaml
 resources:
@@ -183,10 +184,10 @@ amount or sharing fields on the campaign resource.
 
 | Attribute | Required | Description |
 | --- | --- | --- |
-| `name` | yes | Budget name. Must be unique in the customer for unmanaged discovery. |
+| `name` | yes | Budget name used for creation and unmanaged discovery. For a dedicated budget, Google keeps the live name synchronized with the attached campaign; Agoraform treats that provider-managed name as authoritative after creation. |
 | `amount` | yes | Daily budget in account-currency units, for example `50` or `50.25`. Converted to Google Ads `amount_micros` (`1` unit = `1_000_000` micros) with at most six decimal places. |
-| `explicitlyShared` | yes | `false` for a dedicated single-campaign budget; `true` for a shared budget. Google Ads cannot convert a shared budget back to non-shared. |
-| `deliveryMethod` | no | `STANDARD` (API default) or `ACCELERATED`. Omitted values are not forced onto the remote resource. |
+| `explicitlyShared` | yes | `false` for a dedicated single-campaign budget; `true` for a shared budget. A shared budget can never become non-shared. A dedicated budget may become shared; Agoraform includes its name in the same mutation as required by Google Ads. |
+| `deliveryMethod` | no | `STANDARD` (API default) for the supported Search workflow. `ACCELERATED` is rejected before mutation. Omitted values are not forced onto the remote resource. |
 
 `period` is always `DAILY` and `type` is always `STANDARD`. Those fields,
 provider-native IDs, resource names, `amountMicros`, `status`, and
@@ -195,7 +196,10 @@ in the manifest.
 
 Equivalent live values, including `50` / `50.0` / `"50.00"` and enum case,
 do not produce a plan diff. Amount comparison uses integer micros so
-currency rounding stays deterministic.
+currency rounding stays deterministic. Updates use sparse field masks and
+only send attributes that actually changed. For a dedicated budget, campaign-
+driven name synchronization is ignored during planning and the name is not
+resent on unrelated updates.
 
 Import accepts the numeric campaign budget ID or the resource name
 `customers/{customerId}/campaignBudgets/{id}` and stores the numeric ID:
