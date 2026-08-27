@@ -1,11 +1,14 @@
 # Google Ads setup
 
-Agoraform uses the Google Ads API through OAuth 2.0 user credentials. Before
-using the `googleads` provider, configure Google Ads API access and provide the
-required runtime values through `.agoraform.env` or the process environment.
+Agoraform v0.3.0 uses the Google Ads API through OAuth 2.0 **single-user
+authentication**. Before using the `googleads` provider, configure Google Ads
+API access and provide the required runtime values through `.agoraform.env` or
+the process environment.
 
-This guide covers the current Agoraform authentication flow. Service-account
-authentication is not currently supported by Agoraform.
+Google also supports service-account and multi-user OAuth workflows. Agoraform
+v0.3.0 does not implement those authentication modes; supply a client ID,
+client secret, and previously issued refresh token for one authorized Google
+user.
 
 ## Required values
 
@@ -43,42 +46,70 @@ advertiser account that Agoraform manages.
 
 ## 2. Create or select a Google Cloud project
 
-Google requires a Google Cloud/API Console project for OAuth credentials.
-Billing is optional for Google Ads API use.
+Google requires a Google Cloud/API Console project for OAuth credentials and
+Google Ads API enablement. Billing is optional for Google Ads API use.
 
-1. Open Google Cloud Console.
-2. Create or select a project for Agoraform.
-3. Open **APIs & Services -> Library**.
-4. Find **Google Ads API** and click **Enable**.
+1. Open Google Cloud Console and select or create a project for Agoraform.
+2. Open **APIs & Services -> Library**.
+3. Find **Google Ads API** and click **Enable**.
 
 Google documentation:
 https://developers.google.com/google-ads/api/docs/oauth/cloud-project
 
-## 3. Configure OAuth consent
+Use a project that has not already been configured for Google Ads API access
+with a different developer token. Google permits one developer token per Cloud
+project.
 
-In the same Google Cloud project:
+## 3. Configure the Google Auth Platform app
 
-1. Open **APIs & Services -> OAuth consent screen**.
-2. Configure the application name and required contact information.
-3. Add this OAuth scope:
+Google Cloud now exposes OAuth application configuration under **Google Auth
+Platform**. Older Google documentation and screenshots may call this the
+**OAuth consent screen**.
+
+For a new project:
+
+1. Open **Google Auth Platform -> Overview** and click **Get started**.
+2. Enter an app name, user-support email, audience, and developer contact
+   information.
+3. For a personal/single-user CLI setup, choose an audience that includes the
+   Google account that will authorize Agoraform. An external app may remain in
+   **Testing** while you are developing it; add the authorizing account as a
+   test user under **Audience**.
+4. Open **Data Access** and add this scope:
 
    ```text
    https://www.googleapis.com/auth/adwords
    ```
 
-4. If the OAuth app is in **Testing** status, add the Google account that will
-   authorize Agoraform as a test user.
+5. Review **Branding**, **Audience**, and **Data Access** before generating the
+   OAuth client.
+
+Google Auth Platform documentation:
+https://support.google.com/cloud/answer/15544987
 
 The authorizing Google account must have access to the Google Ads advertiser
 account that Agoraform will manage.
 
+### Testing versus production OAuth status
+
+The Google Ads scope is restricted. Google permits development/testing before
+verification, but OAuth apps left in **Testing** have tester limits and a
+limited refresh-token lifetime. For long-lived production automation, follow
+Google's OAuth production-readiness and verification requirements rather than
+relying indefinitely on a Testing refresh token.
+
+Google documentation:
+https://developers.google.com/identity/protocols/oauth2/production-readiness/sensitive-scope-verification
+https://developers.google.com/google-ads/api/docs/productionize/secure-credentials
+
 ## 4. Create the OAuth client ID and secret
 
-For the simplest single-user CLI setup:
+For Agoraform's single-user CLI flow, use a Desktop app client because that is
+the flow Google documents for generating credentials with `gcloud`.
 
-1. Open **APIs & Services -> Credentials**.
-2. Choose **Create credentials -> OAuth client ID**.
-3. Select **Desktop app**.
+1. Open **Google Auth Platform -> Clients**.
+2. Click **Create client**.
+3. Select **Desktop app** as the application type.
 4. Create the client and download its JSON file as `credentials.json`.
 
 The downloaded file contains the values used for:
@@ -93,8 +124,8 @@ https://developers.google.com/google-ads/api/docs/oauth/single-user-authenticati
 
 ## 5. Generate a refresh token
 
-Google's single-user flow uses `gcloud` to authorize the Google Ads user and
-generate a reusable refresh token.
+Google's documented single-user flow uses `gcloud` to authorize the Google Ads
+user and generate a reusable refresh token.
 
 Install the Google Cloud CLI, then run:
 
@@ -120,7 +151,8 @@ The command prints the path to an
 
 Use `refresh_token` as `GOOGLE_ADS_REFRESH_TOKEN`.
 
-Do not commit either credentials JSON file.
+Do not commit either credentials JSON file. Treat the refresh token and client
+secret like passwords.
 
 ## 6. Get the Google Ads customer IDs
 
@@ -166,7 +198,7 @@ fully supported and are preferred for CI/CD or secret-manager injection.
 See [Local provider configuration](local-configuration.md) for file format,
 precedence, and security guidance.
 
-## 8. Verify before applying changes
+## 8. Verify authentication before applying changes
 
 With a manifest containing `providers.googleads: {}`, run:
 
@@ -174,6 +206,10 @@ With a manifest containing `providers.googleads: {}`, run:
 agoraform validate
 agoraform plan
 ```
+
+These commands may contact Google Ads but do not mutate the account. Confirm
+that authentication succeeds and that diagnostics do not print any configured
+secret value.
 
 Review the plan before running:
 
@@ -186,7 +222,9 @@ An unchanged post-apply plan should report `No changes.`
 
 When testing against a production Google Ads account, review conversion-action
 and conversion-goal settings carefully before `apply`: goal biddability and
-primary conversion settings can affect campaign optimization.
+primary conversion settings can affect campaign optimization. The v0.3.0
+release checklist requires mutation verification against a non-production
+Google Ads account before publishing the release.
 
-For a complete v0.3 conversion example, see
+For a complete v0.3.0 conversion example, see
 [`examples/googleads-conversion/`](../examples/googleads-conversion/README.md).
