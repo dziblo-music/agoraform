@@ -115,6 +115,14 @@ func (f *fakeAds) handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.Contains(r.URL.Path, "geoTargetConstants:suggest") {
+		f.lastJSON = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("request-id", "req-suggest-1")
+		_, _ = io.WriteString(w, `{"geoTargetConstantSuggestions":[{"geoTargetConstant":{"resourceName":"geoTargetConstants/2840","id":"2840","name":"United States","canonicalName":"United States","countryCode":"US","targetType":"Country","status":"ENABLED"},"searchTerm":"United States"}]}`)
+		return
+	}
+
 	if strings.Contains(r.URL.Path, ":mutate") {
 		f.mutateHits++
 		f.lastJSON = string(body)

@@ -3,8 +3,8 @@
 The Google Ads provider registers as `googleads` and manages website
 conversion actions, customer conversion-goal biddability, daily Search
 campaign budgets, Search campaigns, campaign conversion-goal
-biddability, Search ad groups, and Search keyword criteria. Credentials
-come from the environment.
+biddability, Search ad groups, Search keyword criteria, and campaign
+location and language targeting. Credentials come from the environment.
 The Agoraform CLI remains provider-neutral; there is no Google Ads-specific
 command.
 
@@ -213,8 +213,9 @@ instead of generating a lossy daily Search budget.
 
 Search campaigns. Agoraform creates and updates `SEARCH` campaigns only.
 Performance Max, Display, Video, Shopping, App, and other channel types are
-out of scope. Ad groups, ads, keywords, and targeting are separate
-resources.
+out of scope. Ad groups, ads, keywords, and location/language criteria are
+separate resources. Campaign-level presence vs interest geotargeting is
+declared on the campaign as `locationTargeting`.
 
 ```yaml
 resources:
@@ -236,6 +237,9 @@ resources:
         searchNetwork: true
         contentNetwork: false
         partnerSearchNetwork: false
+      locationTargeting:
+        positive: PRESENCE
+        negative: PRESENCE
 ```
 
 | Attribute | Required | Description |
@@ -248,6 +252,7 @@ resources:
 | `network` | no | Search network / partner flags. When set, `googleSearch` must be `true`. Omitted network settings are not forced onto the remote resource. |
 | `startDate` / `endDate` | no | Valid calendar dates in `YYYY-MM-DD` format. |
 | `trackingUrlTemplate` / `finalUrlSuffix` | no | Optional URL tracking fields. Set an explicitly managed field to an empty string to clear its remote value; omission leaves it unmanaged. |
+| `locationTargeting` | no | Presence vs interest geotargeting mode. Omitted settings are not forced onto the remote resource. |
 
 Supported `bidding.strategy` values:
 
@@ -259,6 +264,13 @@ Supported `bidding.strategy` values:
 | `TARGET_CPA` | `targetCpa` (required) |
 | `TARGET_ROAS` | `targetRoas` (required, `0.01`–`1000` inclusive) |
 | `MAXIMIZE_CONVERSION_VALUE` | `targetRoas` (`0.01`–`1000` inclusive); set `0` to clear an existing optional target |
+
+`locationTargeting` fields:
+
+| Field | Description |
+| --- | --- |
+| `positive` | How included locations match users: `PRESENCE`, `PRESENCE_OR_INTEREST`, or `SEARCH_INTEREST`. |
+| `negative` | How excluded locations match users: `PRESENCE` or `PRESENCE_OR_INTEREST`. |
 
 Omitting an optional bidding target leaves the current Google Ads value
 unmanaged. Use the explicit `0` forms above when the desired state is to
@@ -432,6 +444,114 @@ Non-keyword criteria fail import with guidance instead of generating a
 lossy keyword configuration. Import the ad group first, or apply it, then
 re-import the keyword.
 
+### `googleads.campaign_location`
+
+Campaign location criteria, including excluded locations. Agoraform creates
+`LOCATION` campaign criteria only. Radius/proximity targeting, location
+groups, and audience segments are out of scope. Presence vs interest
+behavior stays on `googleads.campaign` as `locationTargeting`.
+
+Prefer reviewable names and country codes. Agoraform resolves them to
+Google Ads geo target constants before mutation. If a name is missing or
+matches more than one ENABLED constant, plan fails with the candidates
+instead of guessing. Provider-native IDs such as `geoTargetConstants/2840`
+are accepted as an unambiguous escape hatch and stay isolated to this
+resource.
+
+```yaml
+resources:
+  - address: googleads.campaign.brand
+    attributes:
+      name: Brand
+      budget:
+        $ref: googleads.campaign_budget.brand
+      bidding:
+        strategy: MANUAL_CPC
+      locationTargeting:
+        positive: PRESENCE
+  - address: googleads.campaign_location.united_states
+    attributes:
+      campaign:
+        $ref: googleads.campaign.brand
+      location: United States
+  - address: googleads.campaign_location.exclude_canada
+    attributes:
+      campaign:
+        $ref: googleads.campaign.brand
+      location: Canada
+      negative: true
+```
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `campaign` | yes | `$ref` to a `googleads.campaign`. Resolved to the provider-native campaign at apply time. Immutable after create. |
+| `location` | yes | Canonical name (`United States`, `California, United States`), ISO country code (`US`), numeric geo target id, or `geoTargetConstants/{id}`. |
+| `negative` | no | `true` to exclude the location. Omitted `negative` is treated as `false`. Immutable after create. |
+
+Campaign, location, and negative identify the Google Ads criterion and
+cannot be updated in place. Plan reports that instead of hiding
+replacement. Duplicate locations on the same campaign fail validation
+before mutation.
+
+Equivalent live values, including `US` / `United States` /
+`geoTargetConstants/2840`, produce no plan diff. Provider-native IDs and
+resource names remain computed.
+
+Import accepts `campaignId~criterionId` or the resource name
+`customers/{customerId}/campaignCriteria/{campaignId}~{criterionId}` and
+stores `campaignId~criterionId`. Import reconstructs `campaign` as a
+logical `$ref` when the campaign is already bound in local state, and
+writes the canonical location name:
+
+```bash
+agoraform import googleads.campaign.brand 987654321
+agoraform import googleads.campaign_location.united_states 987654321~888999000
+```
+
+Non-location criteria fail import with guidance instead of generating a
+lossy location configuration. Import the campaign first, or apply it,
+then re-import the location.
+
+### `googleads.campaign_language`
+
+Campaign language criteria. Agoraform creates `LANGUAGE` campaign
+criteria only. Language exclusions are out of scope.
+
+Prefer ISO language codes such as `en`. Names such as `English` and
+provider-native `languageConstants/{id}` values are also accepted and
+resolved before mutation. Ambiguous or non-targetable languages fail
+before mutation.
+
+```yaml
+resources:
+  - address: googleads.campaign_language.english
+    attributes:
+      campaign:
+        $ref: googleads.campaign.brand
+      language: en
+```
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `campaign` | yes | `$ref` to a `googleads.campaign`. Resolved at apply time. Immutable after create. |
+| `language` | yes | ISO code (`en`), language name (`English`), numeric id, or `languageConstants/{id}`. |
+
+Campaign and language identify the Google Ads criterion and cannot be
+updated in place. Duplicate languages on the same campaign fail
+validation before mutation.
+
+Equivalent live values, including `en` / `English` /
+`languageConstants/1000`, produce no plan diff. Provider-native IDs and
+resource names remain computed. Import writes the ISO code:
+
+```bash
+agoraform import googleads.campaign.brand 987654321
+agoraform import googleads.campaign_language.english 987654321~888999001
+```
+
+Non-language criteria fail import with guidance. Import the campaign
+first, or apply it, then re-import the language.
+
 ### `googleads.campaign_conversion_goal`
 
 Campaign-level website conversion-goal biddability. Google Ads automatically
@@ -505,6 +625,7 @@ managed.
 - `developer-token` and optional `login-customer-id` headers;
 - Google Ads Query Language search with pagination;
 - resource mutate requests;
+- geo target constant name lookup (`geoTargetConstants:suggest`);
 - API version selection (`v25`) so upgrades stay in one place;
 - Google Ads / OAuth error mapping and secret redaction.
 

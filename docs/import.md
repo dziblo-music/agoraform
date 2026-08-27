@@ -192,6 +192,42 @@ keyword manifest. Generated YAML uses `cpcBid` in account-currency units,
 not micros. Keyword text, match type, negative, and ad group are
 immutable after the criterion exists.
 
+## Google Ads campaign locations
+
+Import a campaign location criterion by its `campaignId~criterionId`
+identity, or by the Google Ads resource name
+`customers/{customerId}/campaignCriteria/{campaignId}~{criterionId}`.
+Agoraform stores `campaignId~criterionId` in local state as `remoteId`.
+Do not copy it into YAML. Generated YAML uses the canonical location
+name, not `geoTargetConstants/{id}`.
+
+Import the campaign first so Agoraform can reconstruct `campaign` as a
+logical `$ref`:
+
+```bash
+agoraform import googleads.campaign.brand 987654321
+agoraform import googleads.campaign_location.united_states 987654321~888999000
+```
+
+Non-location criteria fail with guidance instead of emitting a lossy
+location manifest.
+
+## Google Ads campaign languages
+
+Import a campaign language criterion by its `campaignId~criterionId`
+identity, or by the Google Ads resource name
+`customers/{customerId}/campaignCriteria/{campaignId}~{criterionId}`.
+Agoraform stores `campaignId~criterionId` in local state as `remoteId`.
+Generated YAML uses the ISO language code.
+
+```bash
+agoraform import googleads.campaign.brand 987654321
+agoraform import googleads.campaign_language.english 987654321~888999001
+```
+
+Non-language criteria fail with guidance instead of emitting a lossy
+language manifest.
+
 ## Google Ads campaign conversion goals
 
 Import a website campaign conversion goal by its

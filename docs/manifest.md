@@ -274,6 +274,7 @@ to `PAUSED`. Campaigns must reference a `googleads.campaign_budget`.
 | `network` | no | Search network / partner flags. |
 | `startDate` / `endDate` | no | `YYYY-MM-DD`. |
 | `trackingUrlTemplate` / `finalUrlSuffix` | no | Optional URL tracking fields. |
+| `locationTargeting` | no | Presence vs interest geotargeting: `positive` is `PRESENCE`, `PRESENCE_OR_INTEREST`, or `SEARCH_INTEREST`; `negative` is `PRESENCE` or `PRESENCE_OR_INTEREST`. |
 
 ```yaml
 - address: googleads.campaign.brand
@@ -287,7 +288,7 @@ to `PAUSED`. Campaigns must reference a `googleads.campaign_budget`.
 ```
 
 Unsupported channel types fail validation before mutation. Ads, keywords,
-and targeting are separate resources. See the
+and location/language criteria are separate resources. See the
 [Google Ads provider reference](../providers/googleads/README.md).
 
 ### `googleads.ad_group`
@@ -362,6 +363,60 @@ Positive keyword status remains mutable.
 Campaign-level negative keywords, Keyword Planner, and audience or DSA
 criteria are out of scope. See the
 [Google Ads provider reference](../providers/googleads/README.md).
+
+### `googleads.campaign_location`
+
+Search campaign location criteria, including excluded locations. Locations
+must reference a `googleads.campaign`. Prefer canonical names or country
+codes; Agoraform resolves them to Google Ads geo target constants and
+fails when a name is missing or ambiguous. Campaign, location, and
+negative are immutable after create.
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `campaign` | yes | `$ref` to a `googleads.campaign`. |
+| `location` | yes | Canonical name, ISO country code, or `geoTargetConstants/{id}`. |
+| `negative` | no | `true` to exclude the location. Defaults to `false`. |
+
+```yaml
+- address: googleads.campaign_location.united_states
+  attributes:
+    campaign:
+      $ref: googleads.campaign.brand
+    location: United States
+- address: googleads.campaign_location.exclude_canada
+  attributes:
+    campaign:
+      $ref: googleads.campaign.brand
+    location: Canada
+    negative: true
+```
+
+Radius/proximity targeting and audience segments are out of scope.
+Presence vs interest behavior is `locationTargeting` on
+`googleads.campaign`. See the
+[Google Ads provider reference](../providers/googleads/README.md).
+
+### `googleads.campaign_language`
+
+Search campaign language criteria. Languages must reference a
+`googleads.campaign`. Prefer ISO codes such as `en`. Campaign and
+language are immutable after create.
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `campaign` | yes | `$ref` to a `googleads.campaign`. |
+| `language` | yes | ISO code, language name, or `languageConstants/{id}`. |
+
+```yaml
+- address: googleads.campaign_language.english
+  attributes:
+    campaign:
+      $ref: googleads.campaign.brand
+    language: en
+```
+
+See the [Google Ads provider reference](../providers/googleads/README.md).
 
 ### `googleads.campaign_conversion_goal`
 

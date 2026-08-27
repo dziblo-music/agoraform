@@ -400,6 +400,78 @@ resources:
       matchType: BROAD_MATCH_MODIFIED
 `
 
+const googleAdsTargetingManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.campaign_budget.brand
+    attributes:
+      name: Brand daily budget
+      amount: 50
+      explicitlyShared: false
+  - address: googleads.campaign.brand
+    attributes:
+      name: Brand
+      budget:
+        $ref: googleads.campaign_budget.brand
+      bidding:
+        strategy: MANUAL_CPC
+      locationTargeting:
+        positive: PRESENCE
+        negative: PRESENCE
+  - address: googleads.campaign_location.united_states
+    attributes:
+      campaign:
+        $ref: googleads.campaign.brand
+      location: United States
+  - address: googleads.campaign_location.exclude_canada
+    attributes:
+      campaign:
+        $ref: googleads.campaign.brand
+      location: Canada
+      negative: true
+  - address: googleads.campaign_language.english
+    attributes:
+      campaign:
+        $ref: googleads.campaign.brand
+      language: en
+`
+
+const googleAdsLocationIncompleteManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.campaign_budget.brand
+    attributes:
+      name: Brand daily budget
+      amount: 50
+      explicitlyShared: false
+  - address: googleads.campaign.brand
+    attributes:
+      name: Brand
+      budget:
+        $ref: googleads.campaign_budget.brand
+      bidding:
+        strategy: MANUAL_CPC
+  - address: googleads.campaign_location.united_states
+    attributes:
+      location: United States
+`
+
+const googleAdsLocationInvalidModeManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.campaign_budget.brand
+    attributes:
+      name: Brand daily budget
+      amount: 50
+      explicitlyShared: false
+  - address: googleads.campaign.brand
+    attributes:
+      name: Brand
+      budget:
+        $ref: googleads.campaign_budget.brand
+      bidding:
+        strategy: MANUAL_CPC
+      locationTargeting:
+        positive: UNKNOWN
+`
+
 func TestValidateSuccess(t *testing.T) {
 	t.Parallel()
 
@@ -877,6 +949,84 @@ func TestValidateGoogleAdsKeywordRejectsInvalidMatchType(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "matchType") {
 		t.Fatalf("stderr = %q, want matchType validation error", stderr.String())
+	}
+}
+
+func TestValidateGoogleAdsTargetingMissingCredentials(t *testing.T) {
+	t.Parallel()
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsTargetingManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWith(streams, []string{"validate", "-f", path})
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	errOut := stderr.String()
+	if strings.Contains(errOut, "unknown resource type") {
+		t.Fatalf("stderr = %q, googleads.campaign_location should be registered", errOut)
+	}
+	if !strings.Contains(errOut, googleads.EnvDeveloperToken) && !strings.Contains(errOut, "required") {
+		t.Fatalf("stderr = %q, want missing credential error", errOut)
+	}
+}
+
+func TestValidateGoogleAdsTargetingWithProvider(t *testing.T) {
+	t.Parallel()
+
+	p, _ := googleAdsTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsTargetingManifest)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitOK, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "5 resources") {
+		t.Fatalf("stdout = %q, want 5 resources", stdout.String())
+	}
+}
+
+func TestValidateGoogleAdsLocationMissingCampaign(t *testing.T) {
+	t.Parallel()
+
+	p, _ := googleAdsTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsLocationIncompleteManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "campaign") {
+		t.Fatalf("stderr = %q, want campaign validation error", stderr.String())
+	}
+}
+
+func TestValidateGoogleAdsLocationTargetingRejectsUnknownMode(t *testing.T) {
+	t.Parallel()
+
+	p, _ := googleAdsTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsLocationInvalidModeManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "positive") {
+		t.Fatalf("stderr = %q, want positive geo target guidance", stderr.String())
 	}
 }
 

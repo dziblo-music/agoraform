@@ -7,8 +7,11 @@
 // (googleads.customer_conversion_goal), daily Search campaign budgets
 // (googleads.campaign_budget), Search campaigns (googleads.campaign),
 // campaign conversion-goal biddability (googleads.campaign_conversion_goal),
-// Search ad groups (googleads.ad_group), and Search keyword criteria
-// (googleads.keyword). Other Google Ads resources remain follow-up work.
+// Search ad groups (googleads.ad_group), Search keyword criteria
+// (googleads.keyword), campaign location criteria
+// (googleads.campaign_location), and campaign language criteria
+// (googleads.campaign_language). Other Google Ads resources remain
+// follow-up work.
 //
 // Generic core and reconciliation packages must not import this package or
 // depend on Google Ads API types. The CLI composition root may import it in

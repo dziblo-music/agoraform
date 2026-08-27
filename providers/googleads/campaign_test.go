@@ -155,6 +155,41 @@ func TestValidateCampaignErrors(t *testing.T) {
 			},
 			want: "googleSearch",
 		},
+		{
+			name: "location targeting presence accepted",
+			attrs: resource.Attributes{
+				googleads.AttrName:    "Brand",
+				googleads.AttrBudget:  budget,
+				googleads.AttrBidding: bidding,
+				googleads.AttrLocationTargeting: map[string]any{
+					"positive": "presence",
+					"negative": "PRESENCE",
+				},
+			},
+			want: "",
+		},
+		{
+			name: "unsupported positive geo target type",
+			attrs: resource.Attributes{
+				googleads.AttrName:    "Brand",
+				googleads.AttrBudget:  budget,
+				googleads.AttrBidding: bidding,
+				googleads.AttrLocationTargeting: map[string]any{
+					"positive": "UNKNOWN",
+				},
+			},
+			want: "positive",
+		},
+		{
+			name: "empty location targeting rejected",
+			attrs: resource.Attributes{
+				googleads.AttrName:              "Brand",
+				googleads.AttrBudget:            budget,
+				googleads.AttrBidding:           bidding,
+				googleads.AttrLocationTargeting: map[string]any{},
+			},
+			want: "locationTargeting",
+		},
 	}
 
 	for _, tc := range cases {
@@ -672,6 +707,117 @@ func TestPlanCampaignOmittedNetworkIsNoOp(t *testing.T) {
 	got := mustPlanCampaign(t, p, budget, res)
 	if got.HasChanges() {
 		t.Fatalf("omitted network produced changes: %+v", got.Changes)
+	}
+}
+
+func TestCreateCampaignSendsLocationTargeting(t *testing.T) {
+	t.Parallel()
+
+	fake := newCampaignFake()
+	fake.seedBudget(map[string]any{"id": "11", "name": "Brand daily budget", "amountMicros": "50000000", "explicitlyShared": false})
+	p, _ := testCampaignProvider(t, fake)
+
+	attrs := defaultCampaignAttrs(t)
+	attrs[googleads.AttrBudget] = resource.Resolved{
+		Address:  mustCampaignBudgetAddress(t, "brand"),
+		Identity: resource.Identity{ID: "11"},
+		Outputs:  resource.Attributes{"resourceName": "customers/" + testCustomerID + "/campaignBudgets/11"},
+	}
+	attrs[googleads.AttrLocationTargeting] = map[string]any{
+		"positive": "PRESENCE",
+		"negative": "PRESENCE",
+	}
+	if _, err := p.Create(context.Background(), campaignResource(t, "brand", attrs)); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if !strings.Contains(fake.lastMutate, "positiveGeoTargetType") || !strings.Contains(fake.lastMutate, "PRESENCE") {
+		t.Fatalf("create mutate missing location targeting: %s", fake.lastMutate)
+	}
+}
+
+func TestUpdateCampaignLocationTargeting(t *testing.T) {
+	t.Parallel()
+
+	fake := newCampaignFake()
+	fake.seedBudget(map[string]any{"id": "11", "name": "Brand daily budget", "amountMicros": "50000000", "explicitlyShared": false})
+	campaign := sampleSearchCampaign("21", "Brand", "11")
+	campaign["geoTargetTypeSetting"] = map[string]any{
+		"positiveGeoTargetType": "PRESENCE_OR_INTEREST",
+		"negativeGeoTargetType": "PRESENCE",
+	}
+	fake.seedCampaign(campaign)
+	p, _ := testCampaignProvider(t, fake)
+
+	desired := campaignResource(t, "brand", resource.Attributes{
+		googleads.AttrName: "Brand",
+		googleads.AttrBudget: resource.Resolved{
+			Address:  mustCampaignBudgetAddress(t, "brand"),
+			Identity: resource.Identity{ID: "11"},
+			Outputs:  resource.Attributes{"resourceName": "customers/" + testCustomerID + "/campaignBudgets/11"},
+		},
+		googleads.AttrBidding: map[string]any{"strategy": "MANUAL_CPC"},
+		googleads.AttrLocationTargeting: map[string]any{
+			"positive": "PRESENCE",
+		},
+	})
+	if _, err := p.Update(context.Background(), desired, resource.RemoteResource{
+		Address:  desired.Address,
+		Identity: resource.Identity{ID: "21"},
+	}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if !strings.Contains(fake.lastMutate, "geoTargetTypeSetting.positiveGeoTargetType") {
+		t.Fatalf("update mask missing location targeting: %s", fake.lastMutate)
+	}
+}
+
+func TestPlanCampaignLocationTargetingUnchanged(t *testing.T) {
+	t.Parallel()
+
+	fake := newCampaignFake()
+	fake.seedBudget(map[string]any{"id": "11", "name": "Brand daily budget", "amountMicros": "50000000", "explicitlyShared": false, "period": "DAILY", "type": "STANDARD"})
+	live := sampleSearchCampaign("21", "Brand", "11")
+	live["geoTargetTypeSetting"] = map[string]any{
+		"positiveGeoTargetType": "presence",
+		"negativeGeoTargetType": "PRESENCE",
+	}
+	fake.seedCampaign(live)
+	p, _ := testCampaignProvider(t, fake)
+
+	budget := campaignBudgetResource(t, "brand", resource.Attributes{
+		googleads.AttrName:             "Brand daily budget",
+		googleads.AttrAmount:           50,
+		googleads.AttrExplicitlyShared: false,
+	})
+	attrs := defaultCampaignAttrs(t)
+	attrs[googleads.AttrLocationTargeting] = map[string]any{"positive": "PRESENCE", "negative": "presence"}
+	got := mustPlanCampaign(t, p, budget, campaignResource(t, "brand", attrs))
+	if got.HasChanges() {
+		t.Fatalf("equivalent location targeting produced changes: %+v", got.Changes)
+	}
+}
+
+func TestPlanCampaignOmittedLocationTargetingIsNoOp(t *testing.T) {
+	t.Parallel()
+
+	fake := newCampaignFake()
+	fake.seedBudget(map[string]any{"id": "11", "name": "Brand daily budget", "amountMicros": "50000000", "explicitlyShared": false, "period": "DAILY", "type": "STANDARD"})
+	live := sampleSearchCampaign("21", "Brand", "11")
+	live["geoTargetTypeSetting"] = map[string]any{
+		"positiveGeoTargetType": "PRESENCE_OR_INTEREST",
+		"negativeGeoTargetType": "PRESENCE",
+	}
+	fake.seedCampaign(live)
+	p, _ := testCampaignProvider(t, fake)
+
+	budget := campaignBudgetResource(t, "brand", resource.Attributes{
+		googleads.AttrName:             "Brand daily budget",
+		googleads.AttrAmount:           50,
+		googleads.AttrExplicitlyShared: false,
+	})
+	got := mustPlanCampaign(t, p, budget, campaignResource(t, "brand", defaultCampaignAttrs(t)))
+	if got.HasChanges() {
+		t.Fatalf("omitted location targeting produced changes: %+v", got.Changes)
 	}
 }
 
