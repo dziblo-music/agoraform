@@ -169,17 +169,26 @@ func (p *Provider) readKeyword(ctx context.Context, res resource.Resource) (reso
 	text, _ := requiredKeywordText(res)
 	matchType, _ := requiredKeywordMatchType(res)
 	negative, _, _ := optionalBool(res, AttrNegative)
+	// GAQL string equality is case-sensitive. Keyword text is compared after
+	// normalizeKeywordText so capitalization-only differences still match.
 	where := strings.Join([]string{
 		"ad_group.id = " + adGroupID,
 		"ad_group_criterion.type = " + gaqlString(keywordTypeKeyword),
-		"ad_group_criterion.keyword.text = " + gaqlString(text),
 		"ad_group_criterion.keyword.match_type = " + gaqlString(matchType),
 		"ad_group_criterion.negative = " + gaqlBool(negative),
 		"ad_group_criterion.status != " + gaqlString("REMOVED"),
 	}, " AND ")
-	matches, err := p.queryKeywords(ctx, where)
+	candidates, err := p.queryKeywords(ctx, where)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("googleads: read %s: %w", res.Address, err)
+	}
+	matches := make([]keywordData, 0, len(candidates))
+	for _, item := range candidates {
+		got, nerr := normalizeKeywordText(item.Text)
+		if nerr != nil || got != text {
+			continue
+		}
+		matches = append(matches, item)
 	}
 	switch len(matches) {
 	case 0:

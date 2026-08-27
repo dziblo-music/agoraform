@@ -295,6 +295,28 @@ func TestReadKeywordSameTextDifferentAdGroups(t *testing.T) {
 	}
 }
 
+func TestReadKeywordUnboundIgnoresRemoteTextCase(t *testing.T) {
+	t.Parallel()
+
+	fake := newKeywordFake()
+	fake.seedKeyword(sampleSearchKeyword("31", "41", "Brand", "EXACT", false))
+	p, _ := testKeywordProvider(t, fake)
+
+	live, err := p.Read(context.Background(), keywordResource(t, "brand_exact", resolvedKeywordAttrs(t, "31")))
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if live.Identity.ID != "31~41" {
+		t.Fatalf("identity = %q, want 31~41", live.Identity.ID)
+	}
+	if live.Attributes[googleads.AttrText] != "brand" {
+		t.Fatalf("text = %v, want normalized brand", live.Attributes[googleads.AttrText])
+	}
+	if strings.Contains(strings.ToLower(fake.lastQuery), "keyword.text = ") {
+		t.Fatalf("unbound read must not filter keyword text in GAQL: %s", fake.lastQuery)
+	}
+}
+
 func TestReadKeywordNegativeAndPositiveAreDistinct(t *testing.T) {
 	t.Parallel()
 
