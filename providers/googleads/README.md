@@ -243,19 +243,23 @@ resources:
 | `status` | no | `PAUSED` (default for new campaigns) or `ENABLED`. Omitted status is treated as `PAUSED`. |
 | `advertisingChannelType` | no | Must be `SEARCH` when set. The provider always creates Search campaigns. |
 | `network` | no | Search network / partner flags. When set, `googleSearch` must be `true`. Omitted network settings are not forced onto the remote resource. |
-| `startDate` / `endDate` | no | `YYYY-MM-DD` campaign dates. |
-| `trackingUrlTemplate` / `finalUrlSuffix` | no | Optional URL tracking fields. |
+| `startDate` / `endDate` | no | Valid calendar dates in `YYYY-MM-DD` format. |
+| `trackingUrlTemplate` / `finalUrlSuffix` | no | Optional URL tracking fields. Set an explicitly managed field to an empty string to clear its remote value; omission leaves it unmanaged. |
 
 Supported `bidding.strategy` values:
 
 | Strategy | Optional settings |
 | --- | --- |
 | `MANUAL_CPC` | `enhancedCpc` |
-| `MAXIMIZE_CLICKS` | `cpcBidCeiling` in account-currency units |
-| `MAXIMIZE_CONVERSIONS` | `targetCpa` in account-currency units |
+| `MAXIMIZE_CLICKS` | `cpcBidCeiling` in account-currency units; set `0` to clear an existing ceiling |
+| `MAXIMIZE_CONVERSIONS` | `targetCpa` in account-currency units; set `0` to clear an existing optional target |
 | `TARGET_CPA` | `targetCpa` (required) |
-| `TARGET_ROAS` | `targetRoas` (required) |
-| `MAXIMIZE_CONVERSION_VALUE` | `targetRoas` |
+| `TARGET_ROAS` | `targetRoas` (required, `0.01`–`1000` inclusive) |
+| `MAXIMIZE_CONVERSION_VALUE` | `targetRoas` (`0.01`–`1000` inclusive); set `0` to clear an existing optional target |
+
+Omitting an optional bidding target leaves the current Google Ads value
+unmanaged. Use the explicit `0` forms above when the desired state is to
+remove a previously configured optional target.
 
 New campaigns are created `PAUSED` unless configuration explicitly sets
 `ENABLED`. Creates also send Search-safe network defaults when `network` is
