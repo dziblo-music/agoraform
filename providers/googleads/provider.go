@@ -23,9 +23,9 @@ const (
 // It registers googleads.conversion_action,
 // googleads.customer_conversion_goal, googleads.campaign_budget,
 // googleads.campaign, googleads.campaign_conversion_goal,
-// googleads.ad_group, googleads.keyword, googleads.campaign_location,
-// and googleads.campaign_language and shares a reusable REST
-// client for authenticated query and mutate operations.
+// googleads.ad_group, googleads.keyword, googleads.responsive_search_ad,
+// googleads.campaign_location, and googleads.campaign_language and shares
+// a reusable REST client for authenticated query and mutate operations.
 type Provider struct {
 	cfg    Config
 	once   sync.Once
@@ -78,7 +78,7 @@ func (p *Provider) Name() string { return Name }
 
 // ResourceTypes implements provider.Provider.
 func (p *Provider) ResourceTypes() []string {
-	return []string{TypeConversionAction, TypeCustomerConversionGoal, TypeCampaignBudget, TypeCampaign, TypeCampaignConversionGoal, TypeAdGroup, TypeKeyword, TypeCampaignLocation, TypeCampaignLanguage}
+	return []string{TypeConversionAction, TypeCustomerConversionGoal, TypeCampaignBudget, TypeCampaign, TypeCampaignConversionGoal, TypeAdGroup, TypeKeyword, TypeResponsiveSearchAd, TypeCampaignLocation, TypeCampaignLanguage}
 }
 
 // Client returns the reusable Google Ads HTTP client, creating it on first use.
@@ -156,6 +156,8 @@ func (p *Provider) Validate(_ context.Context, res resource.Resource) error {
 		return p.validateAdGroup(res)
 	case TypeKeyword:
 		return p.validateKeyword(res)
+	case TypeResponsiveSearchAd:
+		return p.validateResponsiveSearchAd(res)
 	case TypeCampaignLocation:
 		return p.validateCampaignLocation(res)
 	case TypeCampaignLanguage:
@@ -182,6 +184,8 @@ func (p *Provider) Read(ctx context.Context, res resource.Resource) (resource.Re
 		return p.readAdGroup(ctx, res)
 	case TypeKeyword:
 		return p.readKeyword(ctx, res)
+	case TypeResponsiveSearchAd:
+		return p.readResponsiveSearchAd(ctx, res)
 	case TypeCampaignLocation:
 		return p.readCampaignLocation(ctx, res)
 	case TypeCampaignLanguage:
@@ -211,6 +215,8 @@ func (p *Provider) Create(ctx context.Context, res resource.Resource) (resource.
 		return p.createAdGroup(ctx, res)
 	case TypeKeyword:
 		return p.createKeywordLifecycle(ctx, res)
+	case TypeResponsiveSearchAd:
+		return p.createResponsiveSearchAd(ctx, res)
 	case TypeCampaignLocation:
 		return p.createCampaignLocation(ctx, res)
 	case TypeCampaignLanguage:
@@ -237,6 +243,8 @@ func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual
 		return p.updateAdGroup(ctx, desired, actual)
 	case TypeKeyword:
 		return p.updateKeywordLifecycle(ctx, desired, actual)
+	case TypeResponsiveSearchAd:
+		return p.updateResponsiveSearchAd(ctx, desired, actual)
 	case TypeCampaignLocation:
 		return p.updateCampaignLocation(ctx, desired, actual)
 	case TypeCampaignLanguage:
@@ -263,6 +271,8 @@ func (p *Provider) Import(ctx context.Context, addr resource.Address, id string)
 		return p.importAdGroup(ctx, addr, id)
 	case TypeKeyword:
 		return p.importKeyword(ctx, addr, id)
+	case TypeResponsiveSearchAd:
+		return p.importResponsiveSearchAd(ctx, addr, id)
 	case TypeCampaignLocation:
 		return p.importCampaignLocation(ctx, addr, id)
 	case TypeCampaignLanguage:
@@ -287,7 +297,10 @@ func (p *Provider) Import(ctx context.Context, addr resource.Address, id string)
 // customers/{customerId}/adGroups/{id} and store the numeric id. Search
 // keywords accept adGroupId~criterionId or
 // customers/{customerId}/adGroupCriteria/{adGroupId}~{criterionId} and
-// store adGroupId~criterionId. Campaign location and language criteria
+// store adGroupId~criterionId. Responsive search ads accept
+// adGroupId~adId or
+// customers/{customerId}/adGroupAds/{adGroupId}~{adId} and store
+// adGroupId~adId. Campaign location and language criteria
 // accept campaignId~criterionId or
 // customers/{customerId}/campaignCriteria/{campaignId}~{criterionId} and
 // store campaignId~criterionId.
@@ -310,6 +323,8 @@ func (p *Provider) NormalizeImportID(addr resource.Address, raw string) (string,
 		return p.canonicalAdGroupImportID(addr, raw)
 	case TypeKeyword:
 		return p.canonicalKeywordImportID(addr, raw)
+	case TypeResponsiveSearchAd:
+		return p.canonicalRSAImportID(addr, raw)
 	case TypeCampaignLocation, TypeCampaignLanguage:
 		return p.canonicalCampaignCriterionImportID(addr, raw)
 	default:
@@ -334,6 +349,8 @@ func (p *Provider) NormalizeComparable(desired resource.Resource, live *resource
 		return p.normalizeAdGroupComparable(desired, live)
 	case TypeKeyword:
 		return p.normalizeKeywordComparableLifecycle(desired, live)
+	case TypeResponsiveSearchAd:
+		return p.normalizeRSAComparable(desired, live)
 	case TypeCampaignLocation:
 		return p.normalizeCampaignLocationComparable(context.Background(), desired, live)
 	case TypeCampaignLanguage:

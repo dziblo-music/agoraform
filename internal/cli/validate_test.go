@@ -400,6 +400,103 @@ resources:
       matchType: BROAD_MATCH_MODIFIED
 `
 
+const googleAdsResponsiveSearchAdManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.campaign_budget.brand
+    attributes:
+      name: Brand daily budget
+      amount: 50
+      explicitlyShared: false
+  - address: googleads.campaign.brand
+    attributes:
+      name: Brand
+      budget:
+        $ref: googleads.campaign_budget.brand
+      bidding:
+        strategy: MANUAL_CPC
+  - address: googleads.ad_group.brand
+    attributes:
+      name: Brand
+      campaign:
+        $ref: googleads.campaign.brand
+  - address: googleads.responsive_search_ad.brand
+    attributes:
+      adGroup:
+        $ref: googleads.ad_group.brand
+      finalUrls:
+        - https://example.com/
+      headlines:
+        - Buy shoes online
+        - Free shipping today
+        - Shop the collection
+      descriptions:
+        - Find shoes that fit your style.
+        - Free returns on every order.
+`
+
+const googleAdsResponsiveSearchAdIncompleteManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.campaign_budget.brand
+    attributes:
+      name: Brand daily budget
+      amount: 50
+      explicitlyShared: false
+  - address: googleads.campaign.brand
+    attributes:
+      name: Brand
+      budget:
+        $ref: googleads.campaign_budget.brand
+      bidding:
+        strategy: MANUAL_CPC
+  - address: googleads.ad_group.brand
+    attributes:
+      name: Brand
+      campaign:
+        $ref: googleads.campaign.brand
+  - address: googleads.responsive_search_ad.brand
+    attributes:
+      headlines:
+        - Buy shoes online
+        - Free shipping today
+        - Shop the collection
+      descriptions:
+        - Find shoes that fit your style.
+        - Free returns on every order.
+`
+
+const googleAdsResponsiveSearchAdTooFewHeadlinesManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.campaign_budget.brand
+    attributes:
+      name: Brand daily budget
+      amount: 50
+      explicitlyShared: false
+  - address: googleads.campaign.brand
+    attributes:
+      name: Brand
+      budget:
+        $ref: googleads.campaign_budget.brand
+      bidding:
+        strategy: MANUAL_CPC
+  - address: googleads.ad_group.brand
+    attributes:
+      name: Brand
+      campaign:
+        $ref: googleads.campaign.brand
+  - address: googleads.responsive_search_ad.brand
+    attributes:
+      adGroup:
+        $ref: googleads.ad_group.brand
+      finalUrls:
+        - https://example.com/
+      headlines:
+        - Buy shoes online
+        - Free shipping today
+      descriptions:
+        - Find shoes that fit your style.
+        - Free returns on every order.
+`
+
 const googleAdsTargetingManifest = `apiVersion: agoraform.io/v1alpha1
 resources:
   - address: googleads.campaign_budget.brand
@@ -949,6 +1046,84 @@ func TestValidateGoogleAdsKeywordRejectsInvalidMatchType(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "matchType") {
 		t.Fatalf("stderr = %q, want matchType validation error", stderr.String())
+	}
+}
+
+func TestValidateGoogleAdsResponsiveSearchAdMissingCredentials(t *testing.T) {
+	t.Parallel()
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsResponsiveSearchAdManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWith(streams, []string{"validate", "-f", path})
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	errOut := stderr.String()
+	if strings.Contains(errOut, "unknown resource type") {
+		t.Fatalf("stderr = %q, googleads.responsive_search_ad should be registered", errOut)
+	}
+	if !strings.Contains(errOut, googleads.EnvDeveloperToken) && !strings.Contains(errOut, "required") {
+		t.Fatalf("stderr = %q, want missing credential error", errOut)
+	}
+}
+
+func TestValidateGoogleAdsResponsiveSearchAdWithProvider(t *testing.T) {
+	t.Parallel()
+
+	p, _ := googleAdsTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsResponsiveSearchAdManifest)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitOK, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "4 resources") {
+		t.Fatalf("stdout = %q, want 4 resources", stdout.String())
+	}
+}
+
+func TestValidateGoogleAdsResponsiveSearchAdMissingAdGroup(t *testing.T) {
+	t.Parallel()
+
+	p, _ := googleAdsTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsResponsiveSearchAdIncompleteManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "adGroup") {
+		t.Fatalf("stderr = %q, want adGroup validation error", stderr.String())
+	}
+}
+
+func TestValidateGoogleAdsResponsiveSearchAdRejectsTooFewHeadlines(t *testing.T) {
+	t.Parallel()
+
+	p, _ := googleAdsTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsResponsiveSearchAdTooFewHeadlinesManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "headline") {
+		t.Fatalf("stderr = %q, want headline validation error", stderr.String())
 	}
 }
 

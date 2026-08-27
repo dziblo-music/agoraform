@@ -29,8 +29,9 @@ and [Google Ads conversion example](../examples/googleads-conversion/README.md).
 Current `main` also manages daily Search `googleads.campaign_budget`
 resources, Search `googleads.campaign` resources, Search
 `googleads.ad_group` resources, Search `googleads.keyword` criteria,
-campaign location and language targeting, and
-campaign `googleads.campaign_conversion_goal` biddability.
+Search `googleads.responsive_search_ad` resources, campaign location
+and language targeting, and campaign
+`googleads.campaign_conversion_goal` biddability.
 
 Provider credentials and connection settings can be stored locally in an
 optional [`.agoraform.env`](local-configuration.md) file instead of being

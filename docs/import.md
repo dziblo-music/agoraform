@@ -192,6 +192,26 @@ keyword manifest. Generated YAML uses `cpcBid` in account-currency units,
 not micros. Keyword text, match type, negative, and ad group are
 immutable after the criterion exists.
 
+## Google Ads Responsive Search Ads
+
+Import a Responsive Search Ad by its `adGroupId~adId` identity, or by
+the Google Ads resource name
+`customers/{customerId}/adGroupAds/{adGroupId}~{adId}`. Agoraform stores
+`adGroupId~adId` in local state as `remoteId`. Do not copy it into YAML.
+
+Import the ad group first so Agoraform can reconstruct `adGroup` as a
+logical `$ref`:
+
+```bash
+agoraform import googleads.ad_group.brand 555666777
+agoraform import googleads.responsive_search_ad.brand 555666777~888999000
+```
+
+Non-RSA ads fail with guidance instead of emitting a lossy Search RSA
+manifest. Generated YAML omits provider-native ad IDs, resource names,
+and asset performance metadata. Headlines and descriptions keep optional
+`pin` values when Google Ads reports them.
+
 ## Google Ads campaign locations
 
 Import a campaign location criterion by its `campaignId~criterionId`

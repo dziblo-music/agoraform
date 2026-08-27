@@ -92,6 +92,15 @@ func TestCustomerConversionGoalMissingResourceUsesAdoptSemantics(t *testing.T) {
 	if mode != provider.MissingResourceCreate {
 		t.Fatalf("campaign-language mode = %q, want %q", mode, provider.MissingResourceCreate)
 	}
+
+	rsa := semanticResource(t, "googleads.responsive_search_ad.brand", resource.Attributes{})
+	mode, err = p.PlanMissingResource(rsa)
+	if err != nil {
+		t.Fatalf("PlanMissingResource responsive search ad: %v", err)
+	}
+	if mode != provider.MissingResourceCreate {
+		t.Fatalf("responsive-search-ad mode = %q, want %q", mode, provider.MissingResourceCreate)
+	}
 }
 
 func TestCustomerConversionGoalReferenceCategoryMustMatch(t *testing.T) {
@@ -289,6 +298,56 @@ func TestCampaignLocationSameNameDifferentCampaignAllowed(t *testing.T) {
 	second := semanticResource(t, "googleads.campaign_location.generic_us", resource.Attributes{
 		googleads.AttrCampaign: resource.Ref{Address: generic},
 		googleads.AttrLocation: "United States",
+	})
+
+	if err := p.ValidateResourceSet(context.Background(), []resource.Resource{first, second}); err != nil {
+		t.Fatalf("ValidateResourceSet: %v", err)
+	}
+}
+
+func TestResponsiveSearchAdDuplicateCreativeRejected(t *testing.T) {
+	p := googleads.New(googleads.Config{})
+	adGroupAddr := semanticAddress(t, "googleads.ad_group.brand")
+	attrs := resource.Attributes{
+		googleads.AttrAdGroup:      resource.Ref{Address: adGroupAddr},
+		googleads.AttrFinalUrls:    []any{"https://example.com/"},
+		googleads.AttrHeadlines:    []any{"Buy shoes online", "Free shipping today", "Shop the collection"},
+		googleads.AttrDescriptions: []any{"Find shoes that fit your style.", "Free returns on every order."},
+	}
+	first := semanticResource(t, "googleads.responsive_search_ad.brand", attrs)
+	second := semanticResource(t, "googleads.responsive_search_ad.brand_dup", resource.Attributes{
+		googleads.AttrAdGroup:      resource.Ref{Address: adGroupAddr},
+		googleads.AttrFinalUrls:    []any{"https://example.com/"},
+		googleads.AttrHeadlines:    []any{"Buy shoes online", "Free shipping today", "Shop the collection"},
+		googleads.AttrDescriptions: []any{"Find shoes that fit your style.", "Free returns on every order."},
+	})
+
+	err := p.ValidateResourceSet(context.Background(), []resource.Resource{first, second})
+	if err == nil {
+		t.Fatal("expected duplicate RSA error")
+	}
+	if !strings.Contains(err.Error(), "duplicates") {
+		t.Fatalf("error = %q, want duplicate RSA diagnostic", err)
+	}
+}
+
+func TestResponsiveSearchAdSameCreativeDifferentAdGroupAllowed(t *testing.T) {
+	p := googleads.New(googleads.Config{})
+	brand := semanticAddress(t, "googleads.ad_group.brand")
+	generic := semanticAddress(t, "googleads.ad_group.generic")
+	headlines := []any{"Buy shoes online", "Free shipping today", "Shop the collection"}
+	descriptions := []any{"Find shoes that fit your style.", "Free returns on every order."}
+	first := semanticResource(t, "googleads.responsive_search_ad.brand", resource.Attributes{
+		googleads.AttrAdGroup:      resource.Ref{Address: brand},
+		googleads.AttrFinalUrls:    []any{"https://example.com/"},
+		googleads.AttrHeadlines:    headlines,
+		googleads.AttrDescriptions: descriptions,
+	})
+	second := semanticResource(t, "googleads.responsive_search_ad.generic", resource.Attributes{
+		googleads.AttrAdGroup:      resource.Ref{Address: generic},
+		googleads.AttrFinalUrls:    []any{"https://example.com/"},
+		googleads.AttrHeadlines:    headlines,
+		googleads.AttrDescriptions: descriptions,
 	})
 
 	if err := p.ValidateResourceSet(context.Background(), []resource.Resource{first, second}); err != nil {

@@ -161,5 +161,21 @@ func (p *Provider) ValidateResourceSet(ctx context.Context, resources []resource
 		}
 		seenCanonicalLanguages[canonicalKey] = res.Address
 	}
+
+	seenRSAs := map[string]resource.Address{}
+	for _, res := range resources {
+		if res.Address.Provider != Name || res.Address.Type != TypeResponsiveSearchAd {
+			continue
+		}
+		key, err := rsaNaturalKey(res)
+		if err != nil {
+			continue
+		}
+		if other, ok := seenRSAs[key]; ok {
+			ref, _ := requiredAdGroupRef(res)
+			return fmt.Errorf("resource %s: duplicates %s; the same responsive search ad creative is already declared for ad group %s", res.Address, other, ref.Address)
+		}
+		seenRSAs[key] = res.Address
+	}
 	return nil
 }

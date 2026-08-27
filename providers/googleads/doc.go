@@ -8,7 +8,8 @@
 // (googleads.campaign_budget), Search campaigns (googleads.campaign),
 // campaign conversion-goal biddability (googleads.campaign_conversion_goal),
 // Search ad groups (googleads.ad_group), Search keyword criteria
-// (googleads.keyword), campaign location criteria
+// (googleads.keyword), Responsive Search Ads
+// (googleads.responsive_search_ad), campaign location criteria
 // (googleads.campaign_location), and campaign language criteria
 // (googleads.campaign_language). Other Google Ads resources remain
 // follow-up work.
