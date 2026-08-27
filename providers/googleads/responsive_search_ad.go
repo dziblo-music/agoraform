@@ -47,6 +47,7 @@ const (
 	maxRSADescriptions     = 4
 	maxRSADescriptionRunes = 90
 	maxRSAPathRunes        = 15
+	maxRSAFinalURLBytes    = 2084
 )
 
 var (
@@ -936,6 +937,9 @@ func normalizeRSAFinalURL(raw string) (string, error) {
 	if s == "" {
 		return "", fmt.Errorf("must be a non-empty URL")
 	}
+	if len(s) > maxRSAFinalURLBytes {
+		return "", fmt.Errorf("must be at most %d bytes", maxRSAFinalURLBytes)
+	}
 	u, err := url.Parse(s)
 	if err != nil || u.Scheme == "" || u.Host == "" {
 		return "", fmt.Errorf("must be an absolute http or https URL")
@@ -960,7 +964,6 @@ func parseRSAAssets(v any, allowedPins map[string]struct{}, minCount, maxCount, 
 	}
 	out := make([]rsaAsset, 0, len(list))
 	seenText := map[string]struct{}{}
-	seenPin := map[string]struct{}{}
 	for i, item := range list {
 		asset, err := parseRSAAsset(item, allowedPins, maxRunes, kind)
 		if err != nil {
@@ -971,12 +974,6 @@ func parseRSAAssets(v any, allowedPins map[string]struct{}, minCount, maxCount, 
 			return nil, fmt.Errorf("duplicate %s %q", kind, asset.Text)
 		}
 		seenText[key] = struct{}{}
-		if asset.Pin != "" {
-			if _, ok := seenPin[asset.Pin]; ok {
-				return nil, fmt.Errorf("pin %s can be used at most once", asset.Pin)
-			}
-			seenPin[asset.Pin] = struct{}{}
-		}
 		out = append(out, asset)
 	}
 	return out, nil
@@ -1121,8 +1118,8 @@ func intersectRSAAsset(want, got any) any {
 		if s, err := coerceString(got); err == nil {
 			return s
 		}
-		if m, ok := asMapValue(got); ok {
-			return m[AttrText]
+		if _, ok := asMapValue(got); ok {
+			return got
 		}
 		return got
 	}
