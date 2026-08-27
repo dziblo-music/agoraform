@@ -152,6 +152,25 @@ agoraform import googleads.campaign.brand 987654321
 Non-Search campaigns, portfolio bidding strategies, and removed campaigns
 fail with guidance instead of emitting a lossy Search campaign manifest.
 
+## Google Ads campaign conversion goals
+
+Import a website campaign conversion goal by its
+`CAMPAIGN_ID~CATEGORY~ORIGIN` identity, or by the Google Ads resource name
+`customers/{customerId}/campaignConversionGoals/{campaignId}~{category}~{origin}`.
+Agoraform stores `CAMPAIGN_ID~CATEGORY~ORIGIN` in local state as `remoteId`.
+Do not copy it into YAML.
+
+Import the campaign first so Agoraform can reconstruct `campaign` as a
+logical `$ref`:
+
+```bash
+agoraform import googleads.campaign.brand 987654321
+agoraform import googleads.campaign_conversion_goal.trial_signup 987654321~SIGNUP~WEBSITE
+```
+
+Unsupported origins, such as app or Google-hosted goals, fail with guidance
+instead of reconstructing a website conversion-goal manifest.
+
 See the [Google Ads conversion example](../examples/googleads-conversion/README.md)
 for a complete greenfield apply and adoption workflow.
 

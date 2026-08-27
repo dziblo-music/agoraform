@@ -5,7 +5,8 @@
 // providers/googleads/client. It manages website conversion actions
 // (googleads.conversion_action), customer conversion-goal biddability
 // (googleads.customer_conversion_goal), daily Search campaign budgets
-// (googleads.campaign_budget), and Search campaigns (googleads.campaign).
+// (googleads.campaign_budget), Search campaigns (googleads.campaign), and
+// campaign conversion-goal biddability (googleads.campaign_conversion_goal).
 // Other Google Ads resources remain follow-up work.
 //
 // Generic core and reconciliation packages must not import this package or

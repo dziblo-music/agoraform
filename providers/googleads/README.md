@@ -2,9 +2,9 @@
 
 The Google Ads provider registers as `googleads` and manages website
 conversion actions, customer conversion-goal biddability, daily Search
-campaign budgets, and Search campaigns. Credentials come from the
-environment. The Agoraform CLI remains provider-neutral; there is no Google
-Ads-specific command.
+campaign budgets, Search campaigns, and campaign conversion-goal
+biddability. Credentials come from the environment. The Agoraform CLI
+remains provider-neutral; there is no Google Ads-specific command.
 
 See the [Google Ads account and OAuth setup guide](../../docs/google-ads-setup.md)
 for the Manager Account, developer-token, Google Cloud, OAuth, refresh-token,
@@ -135,8 +135,9 @@ resources:
 | `biddable` | yes | When true, Google Ads uses the goal as an account-default optimization goal. |
 | `conversionAction` | no | `$ref` to a `googleads.conversion_action`. Use this when the matching conversion action is also managed so apply creates it before goal reconciliation. |
 
-`resourceName` and the `CATEGORY~ORIGIN` identity are computed. Campaign
-conversion goals and custom conversion goals are out of scope.
+`resourceName` and the `CATEGORY~ORIGIN` identity are computed. Custom
+conversion goals are out of scope. Campaign-level conversion-goal
+biddability is a separate `googleads.campaign_conversion_goal` resource.
 
 If the expected provider-created goal is still missing after the matching
 conversion action exists, Agoraform reports that Google Ads creates the
@@ -290,6 +291,71 @@ agoraform import googleads.campaign.brand 987654321
 Non-Search campaigns fail import with guidance instead of generating a
 lossy Search configuration. Import the budget first, or apply it, then
 re-import the campaign.
+
+### `googleads.campaign_conversion_goal`
+
+Campaign-level website conversion-goal biddability. Google Ads automatically
+creates `CampaignConversionGoal` objects for campaign/category/origin
+combinations. Agoraform reads those provider-created goals and reconciles
+`biddable`; it never creates or deletes them.
+
+Identify a goal by the managed campaign plus category and origin.
+Provider-native identity is the computed `CAMPAIGN_ID~CATEGORY~ORIGIN` key
+stored in local state.
+
+```yaml
+resources:
+  - address: googleads.campaign.search_acquisition
+    attributes:
+      name: Search acquisition
+      budget:
+        $ref: googleads.campaign_budget.search_acquisition
+      bidding:
+        strategy: MAXIMIZE_CONVERSIONS
+  - address: googleads.campaign_conversion_goal.trial_signup
+    attributes:
+      campaign:
+        $ref: googleads.campaign.search_acquisition
+      category: SIGNUP
+      origin: WEBSITE
+      biddable: true
+      conversionAction:
+        $ref: googleads.conversion_action.trial_started
+```
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `campaign` | yes | `$ref` to a `googleads.campaign`. Resolved at apply time. |
+| `category` | yes | Website category such as `SIGNUP`, `PURCHASE`, or `SUBSCRIBE_PAID`. |
+| `origin` | yes | Must be `WEBSITE`. Other origins are out of scope. |
+| `biddable` | yes | When true, Google Ads uses the goal as a campaign-level optimization goal. |
+| `conversionAction` | no | `$ref` to a `googleads.conversion_action`. Use this when the matching conversion action is also managed so apply creates it before goal reconciliation. |
+
+`resourceName` and the `CAMPAIGN_ID~CATEGORY~ORIGIN` identity are computed.
+Customer-level goals remain `googleads.customer_conversion_goal`. Custom
+conversion goals are out of scope.
+
+If the expected provider-created goal is still missing after the campaign
+and a matching conversion action exist, Agoraform reports that Google Ads
+creates the object automatically and that Agoraform cannot create or delete
+it.
+
+Equivalent live values, including enum case, produce no plan diff.
+
+Import accepts `CAMPAIGN_ID~CATEGORY~ORIGIN` or the resource name
+`customers/{customerId}/campaignConversionGoals/{campaignId}~{category}~{origin}`.
+Import the campaign first so Agoraform can reconstruct `campaign` as a
+logical `$ref`:
+
+```bash
+agoraform import googleads.campaign.brand 987654321
+agoraform import googleads.campaign_conversion_goal.trial_signup 987654321~SIGNUP~WEBSITE
+```
+
+Non-website origins fail import with guidance rather than reconstructing a
+lossy `WEBSITE` goal. Import does not emit a `conversionAction` `$ref`; add
+that optionally after import if the matching conversion action is also
+managed.
 
 ## HTTP client
 
