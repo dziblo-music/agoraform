@@ -50,7 +50,6 @@ func (g geoTargetConstant) cacheKeys() []string {
 	keys := []string{
 		strings.ToLower(strings.TrimSpace(g.ResourceName)),
 		strings.ToLower(strings.TrimSpace(g.ID)),
-		strings.ToLower(strings.TrimSpace(g.Name)),
 		strings.ToLower(strings.TrimSpace(g.CanonicalName)),
 	}
 	if strings.EqualFold(g.TargetType, geoTargetTypeCountry) && g.CountryCode != "" {
