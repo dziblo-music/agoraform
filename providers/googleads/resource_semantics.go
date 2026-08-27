@@ -23,7 +23,7 @@ func (p *Provider) PlanMissingResource(res resource.Resource) (provider.MissingR
 // resource in isolation. In particular, an explicitly referenced conversion
 // action must have the same category as the customer or campaign conversion
 // goal it is intended to make available.
-func (p *Provider) ValidateResourceSet(_ context.Context, resources []resource.Resource) error {
+func (p *Provider) ValidateResourceSet(ctx context.Context, resources []resource.Resource) error {
 	byAddress := make(map[string]resource.Resource, len(resources))
 	for _, res := range resources {
 		byAddress[res.Address.String()] = res
@@ -97,14 +97,18 @@ func (p *Provider) ValidateResourceSet(_ context.Context, resources []resource.R
 		if res.Address.Provider != Name || res.Address.Type != TypeCampaignLocation {
 			continue
 		}
-		key, err := campaignLocationNaturalKey(res)
+		ref, err := requiredCampaignRef(res)
 		if err != nil {
 			continue
 		}
+		target, err := p.resolveGeoTarget(ctx, res.Address, res.Attributes[AttrLocation])
+		if err != nil {
+			return err
+		}
+		key := ref.Address.String() + "\x00" + target.ResourceName
 		if other, ok := seenLocations[key]; ok {
 			location, _ := requiredLocationValue(res)
-			ref, _ := requiredCampaignRef(res)
-			return fmt.Errorf("resource %s: duplicates %s; location %q is already declared for campaign %s", res.Address, other, location, ref.Address)
+			return fmt.Errorf("resource %s: duplicates %s; location %q resolves to %s, which is already declared for campaign %s", res.Address, other, location, target.ResourceName, ref.Address)
 		}
 		seenLocations[key] = res.Address
 	}
@@ -114,14 +118,18 @@ func (p *Provider) ValidateResourceSet(_ context.Context, resources []resource.R
 		if res.Address.Provider != Name || res.Address.Type != TypeCampaignLanguage {
 			continue
 		}
-		key, err := campaignLanguageNaturalKey(res)
+		ref, err := requiredCampaignRef(res)
 		if err != nil {
 			continue
 		}
+		language, err := p.resolveLanguage(ctx, res.Address, res.Attributes[AttrLanguage])
+		if err != nil {
+			return err
+		}
+		key := ref.Address.String() + "\x00" + language.ResourceName
 		if other, ok := seenLanguages[key]; ok {
-			language, _ := requiredLanguageValue(res)
-			ref, _ := requiredCampaignRef(res)
-			return fmt.Errorf("resource %s: duplicates %s; language %q is already declared for campaign %s", res.Address, other, language, ref.Address)
+			value, _ := requiredLanguageValue(res)
+			return fmt.Errorf("resource %s: duplicates %s; language %q resolves to %s, which is already declared for campaign %s", res.Address, other, value, language.ResourceName, ref.Address)
 		}
 		seenLanguages[key] = res.Address
 	}
