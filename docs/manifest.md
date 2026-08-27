@@ -364,6 +364,47 @@ Campaign-level negative keywords, Keyword Planner, and audience or DSA
 criteria are out of scope. See the
 [Google Ads provider reference](../providers/googleads/README.md).
 
+### `googleads.responsive_search_ad`
+
+Responsive Search Ads attached to a Search ad group. Ads must reference
+a `googleads.ad_group`. Agoraform manages serving copy, URLs, optional
+display paths, optional pinning, and status. It does not generate
+headlines or descriptions. Creative changes replace the underlying ad
+lists; status updates the ad-group-ad relationship.
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `adGroup` | yes | `$ref` to a `googleads.ad_group`. |
+| `finalUrls` | yes | One or more absolute `http` or `https` landing-page URLs. |
+| `headlines` | yes | 3–15 headlines as strings or `{text, pin}` objects. |
+| `descriptions` | yes | 2–4 descriptions as strings or `{text, pin}` objects. |
+| `path1` | no | Optional display-path segment. Requires no `/`. |
+| `path2` | no | Optional second path segment. Requires `path1`. |
+| `status` | no | `PAUSED` (default) or `ENABLED`. |
+
+```yaml
+- address: googleads.responsive_search_ad.brand
+  attributes:
+    adGroup:
+      $ref: googleads.ad_group.brand
+    status: PAUSED
+    finalUrls:
+      - https://example.com/
+    path1: shoes
+    headlines:
+      - text: Buy shoes online
+        pin: HEADLINE_1
+      - Free shipping today
+      - Shop the collection
+    descriptions:
+      - Find shoes that fit your style.
+      - Free returns on every order.
+```
+
+Dynamic Search Ads, Display, video, and Performance Max ads are out of
+scope. See the
+[Google Ads provider reference](../providers/googleads/README.md).
+
 ### `googleads.campaign_location`
 
 Search campaign location criteria, including excluded locations. Locations

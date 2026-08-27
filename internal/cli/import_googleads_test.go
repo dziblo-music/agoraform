@@ -771,6 +771,134 @@ func TestImportGoogleAdsKeywordThenPlanUnchanged(t *testing.T) {
 	}
 }
 
+func TestImportGoogleAdsResponsiveSearchAdThenPlanUnchanged(t *testing.T) {
+	t.Parallel()
+
+	p, srv := googleAdsImportProvider(t)
+	srv.seedBudget(map[string]any{
+		"id":               "11",
+		"name":             "Brand daily budget",
+		"amountMicros":     "50000000",
+		"deliveryMethod":   "STANDARD",
+		"explicitlyShared": false,
+		"period":           "DAILY",
+		"type":             "STANDARD",
+	})
+	srv.seedCampaign(map[string]any{
+		"id":                     "21",
+		"name":                   "Brand",
+		"status":                 "PAUSED",
+		"advertisingChannelType": "SEARCH",
+		"campaignBudget":         "customers/" + cliGoogleAdsCustomerID + "/campaignBudgets/11",
+		"biddingStrategyType":    "MANUAL_CPC",
+		"manualCpc":              map[string]any{"enhancedCpcEnabled": false},
+	})
+	srv.seedAdGroup(map[string]any{
+		"id":           "31",
+		"name":         "Brand",
+		"status":       "PAUSED",
+		"type":         "SEARCH_STANDARD",
+		"campaign":     "customers/" + cliGoogleAdsCustomerID + "/campaigns/21",
+		"cpcBidMicros": "1500000",
+	})
+	srv.seedAd(map[string]any{
+		"adGroup": "customers/" + cliGoogleAdsCustomerID + "/adGroups/31",
+		"status":  "PAUSED",
+		"ad": map[string]any{
+			"id":        "71",
+			"type":      "RESPONSIVE_SEARCH_AD",
+			"finalUrls": []any{"https://example.com/"},
+			"responsiveSearchAd": map[string]any{
+				"headlines": []any{
+					map[string]any{"text": "Buy shoes online", "assetPerformanceLabel": "PENDING"},
+					map[string]any{"text": "Free shipping today"},
+					map[string]any{"text": "Shop the collection"},
+				},
+				"descriptions": []any{
+					map[string]any{"text": "Find shoes that fit your style."},
+					map[string]any{"text": "Free returns on every order."},
+				},
+				"path1": "shoes",
+			},
+		},
+	})
+
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "agoraform.yaml")
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "googleads.campaign_budget.brand", "11"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("budget import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	budgetYAML := extractYAML(stdout.String())
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "googleads.campaign.brand", "21"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("campaign import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	campaignYAML := extractYAML(stdout.String())
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "googleads.ad_group.brand", "31"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("ad group import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	groupYAML := extractYAML(stdout.String())
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "googleads.responsive_search_ad.brand", "31~71"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("rsa import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	out := stdout.String()
+	assertGoogleAdsImportOutputClean(t, out)
+	if !strings.Contains(out, "Imported googleads.responsive_search_ad.brand (remote identity 31~71).") {
+		t.Fatalf("stdout missing import confirmation:\n%s", out)
+	}
+	rsaYAML := extractYAML(out)
+	if !strings.Contains(rsaYAML, "$ref: googleads.ad_group.brand") {
+		t.Fatalf("rsa YAML missing ad group $ref:\n%s", rsaYAML)
+	}
+	if strings.Contains(rsaYAML, "resourceName") || strings.Contains(rsaYAML, "assetPerformanceLabel") || strings.Contains(rsaYAML, "adId") {
+		t.Fatalf("rsa YAML leaked computed fields:\n%s", rsaYAML)
+	}
+
+	itemStart := strings.Index(campaignYAML, "  - address:")
+	if itemStart < 0 {
+		t.Fatalf("campaign YAML missing resource item:\n%s", campaignYAML)
+	}
+	groupStart := strings.Index(groupYAML, "  - address:")
+	if groupStart < 0 {
+		t.Fatalf("ad group YAML missing resource item:\n%s", groupYAML)
+	}
+	rsaStart := strings.Index(rsaYAML, "  - address:")
+	if rsaStart < 0 {
+		t.Fatalf("rsa YAML missing resource item:\n%s", rsaYAML)
+	}
+	combined := strings.TrimRight(budgetYAML, "\n") + "\n" + strings.TrimRight(campaignYAML[itemStart:], "\n") + "\n" + strings.TrimRight(groupYAML[groupStart:], "\n") + "\n" + rsaYAML[rsaStart:]
+	if err := os.WriteFile(manifestPath, []byte(combined), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"plan", "-f", manifestPath}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("plan after import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "No changes.") {
+		t.Fatalf("plan after import = %q, want no changes", stdout.String())
+	}
+	if srv.mutateCount() != 0 {
+		t.Fatalf("rsa import mutated remote: %d", srv.mutateCount())
+	}
+}
+
 func TestImportGoogleAdsCampaignLocationAndLanguage(t *testing.T) {
 	t.Parallel()
 
@@ -969,6 +1097,7 @@ func newCLIGoogleAdsServer(t *testing.T) *cliGoogleAdsServer {
 		campaigns:     map[string]map[string]any{},
 		adGroups:      map[string]map[string]any{},
 		keywords:      map[string]map[string]any{},
+		ads:           map[string]map[string]any{},
 		criteria:      map[string]map[string]any{},
 		geos:          map[string]map[string]any{},
 		languages:     map[string]map[string]any{},
@@ -987,6 +1116,7 @@ type cliGoogleAdsFake struct {
 	campaigns     map[string]map[string]any
 	adGroups      map[string]map[string]any
 	keywords      map[string]map[string]any
+	ads           map[string]map[string]any
 	criteria      map[string]map[string]any
 	geos          map[string]map[string]any
 	languages     map[string]map[string]any
@@ -1093,6 +1223,27 @@ func (f *cliGoogleAdsFake) seedKeyword(item map[string]any) {
 	f.keywords[id] = cloned
 }
 
+func (f *cliGoogleAdsFake) seedAd(item map[string]any) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cloned := cloneAnyMap(item)
+	adGroup := stringifyAny(cloned["adGroup"])
+	adGroupID := strings.TrimPrefix(adGroup, "customers/"+cliGoogleAdsCustomerID+"/adGroups/")
+	ad, _ := cloned["ad"].(map[string]any)
+	adID := stringifyAny(ad["id"])
+	id := adGroupID + "~" + adID
+	if stringifyAny(cloned["resourceName"]) == "" {
+		cloned["resourceName"] = "customers/" + cliGoogleAdsCustomerID + "/adGroupAds/" + id
+	}
+	if ad != nil && stringifyAny(ad["resourceName"]) == "" {
+		ad["resourceName"] = "customers/" + cliGoogleAdsCustomerID + "/ads/" + adID
+	}
+	if ad != nil && stringifyAny(ad["type"]) == "" {
+		ad["type"] = "RESPONSIVE_SEARCH_AD"
+	}
+	f.ads[id] = cloned
+}
+
 func (f *cliGoogleAdsFake) seedCriterion(item map[string]any) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -1188,6 +1339,10 @@ func (f *cliGoogleAdsFake) handler(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.Contains(query, "from ad_group_criterion") {
 		_ = json.NewEncoder(w).Encode(map[string]any{"results": f.searchKeywordsLocked(req.Query)})
+		return
+	}
+	if strings.Contains(query, "from ad_group_ad") {
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": f.searchAdsLocked(req.Query)})
 		return
 	}
 	if strings.Contains(query, "from ad_group") {
@@ -1305,6 +1460,34 @@ func (f *cliGoogleAdsFake) searchKeywordsLocked(query string) []any {
 			}
 		}
 		out = append(out, map[string]any{"adGroupCriterion": cloneAnyMap(item)})
+	}
+	return out
+}
+
+func (f *cliGoogleAdsFake) searchAdsLocked(query string) []any {
+	var out []any
+	for id, item := range f.ads {
+		if strings.Contains(query, "ad_group_ad.ad.id = ") {
+			want := strings.TrimSpace(query[strings.Index(query, "ad_group_ad.ad.id = ")+len("ad_group_ad.ad.id = "):])
+			if i := strings.IndexAny(want, " \n"); i >= 0 {
+				want = want[:i]
+			}
+			ad, _ := item["ad"].(map[string]any)
+			if stringifyAny(ad["id"]) != want {
+				continue
+			}
+		}
+		if strings.Contains(query, "ad_group.id = ") {
+			want := strings.TrimSpace(query[strings.Index(query, "ad_group.id = ")+len("ad_group.id = "):])
+			if i := strings.IndexAny(want, " \n"); i >= 0 {
+				want = want[:i]
+			}
+			parts := strings.Split(id, "~")
+			if len(parts) != 2 || parts[0] != want {
+				continue
+			}
+		}
+		out = append(out, map[string]any{"adGroupAd": cloneAnyMap(item)})
 	}
 	return out
 }

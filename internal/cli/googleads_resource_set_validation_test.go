@@ -85,6 +85,53 @@ resources:
       matchType: EXACT
 `
 
+const googleAdsDuplicateRSAManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.campaign_budget.brand
+    attributes:
+      name: Brand daily budget
+      amount: 50
+      explicitlyShared: false
+  - address: googleads.campaign.brand
+    attributes:
+      name: Brand
+      budget:
+        $ref: googleads.campaign_budget.brand
+      bidding:
+        strategy: MANUAL_CPC
+  - address: googleads.ad_group.brand
+    attributes:
+      name: Brand
+      campaign:
+        $ref: googleads.campaign.brand
+  - address: googleads.responsive_search_ad.brand
+    attributes:
+      adGroup:
+        $ref: googleads.ad_group.brand
+      finalUrls:
+        - https://example.com/
+      headlines:
+        - Buy shoes online
+        - Free shipping today
+        - Shop the collection
+      descriptions:
+        - Find shoes that fit your style.
+        - Free returns on every order.
+  - address: googleads.responsive_search_ad.brand_dup
+    attributes:
+      adGroup:
+        $ref: googleads.ad_group.brand
+      finalUrls:
+        - https://example.com/
+      headlines:
+        - Buy shoes online
+        - Free shipping today
+        - Shop the collection
+      descriptions:
+        - Find shoes that fit your style.
+        - Free returns on every order.
+`
+
 const googleAdsDuplicateLocationManifest = `apiVersion: agoraform.io/v1alpha1
 resources:
   - address: googleads.campaign_budget.brand
@@ -165,6 +212,25 @@ func TestValidateGoogleAdsDuplicateKeywords(t *testing.T) {
 	errOut := stderr.String()
 	if !strings.Contains(errOut, "duplicates") || !strings.Contains(errOut, "EXACT") {
 		t.Fatalf("stderr = %q, want duplicate keyword diagnostic", errOut)
+	}
+}
+
+func TestValidateGoogleAdsDuplicateResponsiveSearchAds(t *testing.T) {
+	p, _ := googleAdsTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsDuplicateRSAManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d", code, cli.ExitError)
+	}
+	errOut := stderr.String()
+	if !strings.Contains(errOut, "duplicates") || !strings.Contains(errOut, "responsive search ad") {
+		t.Fatalf("stderr = %q, want duplicate RSA diagnostic", errOut)
 	}
 }
 

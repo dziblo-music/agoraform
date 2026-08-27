@@ -3,10 +3,10 @@
 The Google Ads provider registers as `googleads` and manages website
 conversion actions, customer conversion-goal biddability, daily Search
 campaign budgets, Search campaigns, campaign conversion-goal
-biddability, Search ad groups, Search keyword criteria, and campaign
-location and language targeting. Credentials come from the environment.
-The Agoraform CLI remains provider-neutral; there is no Google Ads-specific
-command.
+biddability, Search ad groups, Search keyword criteria, Responsive
+Search Ads, and campaign location and language targeting. Credentials
+come from the environment. The Agoraform CLI remains provider-neutral;
+there is no Google Ads-specific command.
 
 See the [Google Ads account and OAuth setup guide](../../docs/google-ads-setup.md)
 for the Manager Account, developer-token, Google Cloud, OAuth, refresh-token,
@@ -444,6 +444,87 @@ Non-keyword criteria fail import with guidance instead of generating a
 lossy keyword configuration. Import the ad group first, or apply it, then
 re-import the keyword.
 
+### `googleads.responsive_search_ad`
+
+Responsive Search Ads attached to a Search ad group. Agoraform manages
+serving configuration (headlines, descriptions, final URLs, optional
+display paths, optional pinning, and ad-group-ad status). It does not
+generate creative copy, upload images, or manage Dynamic Search Ads,
+Display, video, or Performance Max ads.
+
+```yaml
+resources:
+  - address: googleads.ad_group.brand
+    attributes:
+      name: Brand
+      campaign:
+        $ref: googleads.campaign.brand
+  - address: googleads.responsive_search_ad.brand
+    attributes:
+      adGroup:
+        $ref: googleads.ad_group.brand
+      status: PAUSED
+      finalUrls:
+        - https://example.com/
+      path1: shoes
+      path2: sale
+      headlines:
+        - text: Buy shoes online
+          pin: HEADLINE_1
+        - Free shipping today
+        - Shop the collection
+      descriptions:
+        - Find shoes that fit your style.
+        - Free returns on every order.
+```
+
+RSAs attach to an ad group with a logical `$ref` to this address. Do not
+embed ads on the ad group.
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `adGroup` | yes | `$ref` to a `googleads.ad_group`. Resolved to the provider-native ad group at apply time. Immutable after create. |
+| `finalUrls` | yes | One or more absolute `http` or `https` landing-page URLs. Each URL is limited to 2,084 bytes. |
+| `headlines` | yes | 3–15 headlines. Each is a string or `{text, pin}`. Text is at most 30 characters. Optional `pin` is `HEADLINE_1`, `HEADLINE_2`, or `HEADLINE_3`. Multiple headlines may share the same pin position. |
+| `descriptions` | yes | 2–4 descriptions. Each is a string or `{text, pin}`. Text is at most 90 characters. Optional `pin` is `DESCRIPTION_1` or `DESCRIPTION_2`. Multiple descriptions may share the same pin position. |
+| `path1` | no | Optional display-path segment after the domain. At most 15 characters and must not contain `/`. |
+| `path2` | no | Optional second display-path segment. Requires `path1`. |
+| `status` | no | `PAUSED` (default) or `ENABLED`. Mutable through the ad-group-ad relationship. |
+
+Google Ads requires the headline, description, and final URL constraints above
+before any mutation. Duplicate headline or description text in the same ad
+is rejected. Multiple distinct assets may be pinned to the same serving
+position. Duplicate identical RSAs in the same ad group fail resource-set
+validation.
+
+New RSAs default to `PAUSED`. Status updates mutate the ad-group-ad
+relationship in place. Creative fields (headlines, descriptions, final
+URLs, and paths) are replaced on the underlying Ad through AdService
+while the ad-group-ad identity stays the same. Plan shows those list
+replacements instead of hiding them behind asset IDs. Provider-native
+ad IDs, resource names, asset performance labels, and policy metadata
+remain computed.
+
+Omitted `path1` / `path2` values are not forced onto the remote resource.
+For headline and description assets, omitting `pin` declares the asset
+unpinned; removing a previously configured pin is therefore visible in plan
+and is applied as a creative update. Equivalent live copy, including extra
+asset metadata, produces no plan diff.
+
+Import accepts `adGroupId~adId` or the resource name
+`customers/{customerId}/adGroupAds/{adGroupId}~{adId}` and stores
+`adGroupId~adId`. Import reconstructs `adGroup` as a logical `$ref`
+when the ad group is already bound in local state:
+
+```bash
+agoraform import googleads.ad_group.brand 555666777
+agoraform import googleads.responsive_search_ad.brand 555666777~888999000
+```
+
+Non-RSA ads fail import with guidance instead of generating a lossy
+Search RSA configuration. Import the ad group first, or apply it, then
+re-import the ad.
+
 ### `googleads.campaign_location`
 
 Campaign location criteria, including excluded locations. Agoraform creates
@@ -509,8 +590,8 @@ agoraform import googleads.campaign_location.united_states 987654321~888999000
 ```
 
 Non-location criteria fail import with guidance instead of generating a
-lossy location configuration. Import the campaign first, or apply it,
-then re-import the location.
+lossy location configuration. Import the campaign first, or apply it, then
+re-import the location.
 
 ### `googleads.campaign_language`
 
