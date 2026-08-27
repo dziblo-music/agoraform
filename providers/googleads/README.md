@@ -397,22 +397,26 @@ Do not embed keywords on the ad group.
 | `text` | yes | Keyword text without match-type punctuation such as `[brackets]` or `"quotes"`. Trimmed, lowercased, and compared without changing user intent. |
 | `matchType` | yes | `EXACT`, `PHRASE`, or `BROAD`. Immutable after create. |
 | `negative` | no | `true` for a negative keyword criterion. Omitted `negative` is treated as `false`. Immutable after create. |
-| `status` | no | `PAUSED` (default for new keywords) or `ENABLED`. Omitted status is treated as `PAUSED`. |
+| `status` | no | Positive keywords default to `PAUSED` and may use `PAUSED` or `ENABLED`. Negative keywords default to `ENABLED`; their status is immutable after creation. |
 | `cpcBid` | no | Optional max CPC bid override in account-currency units, for example `1.5`. Converted to Google Ads `cpc_bid_micros`. Not allowed on negative keywords. Omitted bids are not forced onto the remote resource. |
 
-New keywords are created `PAUSED` unless configuration explicitly sets
-`ENABLED`. Duplicate text and match type in the same ad group fail
-validation before mutation.
+Positive keywords are created `PAUSED` unless configuration explicitly sets
+`ENABLED`. Negative keywords are created `ENABLED` when `status` is omitted;
+creating a new negative keyword as `PAUSED` is rejected because Google Ads
+does not allow negative ad-group criteria to be updated after creation.
+Duplicate text and match type in the same ad group fail validation before
+mutation.
 
 `text`, `matchType`, `negative`, and `adGroup` identify the Google Ads
-criterion and cannot be updated in place. Plan fails with an immutable-field
-diagnostic rather than hiding a destructive replacement. Status and optional
-CPC bid overrides remain mutable. Provider-native IDs, resource names, and
-quality metadata live in local state and on `RemoteResource.Computed`.
+criterion and cannot be updated in place. For positive keywords, status and
+optional CPC bid overrides remain mutable. Negative keywords have no mutable
+fields in the supported model; a requested status change fails during plan
+before any API mutation. Provider-native IDs, resource names, and quality
+metadata live in local state and on `RemoteResource.Computed`.
 
 Equivalent live values, including `Brand` / `brand`, `exact` / `EXACT`,
 and `1.5` / `"1.50"`, produce no plan diff. Updates use sparse field
-masks for mutable fields only.
+masks for mutable positive-keyword fields only.
 
 Import accepts `adGroupId~criterionId` or the resource name
 `customers/{customerId}/adGroupCriteria/{adGroupId}~{criterionId}` and
