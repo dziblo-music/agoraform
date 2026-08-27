@@ -23,6 +23,35 @@ resources:
         $ref: googleads.conversion_action.purchase
 `
 
+const googleAdsMismatchedCampaignGoalReferenceManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.campaign_budget.brand
+    attributes:
+      name: Brand daily budget
+      amount: 50
+      explicitlyShared: false
+  - address: googleads.campaign.brand
+    attributes:
+      name: Brand
+      budget:
+        $ref: googleads.campaign_budget.brand
+      bidding:
+        strategy: MANUAL_CPC
+  - address: googleads.conversion_action.purchase
+    attributes:
+      name: Purchase
+      category: PURCHASE
+  - address: googleads.campaign_conversion_goal.trial_signup
+    attributes:
+      campaign:
+        $ref: googleads.campaign.brand
+      category: SIGNUP
+      origin: WEBSITE
+      biddable: true
+      conversionAction:
+        $ref: googleads.conversion_action.purchase
+`
+
 func TestValidateGoogleAdsCustomerGoalReferenceCategoryMismatch(t *testing.T) {
 	p, _ := googleAdsTestProvider(t)
 	reg := provider.NewRegistry()
@@ -31,6 +60,25 @@ func TestValidateGoogleAdsCustomerGoalReferenceCategoryMismatch(t *testing.T) {
 	}
 
 	path := writeManifest(t, "agoraform.yaml", googleAdsMismatchedGoalReferenceManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d", code, cli.ExitError)
+	}
+	errOut := stderr.String()
+	if !strings.Contains(errOut, "PURCHASE") || !strings.Contains(errOut, "SIGNUP") || !strings.Contains(errOut, "must match") {
+		t.Fatalf("stderr = %q, want actionable category mismatch", errOut)
+	}
+}
+
+func TestValidateGoogleAdsCampaignGoalReferenceCategoryMismatch(t *testing.T) {
+	p, _ := googleAdsTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsMismatchedCampaignGoalReferenceManifest)
 	streams, _, stderr := testStreams()
 	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
 	if code != cli.ExitError {

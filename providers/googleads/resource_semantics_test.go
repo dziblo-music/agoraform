@@ -47,6 +47,15 @@ func TestCustomerConversionGoalMissingResourceUsesAdoptSemantics(t *testing.T) {
 	if mode != provider.MissingResourceCreate {
 		t.Fatalf("campaign mode = %q, want %q", mode, provider.MissingResourceCreate)
 	}
+
+	campaignGoal := semanticResource(t, "googleads.campaign_conversion_goal.trial_signup", resource.Attributes{})
+	mode, err = p.PlanMissingResource(campaignGoal)
+	if err != nil {
+		t.Fatalf("PlanMissingResource campaign conversion goal: %v", err)
+	}
+	if mode != provider.MissingResourceAdopt {
+		t.Fatalf("campaign-conversion-goal mode = %q, want %q", mode, provider.MissingResourceAdopt)
+	}
 }
 
 func TestCustomerConversionGoalReferenceCategoryMustMatch(t *testing.T) {
@@ -86,6 +95,58 @@ func TestCustomerConversionGoalReferenceCategoryMatch(t *testing.T) {
 		},
 	}
 	goal := semanticResource(t, "googleads.customer_conversion_goal.signup", resource.Attributes{
+		googleads.AttrCategory:         "SIGNUP",
+		googleads.AttrOrigin:           "WEBSITE",
+		googleads.AttrBiddable:         true,
+		googleads.AttrConversionAction: resource.Ref{Address: actionAddr},
+	})
+
+	if err := p.ValidateResourceSet(context.Background(), []resource.Resource{goal, action}); err != nil {
+		t.Fatalf("ValidateResourceSet: %v", err)
+	}
+}
+
+func TestCampaignConversionGoalReferenceCategoryMustMatch(t *testing.T) {
+	p := googleads.New(googleads.Config{})
+	actionAddr := semanticAddress(t, "googleads.conversion_action.purchase")
+	campaignAddr := semanticAddress(t, "googleads.campaign.brand")
+	action := resource.Resource{
+		Address: actionAddr,
+		Attributes: resource.Attributes{
+			googleads.AttrName:     "Purchase",
+			googleads.AttrCategory: "PURCHASE",
+		},
+	}
+	goal := semanticResource(t, "googleads.campaign_conversion_goal.trial_signup", resource.Attributes{
+		googleads.AttrCampaign:         resource.Ref{Address: campaignAddr},
+		googleads.AttrCategory:         "SIGNUP",
+		googleads.AttrOrigin:           "WEBSITE",
+		googleads.AttrBiddable:         true,
+		googleads.AttrConversionAction: resource.Ref{Address: actionAddr},
+	})
+
+	err := p.ValidateResourceSet(context.Background(), []resource.Resource{goal, action})
+	if err == nil {
+		t.Fatal("expected category mismatch")
+	}
+	if !strings.Contains(err.Error(), "PURCHASE") || !strings.Contains(err.Error(), "SIGNUP") || !strings.Contains(err.Error(), "must match") {
+		t.Fatalf("error = %q, want actionable category mismatch", err)
+	}
+}
+
+func TestCampaignConversionGoalReferenceCategoryMatch(t *testing.T) {
+	p := googleads.New(googleads.Config{})
+	actionAddr := semanticAddress(t, "googleads.conversion_action.trial_started")
+	campaignAddr := semanticAddress(t, "googleads.campaign.brand")
+	action := resource.Resource{
+		Address: actionAddr,
+		Attributes: resource.Attributes{
+			googleads.AttrName:     "Trial Started",
+			googleads.AttrCategory: "signup",
+		},
+	}
+	goal := semanticResource(t, "googleads.campaign_conversion_goal.trial_signup", resource.Attributes{
+		googleads.AttrCampaign:         resource.Ref{Address: campaignAddr},
 		googleads.AttrCategory:         "SIGNUP",
 		googleads.AttrOrigin:           "WEBSITE",
 		googleads.AttrBiddable:         true,

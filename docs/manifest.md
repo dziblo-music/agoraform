@@ -290,6 +290,31 @@ Unsupported channel types fail validation before mutation. Ad groups, ads,
 keywords, and targeting are out of scope. See the
 [Google Ads provider reference](../providers/googleads/README.md).
 
+### `googleads.campaign_conversion_goal`
+
+Campaign-level website conversion-goal biddability. Google Ads creates
+these objects automatically; Agoraform only updates `biddable`.
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `campaign` | yes | `$ref` to a managed `googleads.campaign`. |
+| `category` | yes | Website category such as `SIGNUP` or `PURCHASE`. |
+| `origin` | yes | `WEBSITE`. |
+| `biddable` | yes | Whether the goal is a campaign-level optimization goal. |
+| `conversionAction` | no | `$ref` to a managed `googleads.conversion_action` so apply creates that action first. |
+
+```yaml
+- address: googleads.campaign_conversion_goal.trial_signup
+  attributes:
+    campaign:
+      $ref: googleads.campaign.search_acquisition
+    category: SIGNUP
+    origin: WEBSITE
+    biddable: true
+    conversionAction:
+      $ref: googleads.conversion_action.trial_started
+```
+
 ## Matomo provider desired state
 
 v0.2.0 recognizes:

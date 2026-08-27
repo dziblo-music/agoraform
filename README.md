@@ -117,8 +117,8 @@ GOOGLE_ADS_LOGIN_CUSTOMER_ID   optional manager-account customer ID
 ```
 
 The `googleads` provider manages supported website conversion actions,
-customer conversion-goal biddability, daily Search campaign budgets, and
-Search campaigns.
+customer conversion-goal biddability, daily Search campaign budgets, Search
+campaigns, and campaign conversion-goal biddability.
 See the [Google Ads setup guide](docs/google-ads-setup.md),
 [provider reference](providers/googleads/README.md), and
 [v0.3 conversion example](examples/googleads-conversion/README.md).
@@ -308,6 +308,7 @@ agoraform import googleads.conversion_action.trial_started 123456789
 agoraform import googleads.customer_conversion_goal.signup SIGNUP~WEBSITE
 agoraform import googleads.campaign_budget.brand 123456789
 agoraform import googleads.campaign.brand 987654321
+agoraform import googleads.campaign_conversion_goal.trial_signup 987654321~SIGNUP~WEBSITE
 ```
 
 For a Tag Manager tag, import its dependencies first so Agoraform can
@@ -316,9 +317,10 @@ if necessary, and run `agoraform plan`. An equivalent imported configuration
 should produce no changes.
 
 Google Ads import accepts supported website conversion actions, supported
-`WEBSITE` customer conversion goals, daily Search campaign budgets, and
-Search campaigns. Import a campaign budget before the campaign so Agoraform
-can reconstruct the logical budget `$ref`. Unsupported conversion types,
+`WEBSITE` customer conversion goals, daily Search campaign budgets, Search
+campaigns, and campaign conversion goals. Import a campaign budget before
+the campaign, and the campaign before a campaign conversion goal, so
+Agoraform can reconstruct logical `$ref`s. Unsupported conversion types,
 origins, channel types, and budget periods fail with actionable diagnostics
 instead of producing a lossy manifest.
 
@@ -386,8 +388,9 @@ agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
 - v0.3.0 supports Matomo plus Google Ads website conversion measurement. Meta
   Ads is not implemented.
 - Google Ads support includes website conversion measurement, daily Search
-  `googleads.campaign_budget` resources, and Search `googleads.campaign`
-  resources. Ad groups, keywords, targeting, ads, offline/call/app conversion
+  `googleads.campaign_budget` resources, Search `googleads.campaign`
+  resources, and campaign `googleads.campaign_conversion_goal` biddability.
+  Ad groups, keywords, targeting, ads, offline/call/app conversion
   workflows, and conversion-event uploads are not implemented.
 - Agoraform v0.3.0 Google Ads authentication uses developer-token + single-user
   OAuth refresh-token credentials. Service-account, multi-user, and interactive
