@@ -93,45 +93,73 @@ func (p *Provider) ValidateResourceSet(ctx context.Context, resources []resource
 	}
 
 	seenLocations := map[string]resource.Address{}
+	seenCanonicalLocations := map[string]resource.Address{}
 	for _, res := range resources {
 		if res.Address.Provider != Name || res.Address.Type != TypeCampaignLocation {
 			continue
 		}
+		key, err := campaignLocationNaturalKey(res)
+		if err != nil {
+			continue
+		}
+		if other, ok := seenLocations[key]; ok {
+			location, _ := requiredLocationValue(res)
+			ref, _ := requiredCampaignRef(res)
+			return fmt.Errorf("resource %s: duplicates %s; location %q is already declared for campaign %s", res.Address, other, location, ref.Address)
+		}
+		seenLocations[key] = res.Address
+
 		ref, err := requiredCampaignRef(res)
 		if err != nil {
 			continue
 		}
 		target, err := p.resolveGeoTarget(ctx, res.Address, res.Attributes[AttrLocation])
 		if err != nil {
-			return err
+			// Resource-set validation must remain useful without live API access.
+			// Planning/read still resolves every target before any mutation.
+			continue
 		}
-		key := ref.Address.String() + "\x00" + target.ResourceName
-		if other, ok := seenLocations[key]; ok {
+		canonicalKey := ref.Address.String() + "\x00" + target.ResourceName
+		if other, ok := seenCanonicalLocations[canonicalKey]; ok {
 			location, _ := requiredLocationValue(res)
 			return fmt.Errorf("resource %s: duplicates %s; location %q resolves to %s, which is already declared for campaign %s", res.Address, other, location, target.ResourceName, ref.Address)
 		}
-		seenLocations[key] = res.Address
+		seenCanonicalLocations[canonicalKey] = res.Address
 	}
 
 	seenLanguages := map[string]resource.Address{}
+	seenCanonicalLanguages := map[string]resource.Address{}
 	for _, res := range resources {
 		if res.Address.Provider != Name || res.Address.Type != TypeCampaignLanguage {
 			continue
 		}
+		key, err := campaignLanguageNaturalKey(res)
+		if err != nil {
+			continue
+		}
+		if other, ok := seenLanguages[key]; ok {
+			language, _ := requiredLanguageValue(res)
+			ref, _ := requiredCampaignRef(res)
+			return fmt.Errorf("resource %s: duplicates %s; language %q is already declared for campaign %s", res.Address, other, language, ref.Address)
+		}
+		seenLanguages[key] = res.Address
+
 		ref, err := requiredCampaignRef(res)
 		if err != nil {
 			continue
 		}
 		language, err := p.resolveLanguage(ctx, res.Address, res.Attributes[AttrLanguage])
 		if err != nil {
-			return err
+			// Resource-set validation must remain useful without live API access.
+			// Planning/read still resolves every target before any mutation.
+			continue
 		}
-		key := ref.Address.String() + "\x00" + language.ResourceName
-		if other, ok := seenLanguages[key]; ok {
+		canonicalKey := ref.Address.String() + "\x00" + language.ResourceName
+		if other, ok := seenCanonicalLanguages[canonicalKey]; ok {
 			value, _ := requiredLanguageValue(res)
 			return fmt.Errorf("resource %s: duplicates %s; language %q resolves to %s, which is already declared for campaign %s", res.Address, other, value, language.ResourceName, ref.Address)
 		}
-		seenLanguages[key] = res.Address
+		seenCanonicalLanguages[canonicalKey] = res.Address
 	}
 	return nil
 }
