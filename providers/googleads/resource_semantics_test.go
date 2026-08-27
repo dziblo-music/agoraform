@@ -56,6 +56,15 @@ func TestCustomerConversionGoalMissingResourceUsesAdoptSemantics(t *testing.T) {
 	if mode != provider.MissingResourceAdopt {
 		t.Fatalf("campaign-conversion-goal mode = %q, want %q", mode, provider.MissingResourceAdopt)
 	}
+
+	adGroup := semanticResource(t, "googleads.ad_group.brand", resource.Attributes{})
+	mode, err = p.PlanMissingResource(adGroup)
+	if err != nil {
+		t.Fatalf("PlanMissingResource ad group: %v", err)
+	}
+	if mode != provider.MissingResourceCreate {
+		t.Fatalf("ad-group mode = %q, want %q", mode, provider.MissingResourceCreate)
+	}
 }
 
 func TestCustomerConversionGoalReferenceCategoryMustMatch(t *testing.T) {

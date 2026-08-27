@@ -152,6 +152,25 @@ agoraform import googleads.campaign.brand 987654321
 Non-Search campaigns, portfolio bidding strategies, and removed campaigns
 fail with guidance instead of emitting a lossy Search campaign manifest.
 
+## Google Ads Search ad groups
+
+Import a Search standard ad group by its numeric ad group ID, or by the
+Google Ads resource name `customers/{customerId}/adGroups/{id}`. Agoraform
+stores the numeric ID in local state as `remoteId`. Do not copy it into
+YAML.
+
+Import the campaign first so Agoraform can reconstruct `campaign` as a
+logical `$ref`:
+
+```bash
+agoraform import googleads.campaign.brand 987654321
+agoraform import googleads.ad_group.brand 555666777
+```
+
+Shopping, Dynamic Search Ads, and other non-`SEARCH_STANDARD` ad groups
+fail with guidance instead of emitting a lossy Search ad-group manifest.
+Generated YAML uses `cpcBid` in account-currency units, not micros.
+
 ## Google Ads campaign conversion goals
 
 Import a website campaign conversion goal by its

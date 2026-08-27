@@ -286,8 +286,36 @@ to `PAUSED`. Campaigns must reference a `googleads.campaign_budget`.
       strategy: MANUAL_CPC
 ```
 
-Unsupported channel types fail validation before mutation. Ad groups, ads,
-keywords, and targeting are out of scope. See the
+Unsupported channel types fail validation before mutation. Ads, keywords,
+and targeting are separate resources. See the
+[Google Ads provider reference](../providers/googleads/README.md).
+
+### `googleads.ad_group`
+
+Search standard ad groups. The type is `SEARCH_STANDARD`. New ad groups
+default to `PAUSED`. Ad groups must reference a `googleads.campaign`.
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `name` | yes | Ad group name. Unique within the campaign. |
+| `campaign` | yes | `$ref` to a `googleads.campaign`. |
+| `status` | no | `PAUSED` (default) or `ENABLED`. |
+| `type` | no | Must be `SEARCH_STANDARD` when set. |
+| `cpcBid` | no | Max CPC bid in account-currency units. |
+
+```yaml
+- address: googleads.ad_group.brand
+  attributes:
+    name: Brand
+    status: PAUSED
+    campaign:
+      $ref: googleads.campaign.brand
+    type: SEARCH_STANDARD
+    cpcBid: 1.5
+```
+
+Unsupported types fail validation before mutation. Keywords, targeting,
+and ads are out of scope. See the
 [Google Ads provider reference](../providers/googleads/README.md).
 
 ### `googleads.campaign_conversion_goal`
