@@ -199,7 +199,7 @@ func (p *Provider) Create(ctx context.Context, res resource.Resource) (resource.
 	case TypeAdGroup:
 		return p.createAdGroup(ctx, res)
 	case TypeKeyword:
-		return p.createKeyword(ctx, res)
+		return p.createKeywordLifecycle(ctx, res)
 	default:
 		return resource.RemoteResource{}, notImplemented("create", res.Address)
 	}
@@ -221,7 +221,7 @@ func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual
 	case TypeAdGroup:
 		return p.updateAdGroup(ctx, desired, actual)
 	case TypeKeyword:
-		return p.updateKeyword(ctx, desired, actual)
+		return p.updateKeywordLifecycle(ctx, desired, actual)
 	default:
 		return resource.RemoteResource{}, notImplemented("update", desired.Address)
 	}
@@ -305,7 +305,7 @@ func (p *Provider) NormalizeComparable(desired resource.Resource, live *resource
 	case TypeAdGroup:
 		return p.normalizeAdGroupComparable(desired, live)
 	case TypeKeyword:
-		return p.normalizeKeywordComparable(desired, live)
+		return p.normalizeKeywordComparableLifecycle(desired, live)
 	default:
 		want := desired.Attributes.Clone()
 		if live == nil {
