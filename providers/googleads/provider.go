@@ -138,7 +138,7 @@ func (p *Provider) Validate(_ context.Context, res resource.Resource) error {
 	case TypeCustomerConversionGoal:
 		return p.validateCustomerConversionGoal(res)
 	case TypeCampaignBudget:
-		return p.validateCampaignBudget(res)
+		return p.validateCampaignBudgetSafe(res)
 	default:
 		return nil
 	}
@@ -166,6 +166,9 @@ func (p *Provider) Create(ctx context.Context, res resource.Resource) (resource.
 	case TypeCustomerConversionGoal:
 		return p.createCustomerConversionGoal(ctx, res)
 	case TypeCampaignBudget:
+		if err := p.validateCampaignBudgetSafe(res); err != nil {
+			return resource.RemoteResource{}, err
+		}
 		return p.createCampaignBudget(ctx, res)
 	default:
 		return resource.RemoteResource{}, notImplemented("create", res.Address)
@@ -180,7 +183,7 @@ func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual
 	case TypeCustomerConversionGoal:
 		return p.updateCustomerConversionGoal(ctx, desired, actual)
 	case TypeCampaignBudget:
-		return p.updateCampaignBudget(ctx, desired, actual)
+		return p.updateCampaignBudgetSafe(ctx, desired, actual)
 	default:
 		return resource.RemoteResource{}, notImplemented("update", desired.Address)
 	}
@@ -231,7 +234,7 @@ func (p *Provider) NormalizeComparable(desired resource.Resource, live *resource
 	case TypeCustomerConversionGoal:
 		return p.normalizeCustomerConversionGoalComparable(desired, live)
 	case TypeCampaignBudget:
-		return p.normalizeCampaignBudgetComparable(desired, live)
+		return p.normalizeCampaignBudgetComparableSafe(desired, live)
 	default:
 		want := desired.Attributes.Clone()
 		if live == nil {
