@@ -15,23 +15,25 @@ validate -> plan -> apply -> plan
 `import` adopts supported existing remote objects without mutating them.
 Destructive `destroy` behavior is not implemented yet.
 
-## v0.2.0
+## v0.3.0
 
-Agoraform 0.2.0 expands the Matomo provider from analytics goals into a small,
-dependency-aware Matomo Tag Manager workflow.
+Agoraform 0.3.0 adds Google Ads conversion measurement while retaining the
+Matomo analytics and Tag Manager functionality from v0.2.0.
 
-| Area | v0.2.0 |
+| Area | v0.3.0 |
 | --- | --- |
 | Commands | `validate`, `plan`, `apply`, `import` |
-| Provider | Matomo |
-| Resources | `matomo.goal`, `matomo.variable`, `matomo.trigger`, `matomo.tag` |
+| Providers | Matomo, Google Ads (`googleads`) |
+| Matomo resources | `matomo.goal`, `matomo.variable`, `matomo.trigger`, `matomo.tag` |
+| Google Ads resources | `googleads.conversion_action`, `googleads.customer_conversion_goal` |
 | References | Logical `$ref` dependencies |
-| Tag Manager import | Supported variables, triggers, and tags |
-| Publication | Declarative through provider configuration, visible in `plan`, executed during `apply` |
+| Import | Supported Matomo resources plus supported Google Ads conversion measurement |
+| Matomo publication | Declarative through provider configuration, visible in `plan`, executed during `apply` |
 | State | local `agoraform.state.json` |
 | Mutations | create and update |
 
-v0.1.0 remains the first public release and manages `matomo.goal` only.
+v0.2.0 introduced the dependency-aware Matomo Tag Manager workflow; v0.1.0
+was the first public release and managed `matomo.goal` only.
 
 ## Install
 
@@ -40,7 +42,7 @@ built with Go 1.26.7 and `CGO_ENABLED=0`.
 
 ### GitHub Releases
 
-1. Download the `v0.2.0` archive for your OS and architecture from GitHub
+1. Download the `v0.3.0` archive for your OS and architecture from GitHub
    Releases.
 2. Download `checksums.txt` from the same release and verify the archive.
 3. Extract `agoraform` (`agoraform.exe` on Windows) and place it on `PATH`.
@@ -50,28 +52,29 @@ built with Go 1.26.7 and `CGO_ENABLED=0`.
 agoraform --version
 ```
 
-A v0.2.0 binary prints `0.2.0`. Git tags use the Go convention with a `v`
+A v0.3.0 binary prints `0.3.0`. Git tags use the Go convention with a `v`
 prefix. Untagged local builds print `0.0.0-dev`.
 
 Release archives:
 
 | File | Platform |
 | --- | --- |
-| `agoraform_0.2.0_linux_amd64.tar.gz` | Linux amd64 |
-| `agoraform_0.2.0_linux_arm64.tar.gz` | Linux arm64 |
-| `agoraform_0.2.0_darwin_amd64.tar.gz` | macOS amd64 |
-| `agoraform_0.2.0_darwin_arm64.tar.gz` | macOS arm64 |
-| `agoraform_0.2.0_windows_amd64.zip` | Windows amd64 |
+| `agoraform_0.3.0_linux_amd64.tar.gz` | Linux amd64 |
+| `agoraform_0.3.0_linux_arm64.tar.gz` | Linux arm64 |
+| `agoraform_0.3.0_darwin_amd64.tar.gz` | macOS amd64 |
+| `agoraform_0.3.0_darwin_arm64.tar.gz` | macOS arm64 |
+| `agoraform_0.3.0_windows_amd64.zip` | Windows amd64 |
 
 The archives also contain the README, changelog, license files, the v0.1 goal
-example, and the complete v0.2 conversion example.
+example, the complete v0.2 Matomo conversion example, and the complete v0.3
+Google Ads conversion example.
 
 ### go install
 
 Requires Go 1.26.7 or newer:
 
 ```bash
-go install github.com/dziblo-music/agoraform/cmd/agoraform@v0.2.0
+go install github.com/dziblo-music/agoraform/cmd/agoraform@v0.3.0
 ```
 
 ### Build current source
@@ -113,12 +116,13 @@ GOOGLE_ADS_CUSTOMER_ID         10-digit customer ID (hyphens optional)
 GOOGLE_ADS_LOGIN_CUSTOMER_ID   optional manager-account customer ID
 ```
 
-The `googleads` provider manages website conversion actions and customer
-conversion-goal biddability. See
-[providers/googleads/README.md](providers/googleads/README.md) and the
+The `googleads` provider manages supported website conversion actions and
+customer conversion-goal biddability. See the
+[Google Ads setup guide](docs/google-ads-setup.md),
+[provider reference](providers/googleads/README.md), and
 [v0.3 conversion example](examples/googleads-conversion/README.md).
 
-Non-secret publication desired state belongs in the manifest:
+Non-secret publication desired state belongs in the Matomo provider manifest:
 
 ```yaml
 providers:
@@ -130,52 +134,10 @@ providers:
 `publish` defaults to `false`; `environment` defaults to `live` when
 publication is enabled.
 
-## v0.2 quickstart: Matomo conversion tracking
-
-The primary v0.2 example manages a complete `trialStarted` conversion flow:
-
-- a Data Layer variable that reads `userId`;
-- a Custom Event trigger for `trialStarted`;
-- a Matomo Analytics event tag;
-- logical references that force the variable/trigger to exist before the tag;
-- declarative publication to a Matomo Tag Manager environment.
-
-Set Matomo runtime configuration, then copy the included example:
-
-```bash
-export MATOMO_URL=https://matomo.example.com
-export MATOMO_TOKEN_AUTH=replace-with-your-api-token
-export MATOMO_SITE_ID=1
-export MATOMO_CONTAINER_ID=replace-with-your-container-id
-
-cp examples/matomo-conversion/agoraform.yaml agoraform.yaml
-```
-
-Run:
-
-```bash
-agoraform validate
-agoraform plan
-agoraform apply
-agoraform plan
-```
-
-Review the first plan before applying. With publication enabled, the plan makes
-the potential container publication visible before mutation. `apply` performs
-draft resource changes in dependency order and only then creates/publishes a
-container version when the converged draft still differs from the published
-environment.
-
-The final plan should report `No changes.` when desired configuration, local
-state, and remote state are unchanged. Repeated unchanged apply must not create
-duplicate container versions.
-
-See [the complete conversion example](examples/matomo-conversion/README.md) for
-Matomo verification and the application-side data-layer event contract.
-
 ## v0.3 Google Ads conversion measurement
 
-The v0.3 example manages a website `Trial Started` conversion in Google Ads:
+The primary v0.3 example manages a website `Trial Started` conversion in Google
+Ads:
 
 - `googleads.conversion_action.trial_started` as a `SIGNUP` website conversion;
 - `googleads.customer_conversion_goal.signup` so `SIGNUP` / `WEBSITE` is
@@ -225,7 +187,50 @@ state are unchanged.
 
 See [the Google Ads conversion example](examples/googleads-conversion/README.md)
 for Google Ads verification, conversion identifiers for website tags, and
-import of an equivalent manually configured conversion.
+import of equivalent manually configured conversion measurement.
+
+## v0.2 Matomo conversion tracking
+
+The primary v0.2 example manages a complete `trialStarted` conversion flow:
+
+- a Data Layer variable that reads `userId`;
+- a Custom Event trigger for `trialStarted`;
+- a Matomo Analytics event tag;
+- logical references that force the variable/trigger to exist before the tag;
+- declarative publication to a Matomo Tag Manager environment.
+
+Set Matomo runtime configuration, then copy the included example:
+
+```bash
+export MATOMO_URL=https://matomo.example.com
+export MATOMO_TOKEN_AUTH=replace-with-your-api-token
+export MATOMO_SITE_ID=1
+export MATOMO_CONTAINER_ID=replace-with-your-container-id
+
+cp examples/matomo-conversion/agoraform.yaml agoraform.yaml
+```
+
+Run:
+
+```bash
+agoraform validate
+agoraform plan
+agoraform apply
+agoraform plan
+```
+
+Review the first plan before applying. With publication enabled, the plan makes
+the potential container publication visible before mutation. `apply` performs
+draft resource changes in dependency order and only then creates/publishes a
+container version when the converged draft still differs from the published
+environment.
+
+The final plan should report `No changes.` when desired configuration, local
+state, and remote state are unchanged. Repeated unchanged apply must not create
+duplicate container versions.
+
+See [the complete Matomo conversion example](examples/matomo-conversion/README.md)
+for Matomo verification and the application-side data-layer event contract.
 
 ## Resource references and dependency ordering
 
@@ -307,6 +312,10 @@ reconstruct logical references. Review the printed YAML, update your manifest
 if necessary, and run `agoraform plan`. An equivalent imported configuration
 should produce no changes.
 
+Google Ads import accepts supported website conversion actions and supported
+`WEBSITE` customer conversion goals only. Unsupported conversion types/origins
+fail with actionable diagnostics instead of producing a lossy manifest.
+
 ## Declarative Matomo Tag Manager publication
 
 Agoraform deliberately does not add a provider-specific `publish` command.
@@ -368,10 +377,15 @@ agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
 
 ## Current development limitations
 
-- v0.2.0 Matomo resources are fully implemented. Unreleased v0.3.0 work adds
-  website `googleads.conversion_action` and `googleads.customer_conversion_goal`
-  resources; see the [Google Ads conversion example](examples/googleads-conversion/README.md).
-  Meta Ads is not implemented.
+- v0.3.0 supports Matomo plus Google Ads website conversion measurement. Meta
+  Ads is not implemented.
+- Google Ads support is limited to supported `WEBPAGE` conversion actions and
+  `WEBSITE` customer conversion-goal biddability. Search campaigns, budgets,
+  ad groups, keywords, targeting, ads, offline/call/app conversion workflows,
+  and conversion-event uploads are not implemented.
+- Agoraform v0.3.0 Google Ads authentication uses developer-token + single-user
+  OAuth refresh-token credentials. Service-account, multi-user, and interactive
+  OAuth flows are not implemented.
 - One Matomo Tag Manager container is configured at a time through
   `MATOMO_CONTAINER_ID`.
 - Tag Manager support is limited to the variable, trigger, and tag types
@@ -390,11 +404,13 @@ agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
 - [Plan engine](docs/plan.md)
 - [Apply execution](docs/apply.md)
 - [Import](docs/import.md)
+- [Local provider configuration](docs/local-configuration.md)
+- [Google Ads setup](docs/google-ads-setup.md)
 - [Matomo Tag Manager publication](docs/matomo-publishing.md)
 - [Local state](docs/state.md)
 - [Matomo provider](providers/matomo/README.md)
 - [Google Ads provider](providers/googleads/README.md)
-- [v0.2 conversion example](examples/matomo-conversion/README.md)
+- [v0.2 Matomo conversion example](examples/matomo-conversion/README.md)
 - [v0.3 Google Ads conversion example](examples/googleads-conversion/README.md)
 - [Release process](docs/release.md)
 - [Changelog](CHANGELOG.md)
