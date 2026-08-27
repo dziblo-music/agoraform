@@ -106,7 +106,7 @@ func TestUpdateCampaignClearsTrackingFields(t *testing.T) {
 			Identity: resource.Identity{ID: "11"},
 			Outputs:  resource.Attributes{"resourceName": "customers/" + testCustomerID + "/campaignBudgets/11"},
 		},
-		googleads.AttrBidding:            map[string]any{"strategy": "MANUAL_CPC"},
+		googleads.AttrBidding:             map[string]any{"strategy": "MANUAL_CPC"},
 		googleads.AttrTrackingUrlTemplate: "",
 		googleads.AttrFinalUrlSuffix:      "",
 	})
