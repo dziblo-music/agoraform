@@ -5,10 +5,18 @@ All notable changes to Agoraform are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and Agoraform versions follow [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
-Git tags are `v` plus the SemVer identifier (`v0.2.0`). `agoraform --version`
-prints the SemVer identifier without the prefix (`0.2.0`).
+Git tags are `v` plus the SemVer identifier (`v0.3.0`). `agoraform --version`
+prints the SemVer identifier without the prefix (`0.3.0`).
 
 ## [Unreleased]
+
+## [0.3.0] - 2026-08-27
+
+Agoraform 0.3.0 adds Google Ads conversion measurement as the second provider
+workflow while preserving the Matomo functionality from 0.2.0. The release can
+declare, reconcile, and import supported website conversion actions and manage
+customer-level website conversion-goal biddability without taking responsibility
+for website tag execution or conversion-event delivery.
 
 ### Added
 
@@ -16,7 +24,46 @@ prints the SemVer identifier without the prefix (`0.2.0`).
 - `googleads.conversion_action` for website conversion actions such as Trial Started (read, create, update, import), with Google Ads enum/default normalization so equivalent remote state produces no plan diff.
 - `googleads.customer_conversion_goal` for account-default website conversion-goal biddability (read, adopt, update, import). Google Ads creates these objects automatically; Agoraform reconciles `biddable` and never attempts unsupported create or delete operations.
 - `agoraform import` for Google Ads conversion measurement. Existing website conversion actions and supported customer conversion-goal settings can be bound without mutation; resource names and `CATEGORY~ORIGIN` aliases are stored as canonical identities, computed fields and secrets are omitted, and unsupported remote types or settings fail with guidance instead of emitting lossy YAML.
-- A complete secret-free Google Ads conversion-measurement example under `examples/googleads-conversion/`.
+- Computed Google Ads conversion metadata, including conversion ID/label when returned by tag snippets, for use by external website/tag-manager configuration without placing provider-native values in normal manifest attributes.
+- A complete secret-free Google Ads conversion-measurement quickstart under `examples/googleads-conversion/`, automatically validated by the test suite.
+- Google Ads account/API/OAuth setup documentation covering developer tokens, Google Auth Platform, Desktop-app OAuth credentials, refresh-token generation, customer IDs, and local runtime configuration.
+
+### Supported in 0.3.0
+
+| Area | Scope |
+| --- | --- |
+| Commands | `validate`, `plan`, `apply`, `import` |
+| Providers | Matomo, Google Ads (`googleads`) |
+| Google Ads resources | `googleads.conversion_action`, `googleads.customer_conversion_goal` |
+| Google Ads conversion type | Supported website (`WEBPAGE`) conversion actions |
+| Customer goal management | Existing provider-created `WEBSITE` goals; reconcile `biddable` only |
+| Google Ads import | Supported conversion actions and customer conversion-goal settings; no mutation |
+| Matomo | All v0.2.0 goal, Tag Manager, dependency, import, and publication behavior |
+| State | Local `agoraform.state.json` beside the manifest |
+| Mutations | Create and update only |
+
+### Limitations
+
+- v0.3.0 Google Ads support does not manage search campaigns, budgets, ad groups, keywords, targeting, ads, or creative.
+- Offline, call, app, and conversion-event upload workflows are not implemented; `googleads.conversion_action` is limited to supported website (`WEBPAGE`) actions.
+- Customer conversion goals are created by Google Ads. Agoraform can adopt/read them and reconcile supported mutable settings but cannot create or delete them.
+- Application instrumentation, gtag.js, Google Tag, Google Tag Manager, consent handling, and conversion-event emission remain outside the Google Ads provider.
+- Google Ads authentication in v0.3.0 uses developer-token + single-user OAuth refresh-token credentials. Service-account, multi-user, and interactive OAuth flows are not implemented.
+- Remote state, workspaces, locking, and encryption are not implemented.
+- `apply` does not delete remote resources and there is no `destroy` command yet.
+- Matomo Tag Manager remains limited to one configured container and the resource types documented for v0.2.0.
+- Pre-1.0: breaking CLI or manifest changes may appear in later `0.x` releases and will be documented.
+
+### Upgrade notes
+
+0.3.0 does not remove or rename the v0.2.0 Matomo command/resource surface.
+Google Ads is opt-in by declaring `providers.googleads` and supplying the
+required `GOOGLE_ADS_*` runtime configuration. Existing Matomo-only manifests
+continue to work without Google Ads credentials.
+
+See the [v0.3.0 Google Ads conversion example](examples/googleads-conversion/README.md),
+[Google Ads setup guide](docs/google-ads-setup.md), and
+[release guide](docs/release.md).
 
 ## [0.2.0] - 2026-08-26
 
@@ -125,6 +172,7 @@ First public release.
 
 See the [README](README.md#install) and [docs/release.md](docs/release.md).
 
-[Unreleased]: https://github.com/dziblo-music/agoraform/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/dziblo-music/agoraform/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/dziblo-music/agoraform/releases/tag/v0.3.0
 [0.2.0]: https://github.com/dziblo-music/agoraform/releases/tag/v0.2.0
 [0.1.0]: https://github.com/dziblo-music/agoraform/releases/tag/v0.1.0
