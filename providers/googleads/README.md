@@ -1,10 +1,9 @@
 # Google Ads provider
 
 The Google Ads provider registers as `googleads` and manages website
-conversion actions and customer conversion-goal biddability for the v0.3
-conversion-tracking workflow. Credentials come from the environment. The
-Agoraform CLI remains provider-neutral; there is no Google Ads-specific
-command.
+conversion actions, customer conversion-goal biddability, and daily Search
+campaign budgets. Credentials come from the environment. The Agoraform CLI
+remains provider-neutral; there is no Google Ads-specific command.
 
 See the [Google Ads account and OAuth setup guide](../../docs/google-ads-setup.md)
 for the Manager Account, developer-token, Google Cloud, OAuth, refresh-token,
@@ -155,6 +154,62 @@ Non-website origins fail import with guidance rather than reconstructing a
 lossy `WEBSITE` goal. Import does not emit a `conversionAction` `$ref`; add
 that optionally after import if the matching conversion action is also
 managed.
+
+### `googleads.campaign_budget`
+
+Daily Search campaign budgets. Agoraform creates and updates `STANDARD`
+daily budgets only. Lifetime/`CUSTOM_PERIOD` budgets, portfolio bidding
+strategies, accelerated delivery, and non-standard budget types are out of
+scope.
+
+```yaml
+resources:
+  - address: googleads.campaign_budget.brand
+    attributes:
+      name: Brand daily budget
+      amount: 50
+      deliveryMethod: STANDARD
+      explicitlyShared: false
+```
+
+Search campaigns will attach a budget with a logical `$ref` to this
+address. Budget behavior stays on `googleads.campaign_budget`; do not embed
+amount or sharing fields on the campaign resource.
+
+```yaml
+# Forthcoming googleads.campaign resource (not implemented yet):
+#   budget:
+#     $ref: googleads.campaign_budget.brand
+```
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `name` | yes | Budget name used for creation and unmanaged discovery. For a dedicated budget, Google keeps the live name synchronized with the attached campaign; Agoraform treats that provider-managed name as authoritative after creation. |
+| `amount` | yes | Daily budget in account-currency units, for example `50` or `50.25`. Converted to Google Ads `amount_micros` (`1` unit = `1_000_000` micros) with at most six decimal places. |
+| `explicitlyShared` | yes | `false` for a dedicated single-campaign budget; `true` for a shared budget. A shared budget can never become non-shared. A dedicated budget may become shared; Agoraform includes its name in the same mutation as required by Google Ads. |
+| `deliveryMethod` | no | `STANDARD` (API default) for the supported Search workflow. `ACCELERATED` is rejected before mutation. Omitted values are not forced onto the remote resource. |
+
+`period` is always `DAILY` and `type` is always `STANDARD`. Those fields,
+provider-native IDs, resource names, `amountMicros`, `status`, and
+`referenceCount` live in local state and on `RemoteResource.Computed`, not
+in the manifest.
+
+Equivalent live values, including `50` / `50.0` / `"50.00"` and enum case,
+do not produce a plan diff. Amount comparison uses integer micros so
+currency rounding stays deterministic. Updates use sparse field masks and
+only send attributes that actually changed. For a dedicated budget, campaign-
+driven name synchronization is ignored during planning and the name is not
+resent on unrelated updates.
+
+Import accepts the numeric campaign budget ID or the resource name
+`customers/{customerId}/campaignBudgets/{id}` and stores the numeric ID:
+
+```bash
+agoraform import googleads.campaign_budget.brand 123456789
+```
+
+Lifetime, Smart, and other non-standard budgets fail import with guidance
+instead of generating a lossy daily Search budget.
 
 ## HTTP client
 

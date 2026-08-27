@@ -20,9 +20,9 @@ const (
 
 // Provider is the Agoraform Google Ads provider.
 //
-// It registers googleads.conversion_action and
-// googleads.customer_conversion_goal and shares a reusable REST client
-// for authenticated query and mutate operations.
+// It registers googleads.conversion_action,
+// googleads.customer_conversion_goal, and googleads.campaign_budget and
+// shares a reusable REST client for authenticated query and mutate operations.
 type Provider struct {
 	cfg    Config
 	once   sync.Once
@@ -69,7 +69,7 @@ func (p *Provider) Name() string { return Name }
 
 // ResourceTypes implements provider.Provider.
 func (p *Provider) ResourceTypes() []string {
-	return []string{TypeConversionAction, TypeCustomerConversionGoal}
+	return []string{TypeConversionAction, TypeCustomerConversionGoal, TypeCampaignBudget}
 }
 
 // Client returns the reusable Google Ads HTTP client, creating it on first use.
@@ -137,6 +137,8 @@ func (p *Provider) Validate(_ context.Context, res resource.Resource) error {
 		return p.validateWebsiteConversionAction(res)
 	case TypeCustomerConversionGoal:
 		return p.validateCustomerConversionGoal(res)
+	case TypeCampaignBudget:
+		return p.validateCampaignBudgetSafe(res)
 	default:
 		return nil
 	}
@@ -149,6 +151,8 @@ func (p *Provider) Read(ctx context.Context, res resource.Resource) (resource.Re
 		return p.readWebsiteConversionAction(ctx, res)
 	case TypeCustomerConversionGoal:
 		return p.readCustomerConversionGoal(ctx, res)
+	case TypeCampaignBudget:
+		return p.readCampaignBudget(ctx, res)
 	default:
 		return resource.RemoteResource{}, notImplemented("read", res.Address)
 	}
@@ -161,6 +165,11 @@ func (p *Provider) Create(ctx context.Context, res resource.Resource) (resource.
 		return p.createWebsiteConversionAction(ctx, res)
 	case TypeCustomerConversionGoal:
 		return p.createCustomerConversionGoal(ctx, res)
+	case TypeCampaignBudget:
+		if err := p.validateCampaignBudgetSafe(res); err != nil {
+			return resource.RemoteResource{}, err
+		}
+		return p.createCampaignBudget(ctx, res)
 	default:
 		return resource.RemoteResource{}, notImplemented("create", res.Address)
 	}
@@ -173,6 +182,8 @@ func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual
 		return p.updateWebsiteConversionAction(ctx, desired, actual)
 	case TypeCustomerConversionGoal:
 		return p.updateCustomerConversionGoal(ctx, desired, actual)
+	case TypeCampaignBudget:
+		return p.updateCampaignBudgetSafe(ctx, desired, actual)
 	default:
 		return resource.RemoteResource{}, notImplemented("update", desired.Address)
 	}
@@ -185,6 +196,8 @@ func (p *Provider) Import(ctx context.Context, addr resource.Address, id string)
 		return p.importWebsiteConversionAction(ctx, addr, id)
 	case TypeCustomerConversionGoal:
 		return p.importCustomerConversionGoal(ctx, addr, id)
+	case TypeCampaignBudget:
+		return p.importCampaignBudget(ctx, addr, id)
 	default:
 		return resource.RemoteResource{}, notImplemented("import", addr)
 	}
@@ -195,6 +208,8 @@ func (p *Provider) Import(ctx context.Context, addr resource.Address, id string)
 // Conversion actions accept a numeric id or customers/{customerId}/conversionActions/{id}
 // and store the numeric id. Customer conversion goals accept CATEGORY~ORIGIN
 // (any case) or the Google Ads resource name and store CATEGORY~ORIGIN.
+// Campaign budgets accept a numeric id or
+// customers/{customerId}/campaignBudgets/{id} and store the numeric id.
 func (p *Provider) NormalizeImportID(addr resource.Address, raw string) (string, error) {
 	if p == nil {
 		return "", fmt.Errorf("googleads: provider is nil")
@@ -204,6 +219,8 @@ func (p *Provider) NormalizeImportID(addr resource.Address, raw string) (string,
 		return p.canonicalConversionActionImportID(addr, raw)
 	case TypeCustomerConversionGoal:
 		return p.canonicalCustomerConversionGoalImportID(addr, raw)
+	case TypeCampaignBudget:
+		return p.canonicalCampaignBudgetImportID(addr, raw)
 	default:
 		return "", notImplemented("import", addr)
 	}
@@ -216,6 +233,8 @@ func (p *Provider) NormalizeComparable(desired resource.Resource, live *resource
 		return p.normalizeConversionActionComparable(desired, live)
 	case TypeCustomerConversionGoal:
 		return p.normalizeCustomerConversionGoalComparable(desired, live)
+	case TypeCampaignBudget:
+		return p.normalizeCampaignBudgetComparableSafe(desired, live)
 	default:
 		want := desired.Attributes.Clone()
 		if live == nil {

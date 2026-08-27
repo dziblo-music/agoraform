@@ -220,6 +220,42 @@ these objects automatically; Agoraform only updates `biddable`.
       $ref: googleads.conversion_action.trial_started
 ```
 
+### `googleads.campaign_budget`
+
+Daily Search campaign budgets. Amounts are declared in account-currency
+units and normalized to Google Ads micros for API calls and plan
+comparison.
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `name` | yes | Budget name used for creation and unmanaged discovery. For dedicated budgets, Google synchronizes the live name with the attached campaign and Agoraform does not treat that synchronization as drift. |
+| `amount` | yes | Daily budget in account-currency units. |
+| `explicitlyShared` | yes | `false` for a dedicated budget; `true` for a shared budget. A shared budget cannot be changed back to dedicated. |
+| `deliveryMethod` | no | `STANDARD` only for the supported Search workflow. `ACCELERATED` is rejected. |
+
+```yaml
+- address: googleads.campaign_budget.brand
+  attributes:
+    name: Brand daily budget
+    amount: 50
+    deliveryMethod: STANDARD
+    explicitlyShared: false
+```
+
+Search campaigns will reference the budget by logical address:
+
+```yaml
+# Forthcoming googleads.campaign resource (not implemented yet):
+#   budget:
+#     $ref: googleads.campaign_budget.brand
+```
+
+Provider-native IDs, resource names, micros, period, and type are
+computed. Updates use sparse field masks so unchanged sharing fields and
+Google-managed dedicated-budget names are not resent. Converting a dedicated
+budget to shared includes its name in the same mutation, as required by Google
+Ads. See the [Google Ads provider reference](../providers/googleads/README.md).
+
 ## Matomo provider desired state
 
 v0.2.0 recognizes:
