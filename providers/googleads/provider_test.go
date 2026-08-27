@@ -37,8 +37,8 @@ func TestProviderRegisterAndLookup(t *testing.T) {
 	if got.Name() != googleads.Name {
 		t.Fatalf("Name = %q", got.Name())
 	}
-	if len(got.ResourceTypes()) != 6 || got.ResourceTypes()[0] != googleads.TypeConversionAction || got.ResourceTypes()[1] != googleads.TypeCustomerConversionGoal || got.ResourceTypes()[2] != googleads.TypeCampaignBudget || got.ResourceTypes()[3] != googleads.TypeCampaign || got.ResourceTypes()[4] != googleads.TypeCampaignConversionGoal || got.ResourceTypes()[5] != googleads.TypeAdGroup {
-		t.Fatalf("ResourceTypes = %v, want [%s %s %s %s %s %s]", got.ResourceTypes(), googleads.TypeConversionAction, googleads.TypeCustomerConversionGoal, googleads.TypeCampaignBudget, googleads.TypeCampaign, googleads.TypeCampaignConversionGoal, googleads.TypeAdGroup)
+	if len(got.ResourceTypes()) != 7 || got.ResourceTypes()[0] != googleads.TypeConversionAction || got.ResourceTypes()[1] != googleads.TypeCustomerConversionGoal || got.ResourceTypes()[2] != googleads.TypeCampaignBudget || got.ResourceTypes()[3] != googleads.TypeCampaign || got.ResourceTypes()[4] != googleads.TypeCampaignConversionGoal || got.ResourceTypes()[5] != googleads.TypeAdGroup || got.ResourceTypes()[6] != googleads.TypeKeyword {
+		t.Fatalf("ResourceTypes = %v, want [%s %s %s %s %s %s %s]", got.ResourceTypes(), googleads.TypeConversionAction, googleads.TypeCustomerConversionGoal, googleads.TypeCampaignBudget, googleads.TypeCampaign, googleads.TypeCampaignConversionGoal, googleads.TypeAdGroup, googleads.TypeKeyword)
 	}
 
 	addr, err := resource.ParseAddress("googleads.conversion_action.trial_started")
@@ -89,12 +89,20 @@ func TestProviderRegisterAndLookup(t *testing.T) {
 		t.Fatalf("LookupFor ad_group: %v", err)
 	}
 
-	unknown, err := resource.ParseAddress("googleads.keyword.brand")
+	keywordAddr, err := resource.ParseAddress("googleads.keyword.brand_exact")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.LookupFor(keywordAddr); err != nil {
+		t.Fatalf("LookupFor keyword: %v", err)
+	}
+
+	unknown, err := resource.ParseAddress("googleads.ad.brand")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := reg.LookupFor(unknown); err == nil {
-		t.Fatal("LookupFor keyword succeeded, want unknown type")
+		t.Fatal("LookupFor ad succeeded, want unknown type")
 	}
 }
 
@@ -146,7 +154,7 @@ func TestProviderValidateUnknownType(t *testing.T) {
 	t.Parallel()
 
 	p := googleads.New(validConfig("https://googleads.example.com"))
-	addr, err := resource.ParseAddress("googleads.keyword.brand")
+	addr, err := resource.ParseAddress("googleads.ad.brand")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +171,7 @@ func TestProviderLifecycleNotImplemented(t *testing.T) {
 	t.Parallel()
 
 	p := googleads.New(validConfig("https://googleads.example.com"))
-	addr, err := resource.ParseAddress("googleads.keyword.brand")
+	addr, err := resource.ParseAddress("googleads.ad.brand")
 	if err != nil {
 		t.Fatal(err)
 	}

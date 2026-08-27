@@ -73,5 +73,23 @@ func (p *Provider) ValidateResourceSet(_ context.Context, resources []resource.R
 			return fmt.Errorf("resource %s: attribute %q references %s with category %s, but the goal category is %s; referenced conversion-action and %s categories must match", goal.Address, AttrConversionAction, action.Address, actionCategory, goalCategory, goalKind)
 		}
 	}
+
+	seenKeywords := map[string]resource.Address{}
+	for _, res := range resources {
+		if res.Address.Provider != Name || res.Address.Type != TypeKeyword {
+			continue
+		}
+		key, err := keywordNaturalKey(res)
+		if err != nil {
+			continue
+		}
+		if other, ok := seenKeywords[key]; ok {
+			text, _ := requiredKeywordText(res)
+			matchType, _ := requiredKeywordMatchType(res)
+			ref, _ := requiredAdGroupRef(res)
+			return fmt.Errorf("resource %s: duplicates %s; keyword text %q with match type %s is already declared for ad group %s", res.Address, other, text, matchType, ref.Address)
+		}
+		seenKeywords[key] = res.Address
+	}
 	return nil
 }

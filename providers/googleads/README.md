@@ -3,7 +3,8 @@
 The Google Ads provider registers as `googleads` and manages website
 conversion actions, customer conversion-goal biddability, daily Search
 campaign budgets, Search campaigns, campaign conversion-goal
-biddability, and Search ad groups. Credentials come from the environment.
+biddability, Search ad groups, and Search keyword criteria. Credentials
+come from the environment.
 The Agoraform CLI remains provider-neutral; there is no Google Ads-specific
 command.
 
@@ -296,8 +297,8 @@ re-import the campaign.
 ### `googleads.ad_group`
 
 Search standard ad groups. Agoraform creates and updates `SEARCH_STANDARD`
-ad groups only. Shopping, Display, Dynamic Search Ads, Performance Max
-asset groups, keywords, targeting criteria, and ads are out of scope.
+ad groups only. Shopping, Display, Dynamic Search Ads, and Performance Max
+asset groups are out of scope. Keywords stay on `googleads.keyword`.
 
 ```yaml
 resources:
@@ -319,8 +320,8 @@ resources:
 ```
 
 Ad groups attach to a campaign with a logical `$ref` to this address.
-Keywords and ads stay on separate resources; do not embed them on the
-ad group.
+Keywords stay on `googleads.keyword`; ads stay on a later resource. Do
+not embed them on the ad group.
 
 | Attribute | Required | Description |
 | --- | --- | --- |
@@ -355,6 +356,77 @@ agoraform import googleads.ad_group.brand 555666777
 Non-Search ad group types fail import with guidance instead of generating
 a lossy Search configuration. Import the campaign first, or apply it, then
 re-import the ad group.
+
+### `googleads.keyword`
+
+Search ad-group keyword criteria, including negative keywords. Agoraform
+creates and updates `KEYWORD` criteria only. Campaign-level negative
+keywords, Keyword Planner, Dynamic Search Ads criteria, and audience
+criteria are out of scope.
+
+```yaml
+resources:
+  - address: googleads.ad_group.brand
+    attributes:
+      name: Brand
+      campaign:
+        $ref: googleads.campaign.brand
+  - address: googleads.keyword.brand_exact
+    attributes:
+      adGroup:
+        $ref: googleads.ad_group.brand
+      text: brand
+      matchType: EXACT
+      status: PAUSED
+      cpcBid: 1.5
+  - address: googleads.keyword.competitor_neg
+    attributes:
+      adGroup:
+        $ref: googleads.ad_group.brand
+      text: competitor
+      matchType: PHRASE
+      negative: true
+```
+
+Keywords attach to an ad group with a logical `$ref` to this address.
+Do not embed keywords on the ad group.
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `adGroup` | yes | `$ref` to a `googleads.ad_group`. Resolved to the provider-native ad group at apply time. Immutable after create. |
+| `text` | yes | Keyword text without match-type punctuation such as `[brackets]` or `"quotes"`. Trimmed, lowercased, and compared without changing user intent. |
+| `matchType` | yes | `EXACT`, `PHRASE`, or `BROAD`. Immutable after create. |
+| `negative` | no | `true` for a negative keyword criterion. Omitted `negative` is treated as `false`. Immutable after create. |
+| `status` | no | `PAUSED` (default for new keywords) or `ENABLED`. Omitted status is treated as `PAUSED`. |
+| `cpcBid` | no | Optional max CPC bid override in account-currency units, for example `1.5`. Converted to Google Ads `cpc_bid_micros`. Not allowed on negative keywords. Omitted bids are not forced onto the remote resource. |
+
+New keywords are created `PAUSED` unless configuration explicitly sets
+`ENABLED`. Duplicate text and match type in the same ad group fail
+validation before mutation.
+
+`text`, `matchType`, `negative`, and `adGroup` identify the Google Ads
+criterion and cannot be updated in place. Plan fails with an immutable-field
+diagnostic rather than hiding a destructive replacement. Status and optional
+CPC bid overrides remain mutable. Provider-native IDs, resource names, and
+quality metadata live in local state and on `RemoteResource.Computed`.
+
+Equivalent live values, including `Brand` / `brand`, `exact` / `EXACT`,
+and `1.5` / `"1.50"`, produce no plan diff. Updates use sparse field
+masks for mutable fields only.
+
+Import accepts `adGroupId~criterionId` or the resource name
+`customers/{customerId}/adGroupCriteria/{adGroupId}~{criterionId}` and
+stores `adGroupId~criterionId`. Import reconstructs `adGroup` as a
+logical `$ref` when the ad group is already bound in local state:
+
+```bash
+agoraform import googleads.ad_group.brand 555666777
+agoraform import googleads.keyword.brand_exact 555666777~888999000
+```
+
+Non-keyword criteria fail import with guidance instead of generating a
+lossy keyword configuration. Import the ad group first, or apply it, then
+re-import the keyword.
 
 ### `googleads.campaign_conversion_goal`
 

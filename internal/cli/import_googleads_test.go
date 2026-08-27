@@ -646,6 +646,131 @@ func TestImportGoogleAdsAdGroupThenPlanUnchanged(t *testing.T) {
 	}
 }
 
+func TestImportGoogleAdsKeywordThenPlanUnchanged(t *testing.T) {
+	t.Parallel()
+
+	p, srv := googleAdsImportProvider(t)
+	srv.seedBudget(map[string]any{
+		"id":               "11",
+		"name":             "Brand daily budget",
+		"amountMicros":     "50000000",
+		"deliveryMethod":   "STANDARD",
+		"explicitlyShared": false,
+		"period":           "DAILY",
+		"type":             "STANDARD",
+	})
+	srv.seedCampaign(map[string]any{
+		"id":                     "21",
+		"name":                   "Brand",
+		"status":                 "PAUSED",
+		"advertisingChannelType": "SEARCH",
+		"campaignBudget":         "customers/" + cliGoogleAdsCustomerID + "/campaignBudgets/11",
+		"biddingStrategyType":    "MANUAL_CPC",
+		"manualCpc":              map[string]any{"enhancedCpcEnabled": false},
+		"networkSettings": map[string]any{
+			"targetGoogleSearch":         true,
+			"targetSearchNetwork":        true,
+			"targetContentNetwork":       false,
+			"targetPartnerSearchNetwork": false,
+		},
+	})
+	srv.seedAdGroup(map[string]any{
+		"id":           "31",
+		"name":         "Brand",
+		"status":       "PAUSED",
+		"type":         "SEARCH_STANDARD",
+		"campaign":     "customers/" + cliGoogleAdsCustomerID + "/campaigns/21",
+		"cpcBidMicros": "1500000",
+	})
+	srv.seedKeyword(map[string]any{
+		"criterionId":  "41",
+		"adGroup":      "customers/" + cliGoogleAdsCustomerID + "/adGroups/31",
+		"status":       "PAUSED",
+		"type":         "KEYWORD",
+		"negative":     false,
+		"cpcBidMicros": "1500000",
+		"keyword": map[string]any{
+			"text":      "brand",
+			"matchType": "EXACT",
+		},
+	})
+
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "agoraform.yaml")
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "googleads.campaign_budget.brand", "11"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("budget import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	budgetYAML := extractYAML(stdout.String())
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "googleads.campaign.brand", "21"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("campaign import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	campaignYAML := extractYAML(stdout.String())
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "googleads.ad_group.brand", "31"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("ad group import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	groupYAML := extractYAML(stdout.String())
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "googleads.keyword.brand_exact", "31~41"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("keyword import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	out := stdout.String()
+	assertGoogleAdsImportOutputClean(t, out)
+	if !strings.Contains(out, "Imported googleads.keyword.brand_exact (remote identity 31~41).") {
+		t.Fatalf("stdout missing import confirmation:\n%s", out)
+	}
+	keywordYAML := extractYAML(out)
+	if !strings.Contains(keywordYAML, "$ref: googleads.ad_group.brand") {
+		t.Fatalf("keyword YAML missing ad group $ref:\n%s", keywordYAML)
+	}
+	if strings.Contains(keywordYAML, "resourceName") || strings.Contains(keywordYAML, "cpcBidMicros") {
+		t.Fatalf("keyword YAML leaked computed fields:\n%s", keywordYAML)
+	}
+
+	itemStart := strings.Index(campaignYAML, "  - address:")
+	if itemStart < 0 {
+		t.Fatalf("campaign YAML missing resource item:\n%s", campaignYAML)
+	}
+	groupStart := strings.Index(groupYAML, "  - address:")
+	if groupStart < 0 {
+		t.Fatalf("ad group YAML missing resource item:\n%s", groupYAML)
+	}
+	keywordStart := strings.Index(keywordYAML, "  - address:")
+	if keywordStart < 0 {
+		t.Fatalf("keyword YAML missing resource item:\n%s", keywordYAML)
+	}
+	combined := strings.TrimRight(budgetYAML, "\n") + "\n" + strings.TrimRight(campaignYAML[itemStart:], "\n") + "\n" + strings.TrimRight(groupYAML[groupStart:], "\n") + "\n" + keywordYAML[keywordStart:]
+	if err := os.WriteFile(manifestPath, []byte(combined), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"plan", "-f", manifestPath}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("plan after import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "No changes.") {
+		t.Fatalf("plan after import = %q, want no changes", stdout.String())
+	}
+	if srv.mutateCount() != 0 {
+		t.Fatalf("keyword import mutated remote: %d", srv.mutateCount())
+	}
+}
+
 func TestImportGoogleAdsYAMLIsDeterministic(t *testing.T) {
 	t.Parallel()
 
@@ -724,6 +849,7 @@ func newCLIGoogleAdsServer(t *testing.T) *cliGoogleAdsServer {
 		budgets:       map[string]map[string]any{},
 		campaigns:     map[string]map[string]any{},
 		adGroups:      map[string]map[string]any{},
+		keywords:      map[string]map[string]any{},
 	}
 	srv := httptest.NewServer(http.HandlerFunc(fake.handler))
 	t.Cleanup(srv.Close)
@@ -738,6 +864,7 @@ type cliGoogleAdsFake struct {
 	budgets       map[string]map[string]any
 	campaigns     map[string]map[string]any
 	adGroups      map[string]map[string]any
+	keywords      map[string]map[string]any
 	searchStatus  int
 	mutates       int
 }
@@ -824,6 +951,23 @@ func (f *cliGoogleAdsFake) seedAdGroup(group map[string]any) {
 	f.adGroups[id] = cloned
 }
 
+func (f *cliGoogleAdsFake) seedKeyword(item map[string]any) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cloned := cloneAnyMap(item)
+	adGroup := stringifyAny(cloned["adGroup"])
+	adGroupID := strings.TrimPrefix(adGroup, "customers/"+cliGoogleAdsCustomerID+"/adGroups/")
+	criterionID := stringifyAny(cloned["criterionId"])
+	id := adGroupID + "~" + criterionID
+	if stringifyAny(cloned["resourceName"]) == "" {
+		cloned["resourceName"] = "customers/" + cliGoogleAdsCustomerID + "/adGroupCriteria/" + id
+	}
+	if stringifyAny(cloned["type"]) == "" {
+		cloned["type"] = "KEYWORD"
+	}
+	f.keywords[id] = cloned
+}
+
 func (f *cliGoogleAdsFake) mutateCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -863,6 +1007,10 @@ func (f *cliGoogleAdsFake) handler(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.Contains(query, "from customer_conversion_goal") {
 		_ = json.NewEncoder(w).Encode(map[string]any{"results": f.searchGoalsLocked(req.Query)})
+		return
+	}
+	if strings.Contains(query, "from ad_group_criterion") {
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": f.searchKeywordsLocked(req.Query)})
 		return
 	}
 	if strings.Contains(query, "from ad_group") {
@@ -952,6 +1100,34 @@ func (f *cliGoogleAdsFake) searchAdGroupsLocked(query string) []any {
 			}
 		}
 		out = append(out, map[string]any{"adGroup": cloneAnyMap(group)})
+	}
+	return out
+}
+
+func (f *cliGoogleAdsFake) searchKeywordsLocked(query string) []any {
+	var out []any
+	for id, item := range f.keywords {
+		if strings.Contains(query, "ad_group_criterion.criterion_id = ") {
+			want := strings.TrimSpace(query[strings.Index(query, "ad_group_criterion.criterion_id = ")+len("ad_group_criterion.criterion_id = "):])
+			if i := strings.IndexAny(want, " \n"); i >= 0 {
+				want = want[:i]
+			}
+			criterionID := stringifyAny(item["criterionId"])
+			if want != criterionID {
+				continue
+			}
+		}
+		if strings.Contains(query, "ad_group.id = ") {
+			want := strings.TrimSpace(query[strings.Index(query, "ad_group.id = ")+len("ad_group.id = "):])
+			if i := strings.IndexAny(want, " \n"); i >= 0 {
+				want = want[:i]
+			}
+			parts := strings.Split(id, "~")
+			if len(parts) != 2 || parts[0] != want {
+				continue
+			}
+		}
+		out = append(out, map[string]any{"adGroupCriterion": cloneAnyMap(item)})
 	}
 	return out
 }

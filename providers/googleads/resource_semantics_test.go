@@ -65,6 +65,15 @@ func TestCustomerConversionGoalMissingResourceUsesAdoptSemantics(t *testing.T) {
 	if mode != provider.MissingResourceCreate {
 		t.Fatalf("ad-group mode = %q, want %q", mode, provider.MissingResourceCreate)
 	}
+
+	keyword := semanticResource(t, "googleads.keyword.brand_exact", resource.Attributes{})
+	mode, err = p.PlanMissingResource(keyword)
+	if err != nil {
+		t.Fatalf("PlanMissingResource keyword: %v", err)
+	}
+	if mode != provider.MissingResourceCreate {
+		t.Fatalf("keyword mode = %q, want %q", mode, provider.MissingResourceCreate)
+	}
 }
 
 func TestCustomerConversionGoalReferenceCategoryMustMatch(t *testing.T) {
@@ -163,6 +172,68 @@ func TestCampaignConversionGoalReferenceCategoryMatch(t *testing.T) {
 	})
 
 	if err := p.ValidateResourceSet(context.Background(), []resource.Resource{goal, action}); err != nil {
+		t.Fatalf("ValidateResourceSet: %v", err)
+	}
+}
+
+func TestKeywordDuplicateTextAndMatchTypeRejected(t *testing.T) {
+	p := googleads.New(googleads.Config{})
+	adGroupAddr := semanticAddress(t, "googleads.ad_group.brand")
+	first := semanticResource(t, "googleads.keyword.brand_exact", resource.Attributes{
+		googleads.AttrAdGroup:   resource.Ref{Address: adGroupAddr},
+		googleads.AttrText:      "Brand",
+		googleads.AttrMatchType: "exact",
+	})
+	second := semanticResource(t, "googleads.keyword.brand_exact_dup", resource.Attributes{
+		googleads.AttrAdGroup:   resource.Ref{Address: adGroupAddr},
+		googleads.AttrText:      "brand",
+		googleads.AttrMatchType: "EXACT",
+	})
+
+	err := p.ValidateResourceSet(context.Background(), []resource.Resource{first, second})
+	if err == nil {
+		t.Fatal("expected duplicate keyword error")
+	}
+	if !strings.Contains(err.Error(), "duplicates") || !strings.Contains(err.Error(), "brand") || !strings.Contains(err.Error(), "EXACT") {
+		t.Fatalf("error = %q, want duplicate keyword diagnostic", err)
+	}
+}
+
+func TestKeywordSameTextDifferentMatchTypeAllowed(t *testing.T) {
+	p := googleads.New(googleads.Config{})
+	adGroupAddr := semanticAddress(t, "googleads.ad_group.brand")
+	exact := semanticResource(t, "googleads.keyword.brand_exact", resource.Attributes{
+		googleads.AttrAdGroup:   resource.Ref{Address: adGroupAddr},
+		googleads.AttrText:      "brand",
+		googleads.AttrMatchType: "EXACT",
+	})
+	phrase := semanticResource(t, "googleads.keyword.brand_phrase", resource.Attributes{
+		googleads.AttrAdGroup:   resource.Ref{Address: adGroupAddr},
+		googleads.AttrText:      "brand",
+		googleads.AttrMatchType: "PHRASE",
+	})
+
+	if err := p.ValidateResourceSet(context.Background(), []resource.Resource{exact, phrase}); err != nil {
+		t.Fatalf("ValidateResourceSet: %v", err)
+	}
+}
+
+func TestKeywordSameTextDifferentAdGroupAllowed(t *testing.T) {
+	p := googleads.New(googleads.Config{})
+	brand := semanticAddress(t, "googleads.ad_group.brand")
+	generic := semanticAddress(t, "googleads.ad_group.generic")
+	first := semanticResource(t, "googleads.keyword.brand_exact", resource.Attributes{
+		googleads.AttrAdGroup:   resource.Ref{Address: brand},
+		googleads.AttrText:      "brand",
+		googleads.AttrMatchType: "EXACT",
+	})
+	second := semanticResource(t, "googleads.keyword.generic_exact", resource.Attributes{
+		googleads.AttrAdGroup:   resource.Ref{Address: generic},
+		googleads.AttrText:      "brand",
+		googleads.AttrMatchType: "EXACT",
+	})
+
+	if err := p.ValidateResourceSet(context.Background(), []resource.Resource{first, second}); err != nil {
 		t.Fatalf("ValidateResourceSet: %v", err)
 	}
 }

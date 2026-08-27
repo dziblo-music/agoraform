@@ -171,6 +171,27 @@ Shopping, Dynamic Search Ads, and other non-`SEARCH_STANDARD` ad groups
 fail with guidance instead of emitting a lossy Search ad-group manifest.
 Generated YAML uses `cpcBid` in account-currency units, not micros.
 
+## Google Ads Search keywords
+
+Import a Search keyword criterion by its `adGroupId~criterionId`
+identity, or by the Google Ads resource name
+`customers/{customerId}/adGroupCriteria/{adGroupId}~{criterionId}`.
+Agoraform stores `adGroupId~criterionId` in local state as `remoteId`.
+Do not copy it into YAML.
+
+Import the ad group first so Agoraform can reconstruct `adGroup` as a
+logical `$ref`:
+
+```bash
+agoraform import googleads.ad_group.brand 555666777
+agoraform import googleads.keyword.brand_exact 555666777~888999000
+```
+
+Non-keyword criteria fail with guidance instead of emitting a lossy
+keyword manifest. Generated YAML uses `cpcBid` in account-currency units,
+not micros. Keyword text, match type, negative, and ad group are
+immutable after the criterion exists.
+
 ## Google Ads campaign conversion goals
 
 Import a website campaign conversion goal by its
