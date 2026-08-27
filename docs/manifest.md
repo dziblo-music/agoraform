@@ -314,8 +314,53 @@ default to `PAUSED`. Ad groups must reference a `googleads.campaign`.
     cpcBid: 1.5
 ```
 
-Unsupported types fail validation before mutation. Keywords, targeting,
-and ads are out of scope. See the
+Unsupported types fail validation before mutation. Targeting and ads
+remain separate resources. See the
+[Google Ads provider reference](../providers/googleads/README.md).
+
+### `googleads.keyword`
+
+Search ad-group keyword criteria, including negative keywords. Keywords
+must reference a `googleads.ad_group`. Match types are `EXACT`,
+`PHRASE`, and `BROAD`. Keyword text is normalized to lowercase without
+changing user intent. Text, match type, negative, and ad group are
+immutable after create.
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `adGroup` | yes | `$ref` to a `googleads.ad_group`. |
+| `text` | yes | Keyword text without match-type punctuation. |
+| `matchType` | yes | `EXACT`, `PHRASE`, or `BROAD`. |
+| `negative` | no | `true` for a negative keyword. Defaults to `false`. |
+| `status` | no | Positive keywords default to `PAUSED` and may use `PAUSED` or `ENABLED`. Negative keywords default to `ENABLED`; their status is immutable after creation. |
+| `cpcBid` | no | Optional max CPC bid override in account-currency units. Not allowed on negative keywords. |
+
+```yaml
+- address: googleads.keyword.brand_exact
+  attributes:
+    adGroup:
+      $ref: googleads.ad_group.brand
+    text: brand
+    matchType: EXACT
+    status: PAUSED
+    cpcBid: 1.5
+- address: googleads.keyword.competitor_neg
+  attributes:
+    adGroup:
+      $ref: googleads.ad_group.brand
+    text: competitor
+    matchType: PHRASE
+    negative: true
+```
+
+New negative keywords are created `ENABLED` when `status` is omitted. Creating
+a new negative keyword as `PAUSED` is rejected because Google Ads does not
+allow negative ad-group criteria to be updated later. For an existing negative
+keyword, a requested status change fails during planning before any mutation.
+Positive keyword status remains mutable.
+
+Campaign-level negative keywords, Keyword Planner, and audience or DSA
+criteria are out of scope. See the
 [Google Ads provider reference](../providers/googleads/README.md).
 
 ### `googleads.campaign_conversion_goal`

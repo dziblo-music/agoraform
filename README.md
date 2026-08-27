@@ -309,6 +309,7 @@ agoraform import googleads.customer_conversion_goal.signup SIGNUP~WEBSITE
 agoraform import googleads.campaign_budget.brand 123456789
 agoraform import googleads.campaign.brand 987654321
 agoraform import googleads.ad_group.brand 555666777
+agoraform import googleads.keyword.brand_exact 555666777~888999000
 agoraform import googleads.campaign_conversion_goal.trial_signup 987654321~SIGNUP~WEBSITE
 ```
 
@@ -319,12 +320,13 @@ should produce no changes.
 
 Google Ads import accepts supported website conversion actions, supported
 `WEBSITE` customer conversion goals, daily Search campaign budgets, Search
-campaigns, Search ad groups, and campaign conversion goals. Import a
-campaign budget before the campaign, and the campaign before an ad group
-or campaign conversion goal, so Agoraform can reconstruct logical `$ref`s.
-Unsupported conversion types, origins, channel types, ad group types, and
-budget periods fail with actionable diagnostics instead of producing a
-lossy manifest.
+campaigns, Search ad groups, Search keywords, and campaign conversion
+goals. Import a campaign budget before the campaign, the campaign before
+an ad group or campaign conversion goal, and the ad group before a
+keyword, so Agoraform can reconstruct logical `$ref`s.
+Unsupported conversion types, origins, channel types, ad group types,
+criterion types, and budget periods fail with actionable diagnostics
+instead of producing a lossy manifest.
 
 ## Declarative Matomo Tag Manager publication
 
@@ -391,9 +393,10 @@ agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
   Ads is not implemented.
 - Google Ads support includes website conversion measurement, daily Search
   `googleads.campaign_budget` resources, Search `googleads.campaign`
-  resources, Search `googleads.ad_group` resources, and campaign
-  `googleads.campaign_conversion_goal` biddability. Keywords, targeting,
-  ads, offline/call/app conversion workflows, and conversion-event uploads
+  resources, Search `googleads.ad_group` resources, Search
+  `googleads.keyword` criteria, and campaign
+  `googleads.campaign_conversion_goal` biddability. Targeting, ads,
+  offline/call/app conversion workflows, and conversion-event uploads
   are not implemented.
 - Agoraform v0.3.0 Google Ads authentication uses developer-token + single-user
   OAuth refresh-token credentials. Service-account, multi-user, and interactive

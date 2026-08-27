@@ -1318,6 +1318,8 @@ func mutateCollection(path string) string {
 		return "campaigns"
 	case strings.Contains(path, "/adGroups:mutate"):
 		return "adGroups"
+	case strings.Contains(path, "/adGroupCriteria:mutate"):
+		return "adGroupCriteria"
 	default:
 		return "unknown"
 	}

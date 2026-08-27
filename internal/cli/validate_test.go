@@ -139,7 +139,7 @@ resources:
 
 const googleAdsUnknownResourceManifest = `apiVersion: agoraform.io/v1alpha1
 resources:
-  - address: googleads.keyword.brand
+  - address: googleads.ad.brand
     attributes:
       text: brand
 `
@@ -317,6 +317,87 @@ resources:
       campaign:
         $ref: googleads.campaign.brand
       type: SHOPPING_PRODUCT_ADS
+`
+
+const googleAdsKeywordManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.campaign_budget.brand
+    attributes:
+      name: Brand daily budget
+      amount: 50
+      explicitlyShared: false
+  - address: googleads.campaign.brand
+    attributes:
+      name: Brand
+      budget:
+        $ref: googleads.campaign_budget.brand
+      bidding:
+        strategy: MANUAL_CPC
+  - address: googleads.ad_group.brand
+    attributes:
+      name: Brand
+      campaign:
+        $ref: googleads.campaign.brand
+  - address: googleads.keyword.brand_exact
+    attributes:
+      adGroup:
+        $ref: googleads.ad_group.brand
+      text: brand
+      matchType: EXACT
+      status: PAUSED
+      cpcBid: 1.5
+`
+
+const googleAdsKeywordIncompleteManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.campaign_budget.brand
+    attributes:
+      name: Brand daily budget
+      amount: 50
+      explicitlyShared: false
+  - address: googleads.campaign.brand
+    attributes:
+      name: Brand
+      budget:
+        $ref: googleads.campaign_budget.brand
+      bidding:
+        strategy: MANUAL_CPC
+  - address: googleads.ad_group.brand
+    attributes:
+      name: Brand
+      campaign:
+        $ref: googleads.campaign.brand
+  - address: googleads.keyword.brand_exact
+    attributes:
+      text: brand
+      matchType: EXACT
+`
+
+const googleAdsKeywordInvalidMatchManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.campaign_budget.brand
+    attributes:
+      name: Brand daily budget
+      amount: 50
+      explicitlyShared: false
+  - address: googleads.campaign.brand
+    attributes:
+      name: Brand
+      budget:
+        $ref: googleads.campaign_budget.brand
+      bidding:
+        strategy: MANUAL_CPC
+  - address: googleads.ad_group.brand
+    attributes:
+      name: Brand
+      campaign:
+        $ref: googleads.campaign.brand
+  - address: googleads.keyword.brand_exact
+    attributes:
+      adGroup:
+        $ref: googleads.ad_group.brand
+      text: brand
+      matchType: BROAD_MATCH_MODIFIED
 `
 
 func TestValidateSuccess(t *testing.T) {
@@ -718,6 +799,84 @@ func TestValidateGoogleAdsAdGroupRejectsShoppingType(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "SEARCH_STANDARD") {
 		t.Fatalf("stderr = %q, want SEARCH_STANDARD guidance", stderr.String())
+	}
+}
+
+func TestValidateGoogleAdsKeywordMissingCredentials(t *testing.T) {
+	t.Parallel()
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsKeywordManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWith(streams, []string{"validate", "-f", path})
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	errOut := stderr.String()
+	if strings.Contains(errOut, "unknown resource type") {
+		t.Fatalf("stderr = %q, googleads.keyword should be registered", errOut)
+	}
+	if !strings.Contains(errOut, googleads.EnvDeveloperToken) && !strings.Contains(errOut, "required") {
+		t.Fatalf("stderr = %q, want missing credential error", errOut)
+	}
+}
+
+func TestValidateGoogleAdsKeywordWithProvider(t *testing.T) {
+	t.Parallel()
+
+	p, _ := googleAdsTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsKeywordManifest)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitOK, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "4 resources") {
+		t.Fatalf("stdout = %q, want 4 resources", stdout.String())
+	}
+}
+
+func TestValidateGoogleAdsKeywordMissingAdGroup(t *testing.T) {
+	t.Parallel()
+
+	p, _ := googleAdsTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsKeywordIncompleteManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "adGroup") {
+		t.Fatalf("stderr = %q, want adGroup validation error", stderr.String())
+	}
+}
+
+func TestValidateGoogleAdsKeywordRejectsInvalidMatchType(t *testing.T) {
+	t.Parallel()
+
+	p, _ := googleAdsTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsKeywordInvalidMatchManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "matchType") {
+		t.Fatalf("stderr = %q, want matchType validation error", stderr.String())
 	}
 }
 

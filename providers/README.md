@@ -60,7 +60,8 @@ credentials from `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`,
 manages website `googleads.conversion_action` resources, customer
 `googleads.customer_conversion_goal` biddability, daily Search
 `googleads.campaign_budget` resources, Search `googleads.campaign`
-resources, Search `googleads.ad_group` resources, and campaign
+resources, Search `googleads.ad_group` resources, Search
+`googleads.keyword` criteria, and campaign
 `googleads.campaign_conversion_goal` biddability,
 and uses an authenticated REST client for query and mutate
 operations.
