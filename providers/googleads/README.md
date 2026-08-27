@@ -484,17 +484,18 @@ embed ads on the ad group.
 | Attribute | Required | Description |
 | --- | --- | --- |
 | `adGroup` | yes | `$ref` to a `googleads.ad_group`. Resolved to the provider-native ad group at apply time. Immutable after create. |
-| `finalUrls` | yes | One or more absolute `http` or `https` landing-page URLs. |
-| `headlines` | yes | 3–15 headlines. Each is a string or `{text, pin}`. Text is at most 30 characters. Optional `pin` is `HEADLINE_1`, `HEADLINE_2`, or `HEADLINE_3`, and each pin may be used at most once. |
-| `descriptions` | yes | 2–4 descriptions. Each is a string or `{text, pin}`. Text is at most 90 characters. Optional `pin` is `DESCRIPTION_1` or `DESCRIPTION_2`. |
+| `finalUrls` | yes | One or more absolute `http` or `https` landing-page URLs. Each URL is limited to 2,084 bytes. |
+| `headlines` | yes | 3–15 headlines. Each is a string or `{text, pin}`. Text is at most 30 characters. Optional `pin` is `HEADLINE_1`, `HEADLINE_2`, or `HEADLINE_3`. Multiple headlines may share the same pin position. |
+| `descriptions` | yes | 2–4 descriptions. Each is a string or `{text, pin}`. Text is at most 90 characters. Optional `pin` is `DESCRIPTION_1` or `DESCRIPTION_2`. Multiple descriptions may share the same pin position. |
 | `path1` | no | Optional display-path segment after the domain. At most 15 characters and must not contain `/`. |
 | `path2` | no | Optional second display-path segment. Requires `path1`. |
 | `status` | no | `PAUSED` (default) or `ENABLED`. Mutable through the ad-group-ad relationship. |
 
-Google Ads requires the headline, description, and final URL counts above
+Google Ads requires the headline, description, and final URL constraints above
 before any mutation. Duplicate headline or description text in the same ad
-is rejected. Duplicate identical RSAs in the same ad group fail
-resource-set validation.
+is rejected. Multiple distinct assets may be pinned to the same serving
+position. Duplicate identical RSAs in the same ad group fail resource-set
+validation.
 
 New RSAs default to `PAUSED`. Status updates mutate the ad-group-ad
 relationship in place. Creative fields (headlines, descriptions, final
@@ -504,9 +505,11 @@ replacements instead of hiding them behind asset IDs. Provider-native
 ad IDs, resource names, asset performance labels, and policy metadata
 remain computed.
 
-Omitted `path1` / `path2` and omitted `pin` values are not forced onto
-the remote resource. Equivalent live copy, including extra asset
-metadata, produces no plan diff.
+Omitted `path1` / `path2` values are not forced onto the remote resource.
+For headline and description assets, omitting `pin` declares the asset
+unpinned; removing a previously configured pin is therefore visible in plan
+and is applied as a creative update. Equivalent live copy, including extra
+asset metadata, produces no plan diff.
 
 Import accepts `adGroupId~adId` or the resource name
 `customers/{customerId}/adGroupAds/{adGroupId}~{adId}` and stores
@@ -587,8 +590,8 @@ agoraform import googleads.campaign_location.united_states 987654321~888999000
 ```
 
 Non-location criteria fail import with guidance instead of generating a
-lossy location configuration. Import the campaign first, or apply it,
-then re-import the location.
+lossy location configuration. Import the campaign first, or apply it, then
+re-import the location.
 
 ### `googleads.campaign_language`
 
