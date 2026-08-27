@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/resource"
@@ -50,6 +51,8 @@ const (
 	biddingStrategyTargetROAS      = "TARGET_ROAS"
 	biddingStrategyMaximizeConvVal = "MAXIMIZE_CONVERSION_VALUE"
 	apiBiddingTargetSpend          = "TARGET_SPEND"
+	targetROASMin                  = 0.01
+	targetROASMax                  = 1000.0
 
 	biddingKeyStrategy      = "strategy"
 	biddingKeyEnhancedCPC   = "enhancedCpc"
@@ -206,15 +209,11 @@ func (p *Provider) validateCampaign(res resource.Resource) error {
 		return fmt.Errorf("resource %s: attribute %q must be on or after %s", res.Address, AttrEndDate, AttrStartDate)
 	}
 
-	if s, set, err := optionalString(res, AttrTrackingUrlTemplate); err != nil {
+	if _, _, err := optionalString(res, AttrTrackingUrlTemplate); err != nil {
 		return err
-	} else if set && strings.TrimSpace(s) == "" {
-		return fmt.Errorf("resource %s: attribute %q must be a non-empty string", res.Address, AttrTrackingUrlTemplate)
 	}
-	if s, set, err := optionalString(res, AttrFinalUrlSuffix); err != nil {
+	if _, _, err := optionalString(res, AttrFinalUrlSuffix); err != nil {
 		return err
-	} else if set && strings.TrimSpace(s) == "" {
-		return fmt.Errorf("resource %s: attribute %q must be a non-empty string", res.Address, AttrFinalUrlSuffix)
 	}
 
 	if _, _, err := boundCampaignIdentity(res); err != nil {
@@ -359,8 +358,8 @@ func (p *Provider) updateCampaign(ctx context.Context, desired resource.Resource
 		}
 		if value, ok := nestedMutateValue(full, field); ok {
 			setNestedMutateValue(body, field, value)
-			mask = append(mask, field)
 		}
+		mask = append(mask, field)
 	}
 	sort.Strings(mask)
 	if len(mask) == 0 {
@@ -709,9 +708,17 @@ func (p *Provider) remoteCampaign(addr resource.Address, item campaignData, desi
 	}
 	if item.TrackingURLTemplate != "" {
 		attrs[AttrTrackingUrlTemplate] = item.TrackingURLTemplate
+	} else if desired != nil {
+		if _, ok := desired[AttrTrackingUrlTemplate]; ok {
+			attrs[AttrTrackingUrlTemplate] = ""
+		}
 	}
 	if item.FinalURLSuffix != "" {
 		attrs[AttrFinalUrlSuffix] = item.FinalURLSuffix
+	} else if desired != nil {
+		if _, ok := desired[AttrFinalUrlSuffix]; ok {
+			attrs[AttrFinalUrlSuffix] = ""
+		}
 	}
 
 	computed := resource.Attributes{}
@@ -913,36 +920,29 @@ func applyBiddingMutate(body map[string]any, mask *[]string, bidding map[string]
 		manual := map[string]any{}
 		if v, ok := bidding[biddingKeyEnhancedCPC]; ok {
 			manual["enhancedCpcEnabled"] = v
-			*mask = append(*mask, "manualCpc.enhancedCpcEnabled")
 		} else {
 			manual["enhancedCpcEnabled"] = false
-			*mask = append(*mask, "manualCpc")
 		}
+		*mask = append(*mask, "manualCpc.enhancedCpcEnabled")
 		body["manualCpc"] = manual
 	case biddingStrategyMaximizeClicks:
 		spend := map[string]any{}
 		if v, ok := bidding[biddingKeyCPCBidCeiling]; ok {
-			if micros, err := amountToMicros(v); err == nil {
+			if micros, err := optionalBiddingAmountToMicros(v); err == nil {
 				spend["cpcBidCeilingMicros"] = strconv.FormatInt(micros, 10)
-				*mask = append(*mask, "targetSpend.cpcBidCeilingMicros")
 			}
 		}
 		body["targetSpend"] = spend
-		if len(spend) == 0 {
-			*mask = append(*mask, "targetSpend")
-		}
+		*mask = append(*mask, "targetSpend.cpcBidCeilingMicros")
 	case biddingStrategyMaximizeConv:
 		max := map[string]any{}
 		if v, ok := bidding[biddingKeyTargetCPA]; ok {
-			if micros, err := amountToMicros(v); err == nil {
+			if micros, err := optionalBiddingAmountToMicros(v); err == nil {
 				max["targetCpaMicros"] = strconv.FormatInt(micros, 10)
-				*mask = append(*mask, "maximizeConversions.targetCpaMicros")
 			}
 		}
 		body["maximizeConversions"] = max
-		if len(max) == 0 {
-			*mask = append(*mask, "maximizeConversions")
-		}
+		*mask = append(*mask, "maximizeConversions.targetCpaMicros")
 	case biddingStrategyTargetCPA:
 		if v, ok := bidding[biddingKeyTargetCPA]; ok {
 			if micros, err := amountToMicros(v); err == nil {
@@ -962,13 +962,10 @@ func applyBiddingMutate(body map[string]any, mask *[]string, bidding map[string]
 		if v, ok := bidding[biddingKeyTargetROAS]; ok {
 			if n, err := coerceFloat(v); err == nil {
 				max["targetRoas"] = n
-				*mask = append(*mask, "maximizeConversionValue.targetRoas")
 			}
 		}
 		body["maximizeConversionValue"] = max
-		if len(max) == 0 {
-			*mask = append(*mask, "maximizeConversionValue")
-		}
+		*mask = append(*mask, "maximizeConversionValue.targetRoas")
 	}
 }
 
@@ -1094,7 +1091,7 @@ func comparableBiddingAttr(v any) (map[string]any, error) {
 		}
 	case biddingStrategyMaximizeClicks:
 		if _, ok := raw[biddingKeyCPCBidCeiling]; ok {
-			micros, err := amountToMicros(raw[biddingKeyCPCBidCeiling])
+			micros, err := optionalBiddingAmountToMicros(raw[biddingKeyCPCBidCeiling])
 			if err != nil {
 				return nil, fmt.Errorf("%s %w", biddingKeyCPCBidCeiling, err)
 			}
@@ -1102,7 +1099,7 @@ func comparableBiddingAttr(v any) (map[string]any, error) {
 		}
 	case biddingStrategyMaximizeConv:
 		if _, ok := raw[biddingKeyTargetCPA]; ok {
-			micros, err := amountToMicros(raw[biddingKeyTargetCPA])
+			micros, err := optionalBiddingAmountToMicros(raw[biddingKeyTargetCPA])
 			if err != nil {
 				return nil, fmt.Errorf("%s %w", biddingKeyTargetCPA, err)
 			}
@@ -1122,15 +1119,15 @@ func comparableBiddingAttr(v any) (map[string]any, error) {
 			return nil, fmt.Errorf("%s is required when strategy is %s", biddingKeyTargetROAS, biddingStrategyTargetROAS)
 		}
 		n, err := coerceFloat(raw[biddingKeyTargetROAS])
-		if err != nil || n <= 0 {
-			return nil, fmt.Errorf("%s must be a positive number", biddingKeyTargetROAS)
+		if err != nil || n < targetROASMin || n > targetROASMax {
+			return nil, fmt.Errorf("%s must be between %.2f and %.1f inclusive", biddingKeyTargetROAS, targetROASMin, targetROASMax)
 		}
 		out[biddingKeyTargetROAS] = n
 	case biddingStrategyMaximizeConvVal:
 		if _, ok := raw[biddingKeyTargetROAS]; ok {
 			n, err := coerceFloat(raw[biddingKeyTargetROAS])
-			if err != nil || n <= 0 {
-				return nil, fmt.Errorf("%s must be a positive number", biddingKeyTargetROAS)
+			if err != nil || (n != 0 && (n < targetROASMin || n > targetROASMax)) {
+				return nil, fmt.Errorf("%s must be 0 to clear or between %.2f and %.1f inclusive", biddingKeyTargetROAS, targetROASMin, targetROASMax)
 			}
 			out[biddingKeyTargetROAS] = n
 		}
@@ -1155,6 +1152,26 @@ func comparableBiddingAttr(v any) (map[string]any, error) {
 	return out, nil
 }
 
+func optionalBiddingAmountToMicros(v any) (int64, error) {
+	if n, err := coerceFloat(v); err == nil && n == 0 {
+		return 0, nil
+	}
+	return amountToMicros(v)
+}
+
+func desiredBiddingClear(desired any, key string) bool {
+	raw, err := asStringMap(desired)
+	if err != nil {
+		return false
+	}
+	v, ok := raw[key]
+	if !ok {
+		return false
+	}
+	n, err := coerceFloat(v)
+	return err == nil && n == 0
+}
+
 func liveBiddingAttr(item campaignData, desired any) any {
 	strategy := comparableBiddingStrategy(item.BiddingStrategyType)
 	if strategy == "" {
@@ -1172,10 +1189,14 @@ func liveBiddingAttr(item campaignData, desired any) any {
 	case biddingStrategyMaximizeClicks:
 		if item.CPCBidCeilingMicros != nil {
 			out[biddingKeyCPCBidCeiling] = amountFromMicros(*item.CPCBidCeilingMicros)
+		} else if desiredBiddingClear(desired, biddingKeyCPCBidCeiling) {
+			out[biddingKeyCPCBidCeiling] = amountFromMicros(0)
 		}
 	case biddingStrategyMaximizeConv:
 		if item.MaximizeConversionsTargetCPA != nil {
 			out[biddingKeyTargetCPA] = amountFromMicros(*item.MaximizeConversionsTargetCPA)
+		} else if desiredBiddingClear(desired, biddingKeyTargetCPA) {
+			out[biddingKeyTargetCPA] = amountFromMicros(0)
 		}
 	case biddingStrategyTargetCPA:
 		if item.TargetCPAMicros != nil {
@@ -1188,6 +1209,8 @@ func liveBiddingAttr(item campaignData, desired any) any {
 	case biddingStrategyMaximizeConvVal:
 		if item.MaximizeConversionValueROAS != nil {
 			out[biddingKeyTargetROAS] = *item.MaximizeConversionValueROAS
+		} else if desiredBiddingClear(desired, biddingKeyTargetROAS) {
+			out[biddingKeyTargetROAS] = float64(0)
 		}
 	}
 	return out
@@ -1323,6 +1346,9 @@ func coerceCampaignDate(v any) (string, error) {
 	if date := campaignDateFromDateTime(s); date != "" {
 		if !datePattern.MatchString(date) {
 			return "", fmt.Errorf("must be a date YYYY-MM-DD")
+		}
+		if _, err := time.Parse("2006-01-02", date); err != nil {
+			return "", fmt.Errorf("must be a valid calendar date YYYY-MM-DD")
 		}
 		return date, nil
 	}
