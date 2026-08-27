@@ -328,7 +328,7 @@ ad group.
 | `campaign` | yes | `$ref` to a `googleads.campaign`. Resolved to the provider-native campaign at apply time. Immutable after create. |
 | `status` | no | `PAUSED` (default for new ad groups) or `ENABLED`. Omitted status is treated as `PAUSED`. |
 | `type` | no | Must be `SEARCH_STANDARD` when set. The provider always creates Search standard ad groups. |
-| `cpcBid` | no | Max CPC bid in account-currency units, for example `1.5`. Converted to Google Ads `cpc_bid_micros` (`1` unit = `1_000_000` micros) with at most six decimal places. Omitted bids are not forced onto the remote resource. |
+| `cpcBid` | no | Max CPC bid in account-currency units, for example `1.5`. Converted to Google Ads `cpc_bid_micros` (`1` unit = `1_000_000` micros) with at most six decimal places. Effective when the campaign uses `MANUAL_CPC`; automated bidding strategies may ignore the ad-group bid. Omitted bids are not forced onto the remote resource. |
 
 New ad groups are created `PAUSED` unless configuration explicitly sets
 `ENABLED`. Creates always send `type: SEARCH_STANDARD`.
