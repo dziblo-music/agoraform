@@ -4,9 +4,9 @@ Agoraform versions follow [Semantic Versioning 2.0.0](https://semver.org/spec/v2
 
 | Place | Form | Example |
 | --- | --- | --- |
-| SemVer identifier | `MAJOR.MINOR.PATCH` with optional pre-release/build metadata | `0.2.0`, `0.2.0-rc.1` |
-| Git tag | `v` + SemVer identifier (Go module convention) | `v0.2.0` |
-| `agoraform --version` | SemVer identifier, no `v` prefix | `0.2.0` |
+| SemVer identifier | `MAJOR.MINOR.PATCH` with optional pre-release/build metadata | `0.3.0`, `0.3.0-rc.1` |
+| Git tag | `v` + SemVer identifier (Go module convention) | `v0.3.0` |
+| `agoraform --version` | SemVer identifier, no `v` prefix | `0.3.0` |
 | Untagged local/CI builds | pre-release of `0.0.0` | `0.0.0-dev` |
 
 Until 1.0.0, a MINOR bump in the `0.x` series may include breaking CLI or
@@ -28,28 +28,32 @@ The release process pins the build and release toolchain:
 Updating one of these pins is a reviewed repository change, not an implicit
 part of cutting a release.
 
-## What v0.2.0 ships
+## What v0.3.0 ships
 
-v0.2.0 keeps the provider-neutral commands `validate`, `plan`, `apply`, and
-`import` and expands the Matomo provider with:
+v0.3.0 keeps the provider-neutral commands `validate`, `plan`, `apply`, and
+`import`, retains the v0.2 Matomo functionality, and adds Google Ads conversion
+measurement:
 
-- `matomo.goal` analytics goals;
-- `matomo.variable` Data Layer variables;
-- `matomo.trigger` Custom Event triggers;
-- `matomo.tag` Matomo Analytics event tags;
-- logical `$ref` dependencies with prerequisite-first planning and apply;
-- import for the supported Tag Manager resources;
-- declarative Tag Manager publication through `providers.matomo.publish` and
-  `providers.matomo.environment`.
+- authenticated `googleads` provider access using developer-token + OAuth
+  single-user credentials supplied at runtime;
+- `googleads.conversion_action` for supported website (`WEBPAGE`) conversion
+  actions such as `SIGNUP` / Trial Started;
+- `googleads.customer_conversion_goal` for customer-level website goal
+  `biddable` reconciliation;
+- deterministic import/adoption of supported existing conversion actions and
+  customer conversion-goal settings without mutation;
+- computed provider-native identity and conversion metadata kept out of normal
+  manifest configuration;
+- the complete `examples/googleads-conversion/` quickstart.
 
-There is no provider-specific `agoraform publish` command. When publication is
-enabled, `plan` exposes the provider action and `apply` performs publication
-only after draft resource changes succeed and a final comparison confirms that
-publication is still necessary.
+v0.3.0 does **not** manage campaigns, budgets, ad groups, keywords, targeting,
+ads, call/offline/app conversions, conversion-event uploads, website tags, or
+application-side event emission. Service-account and interactive OAuth flows are
+also not implemented by Agoraform v0.3.0.
 
 Release archives contain the binary, license/notice files, README, changelog,
-the v0.1 goal example, and the complete v0.2 conversion example under
-`examples/matomo-conversion/`.
+the v0.1 goal example, the v0.2 Matomo conversion example, and the complete
+v0.3 Google Ads conversion example.
 
 ## Platform matrix
 
@@ -60,12 +64,12 @@ the v0.1 goal example, and the complete v0.2 conversion example under
 Windows arm64 is omitted. Archives are `.tar.gz` except Windows (`.zip`). Each
 release includes `checksums.txt`.
 
-## Before tagging v0.2.0
+## Before tagging v0.3.0
 
 Start from an up-to-date `main` after the release-preparation pull request is
 merged and required CI is green.
 
-1. Confirm [CHANGELOG.md](../CHANGELOG.md) contains the dated `0.2.0` release
+1. Confirm [CHANGELOG.md](../CHANGELOG.md) contains the dated `0.3.0` release
    notes and no release-blocking work remains open.
 2. Update local `main` and confirm the intended tag commit is clean and on
    `main`:
@@ -90,30 +94,30 @@ merged and required CI is green.
 
    `gofmt -l .` must print nothing. An untagged local build is expected to
    print `0.0.0-dev`; tag-version injection is verified by the release workflow.
-4. With a non-production Matomo site/container configured, validate the v0.2
-   example before creating the immutable tag:
+4. Configure a **non-production Google Ads account** and the runtime credentials
+   documented in [Google Ads setup](google-ads-setup.md). Use a Google Ads test
+   account when practical. Do not use a production advertiser for release
+   mutation verification.
+5. Validate and plan the shipped v0.3 example before creating the immutable tag:
 
    ```bash
-   export MATOMO_URL=https://matomo.example.com
-   export MATOMO_TOKEN_AUTH=replace-with-test-token
-   export MATOMO_SITE_ID=1
-   export MATOMO_CONTAINER_ID=replace-with-test-container
-
-   cp examples/matomo-conversion/agoraform.yaml ./agoraform.yaml
+   cp examples/googleads-conversion/agoraform.yaml ./agoraform.yaml
    agoraform validate
    agoraform plan
    ```
 
-   The plan must succeed and show the expected variable, trigger, tag, and
-   publication action when those changes are required.
+   `validate` must authenticate successfully without printing configured
+   secrets. `plan` must succeed without mutation and show the expected
+   conversion-action / conversion-goal changes when the account is not already
+   equivalent.
 
-## Tagging v0.2.0
+## Tagging v0.3.0
 
 Create an annotated tag on the verified `main` commit and push only the tag:
 
 ```bash
-git tag -a v0.2.0 -m "Agoraform 0.2.0"
-git push origin v0.2.0
+git tag -a v0.3.0 -m "Agoraform 0.3.0"
+git push origin v0.3.0
 ```
 
 The release workflow listens for `v*`, validates strict SemVer 2.0 syntax,
@@ -127,9 +131,10 @@ until the manual verification below succeeds.
 ## Manual verification of the draft release
 
 Use a clean machine or environment that does not rely on a binary from the git
-worktree.
+worktree. Perform remote mutation checks only against the designated
+non-production Google Ads account.
 
-### 1. Verify the artifact
+### 1. Verify the artifact and version
 
 1. Download the archive for your OS/architecture plus `checksums.txt` from the
    draft GitHub release.
@@ -142,7 +147,7 @@ worktree.
    agoraform --version
    ```
 
-   It must print exactly `0.2.0`, not `v0.2.0` and not `0.0.0-dev`.
+   It must print exactly `0.3.0`, not `v0.3.0` and not `0.0.0-dev`.
 5. Confirm the archive contains:
 
    ```text
@@ -150,75 +155,112 @@ worktree.
    examples/README.md
    examples/matomo-conversion/agoraform.yaml
    examples/matomo-conversion/README.md
+   examples/googleads-conversion/agoraform.yaml
+   examples/googleads-conversion/README.md
    ```
 
-### 2. Verify draft-only Tag Manager apply
+### 2. Verify authentication and non-mutating planning
 
-Use a non-production Matomo site/container and credentials allowed to manage
-Tag Manager resources. Start from a clean working directory/state file.
+Start from a clean working directory with no existing `agoraform.state.json`.
+Copy the shipped example and configure the non-production account:
 
-Copy the v0.2 example, then temporarily set:
-
-```yaml
-providers:
-  matomo:
-    publish: false
-    environment: live
-```
-
-Run:
-
-```text
-validate -> plan -> apply -> plan
-```
-
-Verify in Matomo that the Data Layer variable, Custom Event trigger, and Matomo
-Analytics event tag are created/updated in the draft in dependency order and
-that no new container version is published.
-
-### 3. Verify declarative publication
-
-Set `providers.matomo.publish: true`, keep the intended test environment, then
-run:
-
-```text
-plan -> apply -> plan
+```bash
+cp examples/googleads-conversion/agoraform.yaml ./agoraform.yaml
+agoraform validate
+agoraform plan
 ```
 
 Verify all of the following:
 
-- the pre-apply plan visibly includes the publication action when publication
-  is required;
-- draft resource mutations complete before version creation/publication;
-- a new Tag Manager container version is created and published to the target
-  environment;
-- the final plan reports `No changes.` with exit code `0` when desired and
-  remote state are unchanged;
-- a repeated unchanged `apply` does not create another container version.
+- authentication succeeds using the configured developer token and OAuth
+  credentials;
+- no developer token, client secret, refresh token, or access token appears in
+  terminal output or provider diagnostics;
+- `plan` performs no mutation;
+- the plan is deterministic when repeated against unchanged state.
 
-Use Matomo Tag Manager preview/debug mode if useful to confirm that the
-`trialStarted` event fires the managed tag.
+### 3. Verify create, goal reconciliation, and no-op
 
-### 4. Verify import without mutation
-
-Against existing supported Tag Manager resources, import dependencies before
-the tag:
+Review the plan, then run:
 
 ```bash
-agoraform import matomo.variable.user_id VARIABLE_ID
-agoraform import matomo.trigger.trial_started TRIGGER_ID
-agoraform import matomo.tag.trial_started TAG_ID
+agoraform apply
+agoraform plan
 ```
 
-Confirm the commands reconstruct usable logical configuration/state without
-mutating Matomo, then reconcile the printed attributes with the example and
-verify `agoraform plan` reports no changes.
+Verify in Google Ads that:
 
-### 5. Publish the GitHub release
+- **Trial Started** exists as a website `SIGNUP` conversion action with the
+  example's supported settings;
+- the `SIGNUP` / `WEBSITE` customer conversion goal is biddable;
+- Agoraform did not attempt to create or delete the provider-created customer
+  conversion-goal object;
+- the post-apply plan reports `No changes.` with exit code `0`.
 
-Only after the artifact, draft-only apply, publication/idempotency, zero-change
-plan, and import checks all pass should the draft GitHub release be published.
-Then close issue #19 and milestone 0.2.0.
+### 4. Verify an update and return to no-op
+
+Temporarily change one supported mutable field in the test manifest, for
+example `value: 0` to `value: 1`.
+
+Run:
+
+```bash
+agoraform plan
+agoraform apply
+agoraform plan
+```
+
+Confirm the first plan shows an update, the remote conversion action changes,
+and the final plan reports `No changes.`. Restore the example value and repeat
+`plan -> apply -> plan` so the non-production account returns to the shipped
+example state.
+
+### 5. Verify import/adoption without mutation
+
+Use an equivalent existing website conversion action in the non-production
+account. This may be one created manually in Google Ads or the action created
+above, provided the import test runs from a separate clean working directory
+with no state binding.
+
+Import the conversion action using its numeric ID or resource name:
+
+```bash
+agoraform import googleads.conversion_action.trial_started CONVERSION_ACTION_ID
+```
+
+Confirm that import:
+
+- records the remote identity locally and prints canonical configurable YAML;
+- does not mutate the Google Ads conversion action;
+- omits credentials, resource names, tag snippets, and other computed metadata
+  from normal configuration.
+
+Reconcile the printed attributes with the shipped example, then immediately
+run:
+
+```bash
+agoraform plan
+```
+
+The unchanged imported conversion action must produce no conversion-action
+change.
+
+Also verify the supported customer conversion goal when practical:
+
+```bash
+agoraform import googleads.customer_conversion_goal.signup SIGNUP~WEBSITE
+agoraform plan
+```
+
+The import must not create/delete the goal, and equivalent unchanged state must
+plan as no-op.
+
+### 6. Publish the GitHub release
+
+Only after the artifact/version, authentication/secret-safety, create, update,
+customer-goal reconciliation, zero-change planning, and import-without-mutation
+checks all pass should the draft GitHub release be published. Then close issue
+#36 and milestone 0.3.0.
 
 ## Release config checks in CI
 
@@ -234,12 +276,14 @@ goreleaser release --snapshot --clean
 ```
 
 The snapshot uses the same `.goreleaser.yaml` platform/archive matrix without
-publishing a GitHub release. This catches cross-platform build and archive
+publishing a GitHub release. The example test suite automatically parses and
+validates `examples/googleads-conversion/agoraform.yaml` against the provider
+schema. These checks catch cross-platform build, example-schema, and archive
 configuration failures before an immutable tag is created.
 
-## Out of scope for v0.2.0 distribution
+## Out of scope for v0.3.0 distribution
 
 Homebrew, Chocolatey, Scoop, OS package repositories, container images, hosted
-services, new providers, additional Tag Manager resource types, rollback,
-scheduled publication, approval workflows, and multi-container deployment
-orchestration are not part of this release.
+services, new providers, Google Ads campaign-management resources, offline/call
+/app conversion workflows, application instrumentation, rollback, scheduled
+publication, approval workflows, and remote state are not part of this release.
