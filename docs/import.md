@@ -120,6 +120,21 @@ agoraform import googleads.customer_conversion_goal.signup SIGNUP~WEBSITE
 Unsupported origins, such as app or Google-hosted goals, fail with guidance
 instead of reconstructing a website conversion-goal manifest.
 
+## Google Ads campaign budgets
+
+Import a daily Search campaign budget by its numeric campaign budget ID, or
+by the Google Ads resource name
+`customers/{customerId}/campaignBudgets/{id}`. Agoraform stores the
+numeric ID in local state as `remoteId`. Do not copy it into YAML.
+
+```bash
+agoraform import googleads.campaign_budget.brand 123456789
+```
+
+Lifetime/`CUSTOM_PERIOD` budgets and non-`STANDARD` budget types fail with
+guidance instead of emitting a lossy daily Search budget manifest.
+Generated YAML uses `amount` in account-currency units, not micros.
+
 See the [Google Ads conversion example](../examples/googleads-conversion/README.md)
 for a complete greenfield apply and adoption workflow.
 

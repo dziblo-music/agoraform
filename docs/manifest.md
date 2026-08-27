@@ -220,6 +220,39 @@ these objects automatically; Agoraform only updates `biddable`.
       $ref: googleads.conversion_action.trial_started
 ```
 
+### `googleads.campaign_budget`
+
+Daily Search campaign budgets. Amounts are declared in account-currency
+units and normalized to Google Ads micros for API calls and plan
+comparison.
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `name` | yes | Budget name. |
+| `amount` | yes | Daily budget in account-currency units. |
+| `explicitlyShared` | yes | `false` for a dedicated budget; `true` for a shared budget. |
+| `deliveryMethod` | no | `STANDARD` or `ACCELERATED`. |
+
+```yaml
+- address: googleads.campaign_budget.brand
+  attributes:
+    name: Brand daily budget
+    amount: 50
+    deliveryMethod: STANDARD
+    explicitlyShared: false
+```
+
+Search campaigns will reference the budget by logical address:
+
+```yaml
+# Forthcoming googleads.campaign resource (not implemented yet):
+#   budget:
+#     $ref: googleads.campaign_budget.brand
+```
+
+Provider-native IDs, resource names, micros, period, and type are
+computed. See the [Google Ads provider reference](../providers/googleads/README.md).
+
 ## Matomo provider desired state
 
 v0.2.0 recognizes:

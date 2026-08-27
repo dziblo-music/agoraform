@@ -116,9 +116,9 @@ GOOGLE_ADS_CUSTOMER_ID         10-digit customer ID (hyphens optional)
 GOOGLE_ADS_LOGIN_CUSTOMER_ID   optional manager-account customer ID
 ```
 
-The `googleads` provider manages supported website conversion actions and
-customer conversion-goal biddability. See the
-[Google Ads setup guide](docs/google-ads-setup.md),
+The `googleads` provider manages supported website conversion actions,
+customer conversion-goal biddability, and daily Search campaign budgets.
+See the [Google Ads setup guide](docs/google-ads-setup.md),
 [provider reference](providers/googleads/README.md), and
 [v0.3 conversion example](examples/googleads-conversion/README.md).
 
@@ -379,10 +379,10 @@ agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
 
 - v0.3.0 supports Matomo plus Google Ads website conversion measurement. Meta
   Ads is not implemented.
-- Google Ads support is limited to supported `WEBPAGE` conversion actions and
-  `WEBSITE` customer conversion-goal biddability. Search campaigns, budgets,
-  ad groups, keywords, targeting, ads, offline/call/app conversion workflows,
-  and conversion-event uploads are not implemented.
+- Google Ads support includes website conversion measurement and daily
+  Search `googleads.campaign_budget` resources. Search campaigns, ad groups,
+  keywords, targeting, ads, offline/call/app conversion workflows, and
+  conversion-event uploads are not implemented.
 - Agoraform v0.3.0 Google Ads authentication uses developer-token + single-user
   OAuth refresh-token credentials. Service-account, multi-user, and interactive
   OAuth flows are not implemented.

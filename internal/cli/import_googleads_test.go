@@ -263,6 +263,107 @@ func TestImportGoogleAdsConversionActionAPIError(t *testing.T) {
 	}
 }
 
+func TestImportGoogleAdsCampaignBudgetThenPlanUnchanged(t *testing.T) {
+	t.Parallel()
+
+	p, srv := googleAdsImportProvider(t)
+	srv.seedBudget(map[string]any{
+		"id":               "12",
+		"name":             "Brand daily budget",
+		"amountMicros":     "50000000",
+		"deliveryMethod":   "STANDARD",
+		"explicitlyShared": false,
+		"period":           "DAILY",
+		"type":             "STANDARD",
+		"status":           "ENABLED",
+		"referenceCount":   "1",
+	})
+
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "agoraform.yaml")
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "googleads.campaign_budget.brand", "12"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("import exit = %d, want %d; stderr=%q stdout=%q", code, cli.ExitOK, stderr.String(), stdout.String())
+	}
+	out := stdout.String()
+	assertGoogleAdsImportOutputClean(t, out)
+	if !strings.Contains(out, "Imported googleads.campaign_budget.brand (remote identity 12).") {
+		t.Fatalf("stdout missing import confirmation:\n%s", out)
+	}
+
+	yamlText := extractYAML(out)
+	parsed, err := manifest.Parse([]byte(yamlText), "generated")
+	if err != nil {
+		t.Fatalf("generated YAML: %v\n%s", err, yamlText)
+	}
+	if parsed.Resources[0].Attributes["name"] != "Brand daily budget" {
+		t.Fatalf("imported name = %v", parsed.Resources[0].Attributes["name"])
+	}
+	for _, key := range []string{"id", "resourceName", "amountMicros", "period", "type", "status", "referenceCount"} {
+		if _, ok := parsed.Resources[0].Attributes[key]; ok {
+			t.Fatalf("computed %s present in generated attributes:\n%s", key, yamlText)
+		}
+	}
+	if err := os.WriteFile(manifestPath, []byte(yamlText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	assertPersistedRemoteID(t, manifestPath, "googleads.campaign_budget.brand", "12")
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"plan", "-f", manifestPath}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("plan after import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "No changes.") {
+		t.Fatalf("plan after import = %q, want no changes", stdout.String())
+	}
+	if srv.mutateCount() != 0 {
+		t.Fatalf("campaign budget import mutated remote: %d", srv.mutateCount())
+	}
+}
+
+func TestImportGoogleAdsCampaignBudgetByResourceName(t *testing.T) {
+	t.Parallel()
+
+	p, srv := googleAdsImportProvider(t)
+	srv.seedBudget(map[string]any{
+		"id":               "12",
+		"name":             "Brand daily budget",
+		"amountMicros":     "50000000",
+		"explicitlyShared": false,
+		"period":           "DAILY",
+		"type":             "STANDARD",
+	})
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "agoraform.yaml")
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{
+		"import", "-f", manifestPath, "googleads.campaign_budget.brand",
+		"customers/" + cliGoogleAdsCustomerID + "/campaignBudgets/12",
+	}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "(remote identity 12)") {
+		t.Fatalf("stdout should report canonical numeric identity:\n%s", stdout.String())
+	}
+	assertPersistedRemoteID(t, manifestPath, "googleads.campaign_budget.brand", "12")
+	if srv.mutateCount() != 0 {
+		t.Fatalf("resource-name import mutated remote: %d", srv.mutateCount())
+	}
+}
+
 func TestImportGoogleAdsYAMLIsDeterministic(t *testing.T) {
 	t.Parallel()
 
@@ -337,6 +438,7 @@ func newCLIGoogleAdsServer(t *testing.T) *cliGoogleAdsServer {
 	fake := &cliGoogleAdsFake{
 		actions: map[string]map[string]any{},
 		goals:   map[string]map[string]any{},
+		budgets: map[string]map[string]any{},
 	}
 	srv := httptest.NewServer(http.HandlerFunc(fake.handler))
 	t.Cleanup(srv.Close)
@@ -347,6 +449,7 @@ type cliGoogleAdsFake struct {
 	mu           sync.Mutex
 	actions      map[string]map[string]any
 	goals        map[string]map[string]any
+	budgets      map[string]map[string]any
 	searchStatus int
 	mutates      int
 }
@@ -371,6 +474,23 @@ func (f *cliGoogleAdsFake) seedGoal(goal map[string]any) {
 		cloned["resourceName"] = "customers/" + cliGoogleAdsCustomerID + "/customerConversionGoals/" + id
 	}
 	f.goals[id] = cloned
+}
+
+func (f *cliGoogleAdsFake) seedBudget(budget map[string]any) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cloned := cloneAnyMap(budget)
+	id := stringifyAny(cloned["id"])
+	if stringifyAny(cloned["resourceName"]) == "" {
+		cloned["resourceName"] = "customers/" + cliGoogleAdsCustomerID + "/campaignBudgets/" + id
+	}
+	if stringifyAny(cloned["period"]) == "" {
+		cloned["period"] = "DAILY"
+	}
+	if stringifyAny(cloned["type"]) == "" {
+		cloned["type"] = "STANDARD"
+	}
+	f.budgets[id] = cloned
 }
 
 func (f *cliGoogleAdsFake) mutateCount() int {
@@ -414,6 +534,10 @@ func (f *cliGoogleAdsFake) handler(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"results": f.searchGoalsLocked(req.Query)})
 		return
 	}
+	if strings.Contains(query, "from campaign_budget") {
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": f.searchBudgetsLocked(req.Query)})
+		return
+	}
 	if strings.Contains(query, "from customer") {
 		_, _ = io.WriteString(w, `{"results":[{"customer":{"id":"`+cliGoogleAdsCustomerID+`"}}]}`)
 		return
@@ -434,6 +558,23 @@ func (f *cliGoogleAdsFake) searchActionsLocked(query string) []any {
 			}
 		}
 		out = append(out, map[string]any{"conversionAction": cloneAnyMap(action)})
+	}
+	return out
+}
+
+func (f *cliGoogleAdsFake) searchBudgetsLocked(query string) []any {
+	var out []any
+	for id, budget := range f.budgets {
+		if strings.Contains(query, "campaign_budget.id = ") {
+			want := strings.TrimSpace(query[strings.Index(query, "campaign_budget.id = ")+len("campaign_budget.id = "):])
+			if i := strings.IndexAny(want, " \n"); i >= 0 {
+				want = want[:i]
+			}
+			if want != id {
+				continue
+			}
+		}
+		out = append(out, map[string]any{"campaignBudget": cloneAnyMap(budget)})
 	}
 	return out
 }

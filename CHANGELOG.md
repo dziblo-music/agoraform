@@ -10,6 +10,10 @@ prints the SemVer identifier without the prefix (`0.3.0`).
 
 ## [Unreleased]
 
+### Added
+
+- `googleads.campaign_budget` for daily Search campaign budgets (read, create, update, import). Amounts are declared in account-currency units and compared through deterministic micros normalization. Shared versus dedicated budgets are explicit. Equivalent remote state, including numeric aliases such as `50` and `50.00`, produces no plan diff. Provider-native IDs, resource names, micros, period, type, and status remain computed. Search campaigns can reference a budget by logical Agoraform address (`$ref: googleads.campaign_budget.*`).
+
 ## [0.3.0] - 2026-08-27
 
 Agoraform 0.3.0 adds Google Ads conversion measurement as the second provider
