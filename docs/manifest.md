@@ -264,6 +264,7 @@ Ads. See the [Google Ads provider reference](../providers/googleads/README.md).
 
 Search campaigns. The advertising channel is `SEARCH`. New campaigns default
 to `PAUSED`. Campaigns must reference a `googleads.campaign_budget`.
+Dynamic Search Ads settings are out of scope.
 
 | Attribute | Required | Description |
 | --- | --- | --- |
@@ -360,8 +361,8 @@ allow negative ad-group criteria to be updated later. For an existing negative
 keyword, a requested status change fails during planning before any mutation.
 Positive keyword status remains mutable.
 
-Campaign-level negative keywords, Keyword Planner, and audience or DSA
-criteria are out of scope. See the
+Campaign-level negative keywords, Keyword Planner, audience or DSA
+criteria, and keyword-level URL or tracking overrides are out of scope. See the
 [Google Ads provider reference](../providers/googleads/README.md).
 
 ### `googleads.responsive_search_ad`

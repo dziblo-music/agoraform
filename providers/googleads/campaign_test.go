@@ -295,6 +295,36 @@ func TestReadCampaignRejectsDisplay(t *testing.T) {
 	}
 }
 
+func TestReadCampaignRejectsDynamicSearchAds(t *testing.T) {
+	t.Parallel()
+
+	fake := newCampaignFake()
+	campaign := sampleSearchCampaign("9", "DSA", "11")
+	campaign["advertisingChannelType"] = "SEARCH"
+	campaign["dynamicSearchAdsSetting"] = map[string]any{
+		"domainName":          "example.com",
+		"languageCode":        "en",
+		"useSuppliedUrlsOnly": false,
+	}
+	fake.seedCampaign(campaign)
+	p, _ := testCampaignProvider(t, fake)
+
+	_, err := p.Read(context.Background(), campaignResource(t, "dsa", resource.Attributes{
+		googleads.AttrName:    "DSA",
+		googleads.AttrBudget:  resource.Ref{Address: mustCampaignBudgetAddress(t, "brand")},
+		googleads.AttrBidding: map[string]any{"strategy": "MANUAL_CPC"},
+	}))
+	if err == nil {
+		t.Fatal("expected Dynamic Search Ads error")
+	}
+	if errors.Is(err, provider.ErrNotFound) {
+		t.Fatal("unsupported DSA settings must not look like not found")
+	}
+	if !strings.Contains(err.Error(), "Dynamic Search Ads") {
+		t.Fatalf("error = %q, want Dynamic Search Ads guidance", err)
+	}
+}
+
 func TestReadCampaignRejectsUnsupportedBidding(t *testing.T) {
 	t.Parallel()
 
@@ -548,6 +578,33 @@ func TestImportCampaignUnsupportedChannel(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "SEARCH") {
 		t.Fatalf("error = %q, want SEARCH guidance", err)
+	}
+	if len(fake.mutates) != 0 {
+		t.Fatalf("unsupported import mutated remote: %v", fake.mutates)
+	}
+}
+
+func TestImportCampaignRejectsDynamicSearchAds(t *testing.T) {
+	t.Parallel()
+
+	fake := newCampaignFake()
+	campaign := sampleSearchCampaign("21", "DSA", "11")
+	campaign["advertisingChannelType"] = "SEARCH"
+	campaign["dynamicSearchAdsSetting"] = map[string]any{
+		"domainName":   "example.com",
+		"languageCode": "en",
+	}
+	fake.seedCampaign(campaign)
+	p, _ := testCampaignProvider(t, fake)
+	_, err := p.Import(context.Background(), mustCampaignAddress(t, "dsa"), "21")
+	if err == nil {
+		t.Fatal("expected Dynamic Search Ads error")
+	}
+	if errors.Is(err, provider.ErrNotFound) {
+		t.Fatal("unsupported DSA settings must not look like not found")
+	}
+	if !strings.Contains(err.Error(), "Dynamic Search Ads") {
+		t.Fatalf("error = %q, want Dynamic Search Ads guidance", err)
 	}
 	if len(fake.mutates) != 0 {
 		t.Fatalf("unsupported import mutated remote: %v", fake.mutates)

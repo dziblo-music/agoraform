@@ -116,6 +116,45 @@ func TestImportGoogleAdsSearchUnsupportedRemote(t *testing.T) {
 			want:     "SEARCH",
 		},
 		{
+			name: "dynamic search ads campaign",
+			seed: func(srv *cliGoogleAdsFake) {
+				srv.seedCampaign(map[string]any{
+					"id":                     "21",
+					"name":                   "DSA",
+					"status":                 "PAUSED",
+					"advertisingChannelType": "SEARCH",
+					"campaignBudget":         "customers/" + cliGoogleAdsCustomerID + "/campaignBudgets/11",
+					"biddingStrategyType":    "MANUAL_CPC",
+					"dynamicSearchAdsSetting": map[string]any{
+						"domainName":   "example.com",
+						"languageCode": "en",
+					},
+				})
+			},
+			address:  "googleads.campaign.dsa",
+			remoteID: "21",
+			want:     "Dynamic Search Ads",
+		},
+		{
+			name: "keyword with final urls",
+			seed: func(srv *cliGoogleAdsFake) {
+				srv.seedKeyword(map[string]any{
+					"criterionId": "9",
+					"adGroup":     "customers/" + cliGoogleAdsCustomerID + "/adGroups/31",
+					"status":      "PAUSED",
+					"type":        "KEYWORD",
+					"keyword": map[string]any{
+						"text":      "brand",
+						"matchType": "EXACT",
+					},
+					"finalUrls": []any{"https://example.com/landing"},
+				})
+			},
+			address:  "googleads.keyword.brand_url",
+			remoteID: "31~9",
+			want:     "finalUrls",
+		},
+		{
 			name: "shopping ad group",
 			seed: func(srv *cliGoogleAdsFake) {
 				srv.seedAdGroup(map[string]any{

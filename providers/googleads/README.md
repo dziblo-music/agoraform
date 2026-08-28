@@ -212,10 +212,10 @@ instead of generating a lossy daily Search budget.
 ### `googleads.campaign`
 
 Search campaigns. Agoraform creates and updates `SEARCH` campaigns only.
-Performance Max, Display, Video, Shopping, App, and other channel types are
-out of scope. Ad groups, ads, keywords, and location/language criteria are
-separate resources. Campaign-level presence vs interest geotargeting is
-declared on the campaign as `locationTargeting`.
+Performance Max, Display, Video, Shopping, App, Dynamic Search Ads, and
+other channel types are out of scope. Ad groups, ads, keywords, and
+location/language criteria are separate resources. Campaign-level presence
+vs interest geotargeting is declared on the campaign as `locationTargeting`.
 
 ```yaml
 resources:
@@ -302,9 +302,9 @@ agoraform import googleads.campaign_budget.brand 123456789
 agoraform import googleads.campaign.brand 987654321
 ```
 
-Non-Search campaigns fail import with guidance instead of generating a
-lossy Search configuration. Import the budget first, or apply it, then
-re-import the campaign.
+Non-Search campaigns and Dynamic Search Ads campaigns fail import with
+guidance instead of generating a lossy Search configuration. Import the
+budget first, or apply it, then re-import the campaign.
 
 ### `googleads.ad_group`
 
@@ -373,8 +373,8 @@ re-import the ad group.
 
 Search ad-group keyword criteria, including negative keywords. Agoraform
 creates and updates `KEYWORD` criteria only. Campaign-level negative
-keywords, Keyword Planner, Dynamic Search Ads criteria, and audience
-criteria are out of scope.
+keywords, Keyword Planner, Dynamic Search Ads criteria, audience
+criteria, and keyword-level URL or tracking overrides are out of scope.
 
 ```yaml
 resources:
@@ -440,9 +440,11 @@ agoraform import googleads.ad_group.brand 555666777
 agoraform import googleads.keyword.brand_exact 555666777~888999000
 ```
 
-Non-keyword criteria fail import with guidance instead of generating a
-lossy keyword configuration. Import the ad group first, or apply it, then
-re-import the keyword.
+Non-keyword criteria and keywords with criterion-level final URLs,
+mobile URLs, URL suffixes, tracking templates, or custom URL parameters
+fail import with guidance instead of generating a lossy keyword
+configuration. Import the ad group first, or apply it, then re-import
+the keyword.
 
 ### `googleads.responsive_search_ad`
 

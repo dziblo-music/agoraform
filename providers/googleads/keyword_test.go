@@ -362,6 +362,69 @@ func TestReadKeywordRejectsNonKeywordCriterion(t *testing.T) {
 	}
 }
 
+func TestReadKeywordRejectsURLSettings(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		set  func(map[string]any)
+		want string
+	}{
+		{
+			name: "final urls",
+			set:  func(item map[string]any) { item["finalUrls"] = []any{"https://example.com/landing"} },
+			want: "finalUrls",
+		},
+		{
+			name: "final mobile urls",
+			set:  func(item map[string]any) { item["finalMobileUrls"] = []any{"https://m.example.com/landing"} },
+			want: "finalMobileUrls",
+		},
+		{
+			name: "final url suffix",
+			set:  func(item map[string]any) { item["finalUrlSuffix"] = "utm_source=google" },
+			want: "finalUrlSuffix",
+		},
+		{
+			name: "tracking url template",
+			set:  func(item map[string]any) { item["trackingUrlTemplate"] = "https://tracker.example/{lpurl}" },
+			want: "trackingUrlTemplate",
+		},
+		{
+			name: "custom url parameters",
+			set: func(item map[string]any) {
+				item["urlCustomParameters"] = []any{map[string]any{"key": "utm_campaign", "value": "brand"}}
+			},
+			want: "urlCustomParameters",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			fake := newKeywordFake()
+			item := sampleSearchKeyword("31", "9", "brand", "EXACT", false)
+			tt.set(item)
+			fake.seedKeyword(item)
+			p, _ := testKeywordProvider(t, fake)
+
+			res := keywordResource(t, "brand_exact", defaultKeywordAttrs(t))
+			res.Identity = resource.Identity{ID: "31~9"}
+			_, err := p.Read(context.Background(), res)
+			if err == nil {
+				t.Fatal("expected unsupported URL settings error")
+			}
+			if errors.Is(err, provider.ErrNotFound) {
+				t.Fatal("unsupported URL settings must not look like not found")
+			}
+			if !strings.Contains(err.Error(), tt.want) || !strings.Contains(err.Error(), "does not manage") {
+				t.Fatalf("error = %q, want %s guidance", err, tt.want)
+			}
+		})
+	}
+}
+
 func TestReadKeywordAPIError(t *testing.T) {
 	t.Parallel()
 
@@ -801,6 +864,29 @@ func TestImportKeywordUnsupportedType(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "KEYWORD") {
 		t.Fatalf("error = %q, want KEYWORD guidance", err)
+	}
+	if len(fake.mutates) != 0 {
+		t.Fatalf("unsupported import mutated remote: %v", fake.mutates)
+	}
+}
+
+func TestImportKeywordRejectsURLSettings(t *testing.T) {
+	t.Parallel()
+
+	fake := newKeywordFake()
+	item := sampleSearchKeyword("31", "9", "brand", "EXACT", false)
+	item["finalUrls"] = []any{"https://example.com/landing"}
+	fake.seedKeyword(item)
+	p, _ := testKeywordProvider(t, fake)
+	_, err := p.Import(context.Background(), mustKeywordAddress(t, "brand_exact"), "31~9")
+	if err == nil {
+		t.Fatal("expected unsupported URL settings error")
+	}
+	if errors.Is(err, provider.ErrNotFound) {
+		t.Fatal("unsupported URL settings must not look like not found")
+	}
+	if !strings.Contains(err.Error(), "finalUrls") || !strings.Contains(err.Error(), "does not manage") {
+		t.Fatalf("error = %q, want finalUrls guidance", err)
 	}
 	if len(fake.mutates) != 0 {
 		t.Fatalf("unsupported import mutated remote: %v", fake.mutates)

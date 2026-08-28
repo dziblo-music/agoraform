@@ -329,9 +329,10 @@ campaign conversion goals. Import a campaign budget before the campaign,
 the campaign before an ad group, campaign conversion goal, location, or
 language, and the ad group before a keyword or Responsive Search Ad, so
 Agoraform can reconstruct logical `$ref`s.
-Unsupported conversion types, origins, channel types, ad group types,
-ad types, criterion types, and budget periods fail with actionable
-diagnostics instead of producing a lossy manifest.
+Unsupported conversion types, origins, channel types, Dynamic Search Ads
+settings, ad group types, ad types, criterion types, keyword-level URL
+or tracking settings, and budget periods fail with actionable diagnostics
+instead of producing a lossy manifest.
 
 ## Declarative Matomo Tag Manager publication
 
