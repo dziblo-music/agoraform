@@ -18,14 +18,15 @@ build destroy plan
 confirm (or --auto-approve)
         │
         ▼
-destroy supported resources
+destroy/remove supported resources
 (dependents first)
         │
         ▼
-remove confirmed identities
+provider finalization actions
+(if the reviewed plan requires them)
         │
         ▼
-provider finalization actions
+remove confirmed identities
         │
         ▼
 Destroy complete
@@ -62,18 +63,24 @@ Local state supplies provider-native identities.
 
 ## Lifecycle capabilities
 
-Providers declare whether a resource can be destroyed. Core never assumes a
-generic HTTP DELETE.
+Providers declare the exact lifecycle operation that will be reviewed before
+mutation. Core never assumes a generic HTTP DELETE.
 
 | Capability | Plan | Remote | State |
 | --- | --- | --- | --- |
-| supported | destroy/remove | provider-native teardown | removed after confirmed terminal or already-absent result |
+| destroy | `destroy` | provider-native deletion | removed after confirmed terminal result and required finalization |
+| remove | `remove` | provider-native remove/archive/disable | removed after confirmed terminal result and required finalization |
 | unsupported | listed, not mutated | none | kept |
 | provider-owned | listed, not mutated | none | kept |
 
 Unsupported and provider-owned remnants do not block supported teardown. After
 supported operations complete, destroy exits non-zero when any requested
 state-bound resource remains unsupported or provider-owned.
+
+A provider must return one of the documented terminal destroy statuses:
+`destroyed`, `removed`, or `already-absent`. Empty or unknown statuses are
+provider-contract failures. Agoraform preserves local state in that case rather
+than assuming a destructive operation completed safely.
 
 ## Ordering
 
@@ -83,27 +90,39 @@ variables/triggers, then a managed container.
 
 ## Already absent and failures
 
-Provider-confirmed already-absent resources are successful convergence. The
-matching state binding is removed. Authentication, permission, malformed
-response, and wrong-target errors are not treated as not-found.
+Provider-confirmed already-absent resources are successful convergence.
+Authentication, permission, malformed response, and wrong-target errors are
+not treated as not-found.
 
 Execution stops at the first provider or state-write failure. Remaining and
 failed resources keep their state bindings so retry is deterministic. If a
 remote teardown succeeds but the state write fails, the identity is left in
 place so retry can confirm the object is gone.
 
+When the destroy plan contains provider finalization, successful resource
+teardowns keep their local state bindings until finalization also succeeds. If
+finalization fails, retry can use those bindings to confirm the resources are
+already terminal and retry the provider action safely. State is removed only
+after the full reviewed lifecycle for those resources completes.
+
 ## Provider finalization
 
 Destroy finalization uses the same visibility and failure rules as apply.
 Planned actions such as Matomo publication appear in the destroy plan and run
 only after every destructive mutation succeeds. A failed draft deletion does
-not publish.
+not publish, and a failed publication keeps the affected destroy bindings so a
+subsequent destroy can safely retry finalization.
 
 ## Matomo
 
 Supported Matomo destroy targets are `matomo.goal`, `matomo.variable`
 (Data Layer and Matomo Configuration), `matomo.trigger`, `matomo.tag`, and
 an Agoraform-managed `matomo.container`.
+
+Matomo goals are planned as a provider-native `remove` operation because Matomo
+marks deleted goals terminal rather than treating the historical goal identity
+as a normal hard-deleted object. Tag Manager children and managed containers
+are planned as `destroy` operations.
 
 `MATOMO_CONTAINER_ID` continues to select an externally managed container.
 Destroy never deletes that container merely because child resources inside it
