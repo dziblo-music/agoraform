@@ -192,9 +192,10 @@ Verify all of the following:
   terminal output or provider diagnostics;
 - `plan` performs no mutation;
 - the plan is deterministic when repeated against unchanged state;
-- planned creates follow the `$ref` graph: conversion action and budget
-  before campaign; campaign before targeting, conversion-goal reconciliation,
-  and ad group; ad group before keywords and the Responsive Search Ad.
+- planned creates follow the `$ref` graph: budget before campaign; conversion
+  action before conversion-goal resources where that dependency is declared;
+  campaign before targeting, campaign conversion-goal reconciliation, and ad
+  group; ad group before keywords and the Responsive Search Ad.
 
 ### 3. Verify create, goal reconciliation, and no-op
 
