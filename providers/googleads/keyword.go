@@ -919,6 +919,9 @@ func rejectImmutableKeywordChanges(want, got resource.Attributes) error {
 	if !reflect.DeepEqual(want[AttrNegative], got[AttrNegative]) {
 		return fmt.Errorf("negative is immutable and cannot be changed from %v to %v; create a new googleads.keyword resource instead of mutating this criterion", got[AttrNegative], want[AttrNegative])
 	}
+	if negative, _ := want[AttrNegative].(bool); negative && !reflect.DeepEqual(want[AttrStatus], got[AttrStatus]) {
+		return fmt.Errorf("status is immutable for negative keywords and cannot be changed from %s to %s; create a new googleads.keyword resource instead of mutating this criterion", got[AttrStatus], want[AttrStatus])
+	}
 	return nil
 }
 
