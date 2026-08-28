@@ -131,12 +131,16 @@ func planChange(res resource.Resource, lookup Lookup, ids Identities) (Change, e
 		return Change{}, fmt.Errorf("destroy %s: %w", res.Address, err)
 	}
 	switch cap {
-	case provider.DestroySupported:
+	case provider.DestroyDelete:
 		change.Kind = KindDestroy
+	case provider.DestroyRemove:
+		change.Kind = KindRemove
+	case provider.DestroyUnsupported:
+		change.Kind = KindUnsupported
 	case provider.DestroyProviderOwned:
 		change.Kind = KindProviderOwned
 	default:
-		change.Kind = KindUnsupported
+		return Change{}, fmt.Errorf("destroy %s: provider returned invalid destroy capability %q", res.Address, cap)
 	}
 	return change, nil
 }
