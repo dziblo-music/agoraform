@@ -106,9 +106,9 @@ func (p *Provider) normalizeContainerComparableSafe(desired resource.Resource, l
 			if live.Identity.IsZero() || live.Identity.ID != desired.Identity.ID {
 				return nil, nil, fmt.Errorf("resource %s: persisted identity %q does not match remote identity %q", desired.Address, desired.Identity.ID, live.Identity.ID)
 			}
-			if err := ensureImmutableContainerContext(desired, *live); err != nil {
-				return nil, nil, err
-			}
+		}
+		if err := ensureImmutableContainerContext(desired, *live); err != nil {
+			return nil, nil, err
 		}
 	}
 	return p.normalizeContainerComparable(desired, live)
