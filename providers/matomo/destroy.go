@@ -17,8 +17,12 @@ func (p *Provider) DestroyCapability(res resource.Resource) (provider.DestroyCap
 		return provider.DestroyUnsupported, nil
 	}
 	switch res.Address.Type {
-	case TypeGoal, TypeContainer, TypeVariable, TypeTrigger, TypeTag:
-		return provider.DestroySupported, nil
+	case TypeGoal:
+		// Matomo marks goals deleted rather than physically removing their
+		// historical identity, so expose this as a provider-native remove.
+		return provider.DestroyRemove, nil
+	case TypeContainer, TypeVariable, TypeTrigger, TypeTag:
+		return provider.DestroyDelete, nil
 	default:
 		return provider.DestroyUnsupported, nil
 	}
