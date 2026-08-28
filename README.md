@@ -323,13 +323,15 @@ should produce no changes.
 
 Google Ads import accepts supported website conversion actions, supported
 `WEBSITE` customer conversion goals, daily Search campaign budgets, Search
-campaigns, Search ad groups, Search keywords, campaign location and
-language criteria, and campaign conversion goals. Import a campaign
-budget before the campaign, the campaign before an ad group, campaign
-conversion goal, location, or language, and the ad group before a
-keyword, so Agoraform can reconstruct logical `$ref`s.
-Unsupported conversion types, origins, channel types, ad group types,
-criterion types, and budget periods fail with actionable diagnostics
+campaigns, Search ad groups, Search keywords including negatives,
+Responsive Search Ads, campaign location and language criteria, and
+campaign conversion goals. Import a campaign budget before the campaign,
+the campaign before an ad group, campaign conversion goal, location, or
+language, and the ad group before a keyword or Responsive Search Ad, so
+Agoraform can reconstruct logical `$ref`s.
+Unsupported conversion types, origins, channel types, Dynamic Search Ads
+settings, ad group types, ad types, criterion types, keyword-level URL
+or tracking settings, and budget periods fail with actionable diagnostics
 instead of producing a lossy manifest.
 
 ## Declarative Matomo Tag Manager publication

@@ -304,6 +304,24 @@ func TestImportCampaignLanguageThenPlanUnchanged(t *testing.T) {
 	}
 }
 
+func TestImportCampaignLanguageRejectsLocationCriterion(t *testing.T) {
+	t.Parallel()
+
+	fake := newTargetingFake()
+	fake.seedCriterion(sampleLocationCriterion("21", "41", "geoTargetConstants/2840", false))
+	p, _ := testTargetingProvider(t, fake)
+	_, err := p.Import(context.Background(), mustCampaignLanguageAddress(t, "united_states"), "21~41")
+	if err == nil {
+		t.Fatal("expected unsupported type error")
+	}
+	if errors.Is(err, provider.ErrNotFound) {
+		t.Fatal("unsupported type must not look like not found")
+	}
+	if !strings.Contains(err.Error(), "LANGUAGE") {
+		t.Fatalf("error = %q, want LANGUAGE guidance", err)
+	}
+}
+
 func TestPlanCampaignLanguageCreateWhenMissing(t *testing.T) {
 	t.Parallel()
 

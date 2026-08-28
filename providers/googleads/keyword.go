@@ -94,7 +94,12 @@ var (
 		"ad_group_criterion.negative,",
 		"ad_group_criterion.keyword.text,",
 		"ad_group_criterion.keyword.match_type,",
-		"ad_group_criterion.cpc_bid_micros",
+		"ad_group_criterion.cpc_bid_micros,",
+		"ad_group_criterion.final_urls,",
+		"ad_group_criterion.final_mobile_urls,",
+		"ad_group_criterion.final_url_suffix,",
+		"ad_group_criterion.tracking_url_template,",
+		"ad_group_criterion.url_custom_parameters",
 		"FROM ad_group_criterion",
 	}, " ")
 )
@@ -454,14 +459,24 @@ type keywordData struct {
 }
 
 type keywordJSON struct {
-	ResourceName string           `json:"resourceName"`
-	CriterionID  json.Number      `json:"criterionId"`
-	AdGroup      string           `json:"adGroup"`
-	Status       string           `json:"status"`
-	Type         string           `json:"type"`
-	Negative     *bool            `json:"negative"`
-	Keyword      *keywordInfoJSON `json:"keyword"`
-	CpcBidMicros json.RawMessage  `json:"cpcBidMicros"`
+	ResourceName        string                   `json:"resourceName"`
+	CriterionID         json.Number              `json:"criterionId"`
+	AdGroup             string                   `json:"adGroup"`
+	Status              string                   `json:"status"`
+	Type                string                   `json:"type"`
+	Negative            *bool                    `json:"negative"`
+	Keyword             *keywordInfoJSON         `json:"keyword"`
+	CpcBidMicros        json.RawMessage          `json:"cpcBidMicros"`
+	FinalURLs           []string                 `json:"finalUrls"`
+	FinalMobileURLs     []string                 `json:"finalMobileUrls"`
+	FinalURLSuffix      string                   `json:"finalUrlSuffix"`
+	TrackingURLTemplate string                   `json:"trackingUrlTemplate"`
+	URLCustomParameters []urlCustomParameterJSON `json:"urlCustomParameters"`
+}
+
+type urlCustomParameterJSON struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 type keywordInfoJSON struct {
@@ -522,6 +537,9 @@ func decodeKeywordRow(raw json.RawMessage, configuredCustomerID string) (keyword
 	}
 	if criterionType != keywordTypeKeyword {
 		return keywordData{}, fmt.Errorf("ad group criterion %s has type %s; googleads.keyword only manages KEYWORD criteria", keywordID(adGroupID, id), criterionType)
+	}
+	if err := rejectUnsupportedKeywordURLSettings(keywordID(adGroupID, id), body); err != nil {
+		return keywordData{}, err
 	}
 	if body.Keyword == nil {
 		return malformed("missing keyword")
@@ -1061,6 +1079,41 @@ func splitAdGroupCriterionResourceName(name string) (customerID, adGroupID, crit
 
 func keywordID(adGroupID, criterionID string) string {
 	return adGroupID + "~" + criterionID
+}
+
+func rejectUnsupportedKeywordURLSettings(id string, body keywordJSON) error {
+	var fields []string
+	if hasNonEmptyStrings(body.FinalURLs) {
+		fields = append(fields, "finalUrls")
+	}
+	if hasNonEmptyStrings(body.FinalMobileURLs) {
+		fields = append(fields, "finalMobileUrls")
+	}
+	if strings.TrimSpace(body.FinalURLSuffix) != "" {
+		fields = append(fields, "finalUrlSuffix")
+	}
+	if strings.TrimSpace(body.TrackingURLTemplate) != "" {
+		fields = append(fields, "trackingUrlTemplate")
+	}
+	for _, param := range body.URLCustomParameters {
+		if strings.TrimSpace(param.Key) != "" || strings.TrimSpace(param.Value) != "" {
+			fields = append(fields, "urlCustomParameters")
+			break
+		}
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	return fmt.Errorf("ad group criterion %s has keyword-level URL or tracking settings (%s); googleads.keyword does not manage final URLs, mobile URLs, URL suffixes, tracking templates, or custom URL parameters", id, strings.Join(fields, ", "))
+}
+
+func hasNonEmptyStrings(values []string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func adGroupCriterionResourceName(customerID, id string) string {

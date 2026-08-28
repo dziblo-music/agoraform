@@ -169,7 +169,10 @@ var (
 		"campaign.tracking_url_template,",
 		"campaign.final_url_suffix,",
 		"campaign.contains_eu_political_advertising,",
-		"campaign.serving_status",
+		"campaign.serving_status,",
+		"campaign.dynamic_search_ads_setting.domain_name,",
+		"campaign.dynamic_search_ads_setting.language_code,",
+		"campaign.dynamic_search_ads_setting.use_supplied_urls_only",
 		"FROM campaign",
 	}, " ")
 )
@@ -581,6 +584,13 @@ type campaignJSON struct {
 		PositiveGeoTargetType string `json:"positiveGeoTargetType"`
 		NegativeGeoTargetType string `json:"negativeGeoTargetType"`
 	} `json:"geoTargetTypeSetting"`
+	DynamicSearchAdsSetting *dynamicSearchAdsSettingJSON `json:"dynamicSearchAdsSetting"`
+}
+
+type dynamicSearchAdsSettingJSON struct {
+	DomainName          string `json:"domainName"`
+	LanguageCode        string `json:"languageCode"`
+	UseSuppliedUrlsOnly *bool  `json:"useSuppliedUrlsOnly"`
 }
 
 func decodeCampaignRow(raw json.RawMessage, configuredCustomerID string) (campaignData, error) {
@@ -631,6 +641,9 @@ func decodeCampaignRow(raw json.RawMessage, configuredCustomerID string) (campai
 	subType := normalizeEnum(body.AdvertisingChannelSubType)
 	if subType != "" && subType != "UNSPECIFIED" && subType != "UNKNOWN" {
 		return campaignData{}, fmt.Errorf("campaign %s has advertising channel subtype %s; googleads.campaign only manages standard SEARCH campaigns", id, subType)
+	}
+	if dsaSettingConfigured(body.DynamicSearchAdsSetting) {
+		return campaignData{}, fmt.Errorf("campaign %s has Dynamic Search Ads settings; googleads.campaign only manages standard SEARCH campaigns, not Dynamic Search Ads", id)
 	}
 
 	status := normalizeEnum(body.Status)
@@ -1813,4 +1826,11 @@ func parseOptionalMicros(raw json.RawMessage) (*int64, error) {
 		return nil, err
 	}
 	return &n, nil
+}
+
+func dsaSettingConfigured(setting *dynamicSearchAdsSettingJSON) bool {
+	if setting == nil {
+		return false
+	}
+	return strings.TrimSpace(setting.DomainName) != "" || strings.TrimSpace(setting.LanguageCode) != "" || setting.UseSuppliedUrlsOnly != nil
 }

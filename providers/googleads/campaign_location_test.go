@@ -442,6 +442,24 @@ func TestNormalizeCampaignLocationImportID(t *testing.T) {
 	}
 }
 
+func TestImportCampaignLocationRejectsLanguageCriterion(t *testing.T) {
+	t.Parallel()
+
+	fake := newTargetingFake()
+	fake.seedCriterion(sampleLanguageCriterion("21", "51", "languageConstants/1000"))
+	p, _ := testTargetingProvider(t, fake)
+	_, err := p.Import(context.Background(), mustCampaignLocationAddress(t, "english"), "21~51")
+	if err == nil {
+		t.Fatal("expected unsupported type error")
+	}
+	if errors.Is(err, provider.ErrNotFound) {
+		t.Fatal("unsupported type must not look like not found")
+	}
+	if !strings.Contains(err.Error(), "LOCATION") {
+		t.Fatalf("error = %q, want LOCATION guidance", err)
+	}
+}
+
 func TestPlanCampaignLocationCreateWhenMissing(t *testing.T) {
 	t.Parallel()
 

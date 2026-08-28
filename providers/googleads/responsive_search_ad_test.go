@@ -734,6 +734,51 @@ func TestNormalizeResponsiveSearchAdImportID(t *testing.T) {
 	}
 }
 
+func TestImportResponsiveSearchAdUnsupportedType(t *testing.T) {
+	t.Parallel()
+
+	fake := newRSAFake()
+	item := sampleSearchRSA("31", "9")
+	ad, _ := item["ad"].(map[string]any)
+	ad["type"] = "EXPANDED_TEXT_AD"
+	fake.seedRSA(item)
+	p, _ := testRSAProvider(t, fake)
+	_, err := p.Import(context.Background(), mustRSAAddress(t, "expanded"), "31~9")
+	if err == nil {
+		t.Fatal("expected unsupported type error")
+	}
+	if errors.Is(err, provider.ErrNotFound) {
+		t.Fatal("unsupported type must not look like not found")
+	}
+	if !strings.Contains(err.Error(), "RESPONSIVE_SEARCH_AD") {
+		t.Fatalf("error = %q, want RESPONSIVE_SEARCH_AD guidance", err)
+	}
+	if len(fake.mutates) != 0 {
+		t.Fatalf("unsupported import mutated remote: %v", fake.mutates)
+	}
+}
+
+func TestImportResponsiveSearchAdNotFound(t *testing.T) {
+	t.Parallel()
+
+	p, _ := testRSAProvider(t, newRSAFake())
+	_, err := p.Import(context.Background(), mustRSAAddress(t, "brand"), "31~71")
+	if !errors.Is(err, provider.ErrNotFound) {
+		t.Fatalf("Import = %v, want ErrNotFound", err)
+	}
+}
+
+func TestImportResponsiveSearchAdInvalidID(t *testing.T) {
+	t.Parallel()
+
+	p, _ := testRSAProvider(t, newRSAFake())
+	_, err := p.Import(context.Background(), mustRSAAddress(t, "brand"), "abc")
+	if err == nil || !strings.Contains(err.Error(), "not a valid Google Ads responsive search ad id") {
+		t.Fatalf("Import = %v, want invalid id", err)
+	}
+	assertNoProviderSecret(t, err.Error())
+}
+
 func TestPlanResponsiveSearchAdCreateWhenMissing(t *testing.T) {
 	t.Parallel()
 

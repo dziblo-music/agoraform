@@ -120,6 +120,20 @@ agoraform import googleads.customer_conversion_goal.signup SIGNUP~WEBSITE
 Unsupported origins, such as app or Google-hosted goals, fail with guidance
 instead of reconstructing a website conversion-goal manifest.
 
+## Google Ads Search campaign import
+
+Import v0.4 Search resources one at a time. Parent resources must already
+be bound so Agoraform can reconstruct logical `$ref` values:
+
+```text
+campaign_budget -> campaign -> ad_group | campaign_conversion_goal | campaign_location | campaign_language
+ad_group -> keyword | responsive_search_ad
+```
+
+Import never mutates Google Ads and does not rewrite the manifest.
+Unsupported remote campaign, ad, criterion, and budget types fail with
+guidance instead of emitting a lossy configuration.
+
 ## Google Ads campaign budgets
 
 Import a daily Search campaign budget by its numeric campaign budget ID, or
@@ -149,8 +163,9 @@ agoraform import googleads.campaign_budget.brand 123456789
 agoraform import googleads.campaign.brand 987654321
 ```
 
-Non-Search campaigns, portfolio bidding strategies, and removed campaigns
-fail with guidance instead of emitting a lossy Search campaign manifest.
+Non-Search campaigns, Dynamic Search Ads campaigns, portfolio bidding
+strategies, and removed campaigns fail with guidance instead of emitting
+a lossy Search campaign manifest.
 
 ## Google Ads Search ad groups
 
@@ -187,10 +202,11 @@ agoraform import googleads.ad_group.brand 555666777
 agoraform import googleads.keyword.brand_exact 555666777~888999000
 ```
 
-Non-keyword criteria fail with guidance instead of emitting a lossy
-keyword manifest. Generated YAML uses `cpcBid` in account-currency units,
-not micros. Keyword text, match type, negative, and ad group are
-immutable after the criterion exists.
+Non-keyword criteria and keywords with criterion-level URL or tracking
+settings fail with guidance instead of emitting a lossy keyword manifest.
+Generated YAML uses `cpcBid` in account-currency units, not micros.
+Keyword text, match type, negative, and ad group are immutable after the
+criterion exists.
 
 ## Google Ads Responsive Search Ads
 
