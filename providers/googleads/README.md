@@ -12,9 +12,11 @@ See the [Google Ads account and OAuth setup guide](../../docs/google-ads-setup.m
 for the Manager Account, developer-token, Google Cloud, OAuth, refresh-token,
 and customer-ID prerequisites.
 
-See the [complete conversion-measurement example](../../examples/googleads-conversion/README.md)
-for a reusable `Trial Started` / `SIGNUP` workflow, import, and Google Ads
-verification.
+See the [complete Search campaign example](../../examples/googleads-search/README.md)
+for a reusable paused SaaS paid-acquisition workflow, import, and Google Ads
+verification before enabling spend. See the
+[conversion-measurement example](../../examples/googleads-conversion/README.md)
+for the conversion-only `Trial Started` / `SIGNUP` workflow.
 
 ## Runtime configuration
 

@@ -1,0 +1,145 @@
+# Google Ads Search campaign example for Agoraform v0.4.0.
+# Credentials, customer IDs, and provider-native identities stay outside
+# this manifest. Serving stays paused until you enable spend on purpose.
+
+apiVersion: agoraform.io/v1alpha1
+providers:
+  googleads: {}
+resources:
+  - address: googleads.conversion_action.trial_started
+    attributes:
+      name: Trial Started
+      category: SIGNUP
+      value: 0
+      count: ONE
+      primaryForGoal: true
+
+  - address: googleads.customer_conversion_goal.signup
+    attributes:
+      category: SIGNUP
+      origin: WEBSITE
+      biddable: true
+      conversionAction:
+        $ref: googleads.conversion_action.trial_started
+
+  - address: googleads.campaign_budget.search_acquisition
+    attributes:
+      name: Search acquisition daily budget
+      amount: 50
+      deliveryMethod: STANDARD
+      explicitlyShared: false
+
+  - address: googleads.campaign.search_acquisition
+    attributes:
+      name: Search acquisition
+      status: PAUSED
+      budget:
+        $ref: googleads.campaign_budget.search_acquisition
+      bidding:
+        strategy: MAXIMIZE_CONVERSIONS
+      network:
+        googleSearch: true
+        searchNetwork: true
+        contentNetwork: false
+        partnerSearchNetwork: false
+      locationTargeting:
+        positive: PRESENCE
+        negative: PRESENCE
+
+  - address: googleads.campaign_conversion_goal.trial_signup
+    attributes:
+      campaign:
+        $ref: googleads.campaign.search_acquisition
+      category: SIGNUP
+      origin: WEBSITE
+      biddable: true
+      conversionAction:
+        $ref: googleads.conversion_action.trial_started
+
+  - address: googleads.campaign_location.united_states
+    attributes:
+      campaign:
+        $ref: googleads.campaign.search_acquisition
+      location: United States
+
+  - address: googleads.campaign_language.english
+    attributes:
+      campaign:
+        $ref: googleads.campaign.search_acquisition
+      language: en
+
+  - address: googleads.ad_group.trial
+    attributes:
+      name: Trial
+      status: PAUSED
+      campaign:
+        $ref: googleads.campaign.search_acquisition
+      type: SEARCH_STANDARD
+
+  - address: googleads.keyword.saas_software_exact
+    attributes:
+      adGroup:
+        $ref: googleads.ad_group.trial
+      text: saas software
+      matchType: EXACT
+      status: PAUSED
+
+  - address: googleads.keyword.start_free_trial_phrase
+    attributes:
+      adGroup:
+        $ref: googleads.ad_group.trial
+      text: start free trial
+      matchType: PHRASE
+      status: PAUSED
+
+  - address: googleads.keyword.online_software_broad
+    attributes:
+      adGroup:
+        $ref: googleads.ad_group.trial
+      text: online software
+      matchType: BROAD
+      status: PAUSED
+
+  - address: googleads.keyword.jobs_neg
+    attributes:
+      adGroup:
+        $ref: googleads.ad_group.trial
+      text: jobs
+      matchType: PHRASE
+      negative: true
+
+  - address: googleads.keyword.careers_neg
+    attributes:
+      adGroup:
+        $ref: googleads.ad_group.trial
+      text: careers
+      matchType: PHRASE
+      negative: true
+
+  - address: googleads.keyword.login_neg
+    attributes:
+      adGroup:
+        $ref: googleads.ad_group.trial
+      text: login
+      matchType: EXACT
+      negative: true
+
+  - address: googleads.responsive_search_ad.trial
+    attributes:
+      adGroup:
+        $ref: googleads.ad_group.trial
+      status: PAUSED
+      finalUrls:
+        - https://example.com/
+      path1: trial
+      path2: start
+      headlines:
+        - text: Start your SaaS free trial
+          pin: HEADLINE_1
+        - Software built for teams
+        - Launch in minutes
+        - No credit card required
+        - Try it free today
+      descriptions:
+        - Start a free trial of our software. No credit card required.
+        - See how teams plan, ship, and grow with less overhead.

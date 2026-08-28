@@ -18,6 +18,7 @@ guides lives here.
 - [Google Ads provider](../providers/googleads/README.md)
 - [v0.2 Matomo conversion example](../examples/matomo-conversion/README.md)
 - [v0.3 Google Ads conversion example](../examples/googleads-conversion/README.md)
+- [v0.4 Google Ads Search campaign example](../examples/googleads-search/README.md)
 
 The 0.1.0 product release manages `matomo.goal` only. v0.2.0 also manages
 Tag Manager `matomo.variable`, `matomo.trigger`, and `matomo.tag`, plus
@@ -31,7 +32,8 @@ resources, Search `googleads.campaign` resources, Search
 `googleads.ad_group` resources, Search `googleads.keyword` criteria,
 Search `googleads.responsive_search_ad` resources, campaign location
 and language targeting, and campaign
-`googleads.campaign_conversion_goal` biddability.
+`googleads.campaign_conversion_goal` biddability. See the
+[Google Ads Search campaign example](../examples/googleads-search/README.md).
 
 Provider credentials and connection settings can be stored locally in an
 optional [`.agoraform.env`](local-configuration.md) file instead of being
