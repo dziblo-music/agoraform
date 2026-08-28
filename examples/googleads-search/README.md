@@ -154,6 +154,33 @@ paused negative ad-group criteria. Do not change those statuses to
 The final plan must report `No changes.` when the manifest and remote
 configuration are unchanged.
 
+## Safety and replacement
+
+This example starts paused. Do not change `status` to `ENABLED` until you
+have verified the campaign in Google Ads. Agoraform does not enable spend
+or generate creative automatically.
+
+New campaigns, ad groups, positive keywords, and the Responsive Search Ad
+are created `PAUSED`. Negative keywords are created `ENABLED` because Google
+Ads does not allow paused negative ad-group criteria.
+
+Agoraform never deletes remote Google Ads objects. Changing an immutable
+identity field fails `plan` instead of hiding a replacement:
+
+- keyword `text`, `matchType`, `negative`, or parent ad group;
+- campaign location, language, or whether a location is excluded;
+- Responsive Search Ad parent ad group;
+- ad group parent campaign.
+
+Create a new resource address for those identity changes. Responsive Search
+Ad status updates the ad-group-ad relationship in place. Creative changes
+replace headline, description, URL, and path lists and appear as list diffs
+in `plan`.
+
+Customer and campaign conversion goals are created by Google Ads. Agoraform
+adopts or updates `biddable` and never attempts unsupported create or delete
+operations.
+
 ## Verify in Google Ads
 
 In the Google Ads customer from `GOOGLE_ADS_CUSTOMER_ID`, confirm the

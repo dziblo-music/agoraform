@@ -74,9 +74,9 @@ release:
     SemVer 2.0 release. `agoraform --version` prints `{{ .Version }}`.
     The git tag is `v{{ .Version }}`.
 
-    **Supported in 0.3.x:** `validate`, `plan`, `apply`, and `import` for Matomo goals and supported Tag Manager resources, plus Google Ads website conversion actions and customer conversion-goal biddability. State remains local; mutations are create/update only and `destroy` is not implemented.
+    **Supported in 0.4.x:** `validate`, `plan`, `apply`, and `import` for Matomo goals and supported Tag Manager resources, plus Google Ads website conversion measurement and the complete Search campaign graph (daily budgets, Search campaigns, campaign conversion goals, ad groups, keywords, Responsive Search Ads, and location/language targeting). State remains local; mutations are create/update only and `destroy` is not implemented.
 
-    This GitHub release is created as a **draft**. Publish it only after a clean install of a release artifact and the documented v0.3 Google Ads create/update/no-op/import verification have succeeded against a non-production account.
+    This GitHub release is created as a **draft**. Publish it only after a clean install of a release artifact and the documented v0.4 Google Ads Search create/update/no-op/import verification have succeeded against a non-production account.
 
     Full notes: [CHANGELOG.md](https://github.com/dziblo-music/agoraform/blob/v{{ .Version }}/CHANGELOG.md)
   footer: |
