@@ -35,9 +35,10 @@ const (
 
 var (
 	supportedVariableAttrs = map[string]struct{}{
-		AttrType: {},
-		AttrKey:  {},
-		AttrName: {},
+		AttrType:      {},
+		AttrKey:       {},
+		AttrName:      {},
+		AttrContainer: {},
 	}
 
 	computedVariableAttrs = map[string]struct{}{
@@ -65,7 +66,7 @@ var (
 )
 
 func (p *Provider) validateVariable(res resource.Resource) error {
-	if err := p.requireTagManagerConfig(); err != nil {
+	if err := p.requireTagManagerConfig(res); err != nil {
 		return fmt.Errorf("resource %s: %w", res.Address, err)
 	}
 
@@ -81,7 +82,11 @@ func (p *Provider) validateVariable(res resource.Resource) error {
 		if _, computed := computedVariableAttrs[key]; computed {
 			return fmt.Errorf("resource %s: %s is computed and cannot be set in configuration", res.Address, key)
 		}
-		return fmt.Errorf("resource %s: unsupported attribute %q; v0.2 matomo.variable supports %s, %s, and optional %s", res.Address, key, AttrType, AttrKey, AttrName)
+		return fmt.Errorf("resource %s: unsupported attribute %q; matomo.variable supports %s, %s, optional %s, and optional %s", res.Address, key, AttrType, AttrKey, AttrName, AttrContainer)
+	}
+
+	if _, _, err := optionalContainerRef(res); err != nil {
+		return err
 	}
 
 	typ, err := requiredString(res, AttrType)
@@ -140,24 +145,17 @@ func rejectEdgeWhitespace(addr resource.Address, attr, value string) error {
 	return nil
 }
 
-func (p *Provider) requireTagManagerConfig() error {
-	if err := p.requireSiteID(); err != nil {
-		return fmt.Errorf("%s is required to manage Tag Manager resources", EnvSiteID)
-	}
-	if p == nil || strings.TrimSpace(p.cfg.ContainerID) == "" {
-		return fmt.Errorf("%s is required to manage Tag Manager resources", EnvContainerID)
-	}
-	return nil
-}
-
 func (p *Provider) readVariable(ctx context.Context, res resource.Resource) (resource.RemoteResource, error) {
 	if err := p.validateVariable(res); err != nil {
 		return resource.RemoteResource{}, err
 	}
 
 	name := variableName(res.Attributes)
-	vars, err := p.listDraftVariables(ctx)
+	vars, err := p.listDraftVariables(ctx, res)
 	if err != nil {
+		if mapped := mapUnavailableContainer(res.Address, err); mapped != err {
+			return resource.RemoteResource{}, mapped
+		}
 		return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: %w", res.Address, err)
 	}
 
@@ -168,6 +166,7 @@ func (p *Provider) readVariable(ctx context.Context, res resource.Resource) (res
 	case 1:
 		live, err := remoteVariable(res.Address, matches[0])
 		if err == nil {
+			live = attachContainerRef(live, res.Attributes)
 			p.rememberBinding(res.Address, live.Identity.ID, matches[0].Name)
 		}
 		return live, err
@@ -181,32 +180,36 @@ func (p *Provider) createVariable(ctx context.Context, res resource.Resource) (r
 		return resource.RemoteResource{}, err
 	}
 
-	c, err := p.Client()
+	tm, err := p.tagManagerFor(res)
 	if err != nil {
-		return resource.RemoteResource{}, err
+		return resource.RemoteResource{}, fmt.Errorf("matomo: create %s: %w", res.Address, err)
 	}
-	version, err := c.TagManager().DraftVersion(ctx)
+	version, err := tm.DraftVersion(ctx)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: create %s: %w", res.Address, err)
 	}
 
-	id, err := c.TagManager().AddContainerVariable(ctx, version, variableInput(res.Attributes))
+	id, err := tm.AddContainerVariable(ctx, version, variableInput(res.Attributes))
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: create %s: %w", res.Address, err)
 	}
 
-	live, err := p.readVariableByID(ctx, res.Address, id)
+	live, err := p.readVariableByID(ctx, res, id)
 	if err == nil {
 		return live, nil
 	}
 	p.rememberBinding(res.Address, id, variableName(res.Attributes))
-	return remoteVariable(res.Address, client.Variable{
+	fallback, ferr := remoteVariable(res.Address, client.Variable{
 		IDVariable:         id,
 		IDContainerVersion: version,
 		Type:               matomoVariableType(stringAttr(res.Attributes, AttrType)),
 		Name:               variableName(res.Attributes),
 		Parameters:         map[string]string{paramDataLayerName: stringAttr(res.Attributes, AttrKey)},
 	})
+	if ferr != nil {
+		return resource.RemoteResource{}, ferr
+	}
+	return attachContainerRef(fallback, res.Attributes), nil
 }
 
 func (p *Provider) updateVariable(ctx context.Context, desired resource.Resource, actual resource.RemoteResource) (resource.RemoteResource, error) {
@@ -217,19 +220,22 @@ func (p *Provider) updateVariable(ctx context.Context, desired resource.Resource
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: missing remote identity", desired.Address)
 	}
 
-	current, err := p.readVariableByID(ctx, desired.Address, actual.Identity.ID)
+	current, err := p.readVariableByID(ctx, desired, actual.Identity.ID)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: refresh remote variable %q: %w", desired.Address, actual.Identity.ID, err)
 	}
 	if err := ensureImmutableVariableType(desired, current); err != nil {
 		return resource.RemoteResource{}, err
 	}
-
-	c, err := p.Client()
-	if err != nil {
+	if err := ensureImmutableContainerRef(desired, current); err != nil {
 		return resource.RemoteResource{}, err
 	}
-	version, err := c.TagManager().DraftVersion(ctx)
+
+	tm, err := p.tagManagerFor(desired)
+	if err != nil {
+		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: %w", desired.Address, err)
+	}
+	version, err := tm.DraftVersion(ctx)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: %w", desired.Address, err)
 	}
@@ -239,19 +245,19 @@ func (p *Provider) updateVariable(ctx context.Context, desired resource.Resource
 		DefaultValue: computedString(current.Computed, "default_value"),
 		LookupTable:  lookupTableValue(current.Computed["lookup_table"]),
 	}
-	if err := c.TagManager().UpdateContainerVariable(ctx, version, actual.Identity.ID, variableInput(desired.Attributes), preserved); err != nil {
+	if err := tm.UpdateContainerVariable(ctx, version, actual.Identity.ID, variableInput(desired.Attributes), preserved); err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: %w", desired.Address, err)
 	}
 
-	live, err := p.readVariableByID(ctx, desired.Address, actual.Identity.ID)
+	live, err := p.readVariableByID(ctx, desired, actual.Identity.ID)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s succeeded but refreshing variable %q failed: %w", desired.Address, actual.Identity.ID, err)
 	}
 	return live, nil
 }
 
-func (p *Provider) readVariableByID(ctx context.Context, addr resource.Address, id string) (resource.RemoteResource, error) {
-	vars, err := p.listDraftVariables(ctx)
+func (p *Provider) readVariableByID(ctx context.Context, res resource.Resource, id string) (resource.RemoteResource, error) {
+	vars, err := p.listDraftVariables(ctx, res)
 	if err != nil {
 		return resource.RemoteResource{}, err
 	}
@@ -260,9 +266,10 @@ func (p *Provider) readVariableByID(ctx context.Context, addr resource.Address, 
 			continue
 		}
 		if v.IDVariable == id {
-			live, err := remoteVariable(addr, v)
+			live, err := remoteVariable(res.Address, v)
 			if err == nil {
-				p.rememberBinding(addr, live.Identity.ID, v.Name)
+				live = attachContainerRef(live, res.Attributes)
+				p.rememberBinding(res.Address, live.Identity.ID, v.Name)
 			}
 			return live, err
 		}
@@ -270,19 +277,16 @@ func (p *Provider) readVariableByID(ctx context.Context, addr resource.Address, 
 	return resource.RemoteResource{}, provider.ErrNotFound
 }
 
-func (p *Provider) listDraftVariables(ctx context.Context) ([]client.Variable, error) {
-	if err := p.requireTagManagerConfig(); err != nil {
-		return nil, err
-	}
-	c, err := p.Client()
+func (p *Provider) listDraftVariables(ctx context.Context, res resource.Resource) ([]client.Variable, error) {
+	tm, err := p.tagManagerFor(res)
 	if err != nil {
 		return nil, err
 	}
-	version, err := c.TagManager().DraftVersion(ctx)
+	version, err := tm.DraftVersion(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return c.TagManager().GetContainerVariables(ctx, version)
+	return tm.GetContainerVariables(ctx, version)
 }
 
 func (p *Provider) normalizeVariableComparable(desired resource.Resource, live *resource.RemoteResource) (resource.Attributes, resource.Attributes, error) {
@@ -319,11 +323,12 @@ func comparableVariable(attrs resource.Attributes) (resource.Attributes, error) 
 	if name == "" {
 		name = key
 	}
-	return resource.Attributes{
+	out := resource.Attributes{
 		AttrType: typ,
 		AttrKey:  key,
 		AttrName: name,
-	}, nil
+	}
+	return withComparableContainer(out, attrs)
 }
 
 func remoteVariable(addr resource.Address, v client.Variable) (resource.RemoteResource, error) {

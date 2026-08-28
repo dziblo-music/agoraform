@@ -22,6 +22,51 @@ import (
 	"github.com/dziblo-music/agoraform/providers/matomo/client"
 )
 
+func TestImportMatomoContainerPersistsIdentityThenPlanUnchanged(t *testing.T) {
+	t.Parallel()
+
+	p, srv := matomoManagedContainerServerProvider(t)
+	srv.seedContainer(cliTMContainer{ID: "6OMh6taM", Name: "Main Website", Context: "web", Description: "primary"})
+
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "agoraform.yaml")
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "matomo.container.main", "6OMh6taM"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("import exit = %d, want %d; stderr=%q stdout=%q", code, cli.ExitOK, stderr.String(), stdout.String())
+	}
+	out := stdout.String()
+	if strings.Contains(out, "cli-test-token") || strings.Contains(out, "idcontainer") || strings.Contains(out, "idContainer") {
+		t.Fatalf("container import leaked secret or identity:\n%s", out)
+	}
+	if !strings.Contains(out, "matomo.container.main") || !strings.Contains(out, "Main Website") {
+		t.Fatalf("container import YAML missing expected fields:\n%s", out)
+	}
+
+	yamlText := extractYAML(out)
+	if err := os.WriteFile(manifestPath, []byte(yamlText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	assertPersistedRemoteID(t, manifestPath, "matomo.container.main", "6OMh6taM")
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"plan", "-f", manifestPath}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("plan after container import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "No changes.") {
+		t.Fatalf("plan after container import = %q", stdout.String())
+	}
+	if srv.mutationCount() != 0 {
+		t.Fatalf("container import mutated remote: %d", srv.mutationCount())
+	}
+}
+
 func TestImportMatomoVariablePersistsIdentityThenPlanUnchanged(t *testing.T) {
 	t.Parallel()
 
@@ -244,6 +289,21 @@ func resourceListYAML(fragment string) (string, error) {
 	return fragment[i+len(marker):], nil
 }
 
+func matomoManagedContainerServerProvider(t *testing.T) (*matomo.Provider, *cliTagManagerServer) {
+	t.Helper()
+	srv := newCLITagManagerServer(t)
+	httpSrv := httptest.NewServer(srv)
+	t.Cleanup(httpSrv.Close)
+	srv.server = httpSrv
+	p := matomo.NewWithHTTPClient(client.Config{
+		BaseURL:    httpSrv.URL,
+		TokenAuth:  "cli-test-token",
+		SiteID:     "3",
+		HTTPClient: httpSrv.Client(),
+	}, httpSrv.Client())
+	return p, srv
+}
+
 func matomoTagManagerServerProvider(t *testing.T) (*matomo.Provider, *cliTagManagerServer) {
 	t.Helper()
 	srv := newCLITagManagerServer(t)
@@ -258,6 +318,13 @@ func matomoTagManagerServerProvider(t *testing.T) (*matomo.Provider, *cliTagMana
 		HTTPClient:  httpSrv.Client(),
 	}, httpSrv.Client())
 	return p, srv
+}
+
+type cliTMContainer struct {
+	ID          string
+	Name        string
+	Context     string
+	Description string
 }
 
 type cliTMVariable struct {
@@ -284,24 +351,37 @@ type cliTMTag struct {
 }
 
 type cliTagManagerServer struct {
-	mu        sync.Mutex
-	variables map[int]cliTMVariable
-	triggers  map[int]cliTMTrigger
-	tags      map[int]cliTMTag
-	creates   int
-	updates   int
-	server    *httptest.Server
+	mu         sync.Mutex
+	containers map[string]cliTMContainer
+	variables  map[int]cliTMVariable
+	triggers   map[int]cliTMTrigger
+	tags       map[int]cliTMTag
+	creates    int
+	updates    int
+	server     *httptest.Server
 }
 
 func newCLITagManagerServer(t *testing.T) *cliTagManagerServer {
 	t.Helper()
 	return &cliTagManagerServer{
+		containers: map[string]cliTMContainer{
+			"6OMh6taM": {ID: "6OMh6taM", Name: "Website", Context: "web"},
+		},
 		variables: map[int]cliTMVariable{
 			1: {ID: 1, Name: "Matomo Configuration", Type: "MatomoConfiguration"},
 		},
 		triggers: make(map[int]cliTMTrigger),
 		tags:     make(map[int]cliTMTag),
 	}
+}
+
+func (s *cliTagManagerServer) seedContainer(c cliTMContainer) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if c.Context == "" {
+		c.Context = "web"
+	}
+	s.containers[c.ID] = c
 }
 
 func (s *cliTagManagerServer) seedVariable(v cliTMVariable) {
@@ -337,20 +417,22 @@ func (s *cliTagManagerServer) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	switch vals.Get("method") {
 	case "API.getMatomoVersion":
 		_, _ = io.WriteString(w, `"5.2.0"`)
+	case "TagManager.getContainers":
+		s.writeContainers(w)
 	case "TagManager.getContainer":
-		_, _ = io.WriteString(w, `{"idcontainer":"6OMh6taM","idsite":3,"draft":{"idcontainerversion":9}}`)
+		s.writeContainer(w, vals.Get("idContainer"))
 	case "TagManager.getContainerVariables":
 		s.writeVariables(w)
 	case "TagManager.getContainerTriggers":
 		s.writeTriggers(w)
 	case "TagManager.getContainerTags":
 		s.writeTags(w)
-	case "TagManager.addContainerVariable", "TagManager.addContainerTrigger", "TagManager.addContainerTag":
+	case "TagManager.addContainerVariable", "TagManager.addContainerTrigger", "TagManager.addContainerTag", "TagManager.addContainer":
 		s.mu.Lock()
 		s.creates++
 		s.mu.Unlock()
 		_, _ = io.WriteString(w, `{"result":"error","message":"unexpected create"}`)
-	case "TagManager.updateContainerVariable", "TagManager.updateContainerTrigger", "TagManager.updateContainerTag":
+	case "TagManager.updateContainerVariable", "TagManager.updateContainerTrigger", "TagManager.updateContainerTag", "TagManager.updateContainer":
 		s.mu.Lock()
 		s.updates++
 		s.mu.Unlock()
@@ -359,6 +441,39 @@ func (s *cliTagManagerServer) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		_, _ = io.WriteString(w, `[]`)
 	default:
 		_, _ = io.WriteString(w, `{"result":"error","message":"unknown method"}`)
+	}
+}
+
+func (s *cliTagManagerServer) writeContainers(w http.ResponseWriter) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]map[string]any, 0, len(s.containers))
+	for _, c := range s.containers {
+		out = append(out, s.containerJSON(c))
+	}
+	_ = json.NewEncoder(w).Encode(out)
+}
+
+func (s *cliTagManagerServer) writeContainer(w http.ResponseWriter, id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, ok := s.containers[id]
+	if !ok {
+		_, _ = io.WriteString(w, `false`)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(s.containerJSON(c))
+}
+
+func (s *cliTagManagerServer) containerJSON(c cliTMContainer) map[string]any {
+	return map[string]any{
+		"idcontainer": c.ID,
+		"idsite":      3,
+		"name":        c.Name,
+		"context":     c.Context,
+		"description": c.Description,
+		"status":      "active",
+		"draft":       map[string]any{"idcontainerversion": 9},
 	}
 }
 

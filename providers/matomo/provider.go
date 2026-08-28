@@ -26,9 +26,9 @@ type IdentityCatalog interface {
 
 // Provider is the Agoraform Matomo provider.
 //
-// It registers matomo.goal, matomo.variable, matomo.trigger, and
-// matomo.tag and shares a single HTTP client across analytics and Tag
-// Manager resource types.
+// It registers matomo.goal, matomo.container, matomo.variable,
+// matomo.trigger, and matomo.tag and shares a single HTTP client across
+// analytics and Tag Manager resource types.
 type Provider struct {
 	cfg    Config
 	once   sync.Once
@@ -38,16 +38,18 @@ type Provider struct {
 	mu                 sync.Mutex
 	known              map[string]remoteBinding
 	identities         IdentityCatalog
+	managedContainer   resource.Address
 	publishEnabled     bool
 	publishEnvironment string
 }
 
 var (
-	_ provider.Provider          = (*Provider)(nil)
-	_ provider.ConnectionChecker = (*Provider)(nil)
-	_ provider.Normalizer        = (*Provider)(nil)
-	_ provider.Configurator      = (*Provider)(nil)
-	_ provider.Finalizer         = (*Provider)(nil)
+	_ provider.Provider             = (*Provider)(nil)
+	_ provider.ConnectionChecker    = (*Provider)(nil)
+	_ provider.Normalizer           = (*Provider)(nil)
+	_ provider.Configurator         = (*Provider)(nil)
+	_ provider.Finalizer            = (*Provider)(nil)
+	_ provider.ResourceSetValidator = (*Provider)(nil)
 )
 
 // New returns a Matomo provider using cfg.
@@ -95,7 +97,7 @@ func (p *Provider) Name() string { return Name }
 
 // ResourceTypes implements provider.Provider.
 func (p *Provider) ResourceTypes() []string {
-	return []string{TypeGoal, TypeVariable, TypeTrigger, TypeTag}
+	return []string{TypeGoal, TypeContainer, TypeVariable, TypeTrigger, TypeTag}
 }
 
 // Client returns the reusable Matomo HTTP client, creating it on first use.
@@ -116,7 +118,7 @@ func (p *Provider) Client() (*client.Client, error) {
 func (p *Provider) CheckConnection(ctx context.Context) error {
 	enabled, _ := p.publicationSettings()
 	if enabled {
-		if err := p.requirePublishConfig(); err != nil {
+		if err := p.requirePublishConnection(); err != nil {
 			return err
 		}
 	} else if err := missingConfigError(p.cfg); err != nil {
@@ -140,6 +142,8 @@ func (p *Provider) Validate(_ context.Context, res resource.Resource) error {
 	switch res.Address.Type {
 	case TypeGoal:
 		return p.validateGoalSafe(res)
+	case TypeContainer:
+		return p.validateContainerSafe(res)
 	case TypeVariable:
 		return p.validateVariableSafe(res)
 	case TypeTrigger:
@@ -156,6 +160,8 @@ func (p *Provider) Read(ctx context.Context, res resource.Resource) (resource.Re
 	switch res.Address.Type {
 	case TypeGoal:
 		return p.readGoalSafe(ctx, res)
+	case TypeContainer:
+		return p.readContainerSafe(ctx, res)
 	case TypeVariable:
 		return p.readVariableSafe(ctx, res)
 	case TypeTrigger:
@@ -172,6 +178,8 @@ func (p *Provider) Create(ctx context.Context, res resource.Resource) (resource.
 	switch res.Address.Type {
 	case TypeGoal:
 		return p.createGoalSafe(ctx, res)
+	case TypeContainer:
+		return p.createContainerSafe(ctx, res)
 	case TypeVariable:
 		return p.createVariableSafe(ctx, res)
 	case TypeTrigger:
@@ -188,6 +196,8 @@ func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual
 	switch desired.Address.Type {
 	case TypeGoal:
 		return p.updateGoalSafe(ctx, desired, actual)
+	case TypeContainer:
+		return p.updateContainerSafe(ctx, desired, actual)
 	case TypeVariable:
 		return p.updateVariableSafe(ctx, desired, actual)
 	case TypeTrigger:
@@ -204,6 +214,8 @@ func (p *Provider) Import(ctx context.Context, addr resource.Address, id string)
 	switch addr.Type {
 	case TypeGoal:
 		return p.importGoal(ctx, addr, id)
+	case TypeContainer:
+		return p.importContainer(ctx, addr, id)
 	case TypeVariable:
 		return p.importVariable(ctx, addr, id)
 	case TypeTrigger:
@@ -220,6 +232,8 @@ func (p *Provider) NormalizeComparable(desired resource.Resource, live *resource
 	switch desired.Address.Type {
 	case TypeGoal:
 		return p.normalizeGoalComparableSafe(desired, live)
+	case TypeContainer:
+		return p.normalizeContainerComparableSafe(desired, live)
 	case TypeVariable:
 		return p.normalizeVariableComparableSafe(desired, live)
 	case TypeTrigger:

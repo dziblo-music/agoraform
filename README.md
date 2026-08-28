@@ -105,7 +105,7 @@ Matomo credentials and connection details stay outside the manifest:
 MATOMO_URL            Matomo base URL, for example https://matomo.example.com
 MATOMO_TOKEN_AUTH     API token
 MATOMO_SITE_ID        numeric site id
-MATOMO_CONTAINER_ID   Tag Manager container id for v0.2 Tag Manager resources
+MATOMO_CONTAINER_ID   existing Tag Manager container id when no matomo.container resource is declared
 ```
 
 Credentials never belong in YAML, plan output, logs, or local state.
@@ -450,6 +450,9 @@ When publication is required, `plan` shows a provider action such as:
 > matomo.container.main: publish -> live [conditional]
 ```
 
+With `MATOMO_CONTAINER_ID` and no `matomo.container` resource, that action
+is addressed as `matomo.container.external`.
+
 `apply` first reconciles all planned draft resources. Only after those
 mutations succeed does it recheck the converged draft, create a container
 version if needed, and publish it to the configured environment. The recheck
@@ -506,10 +509,10 @@ agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
 - Agoraform Google Ads authentication uses developer-token + single-user
   OAuth refresh-token credentials. Service-account, multi-user, and
   interactive OAuth flows are not implemented.
-- One Matomo Tag Manager container is configured at a time through
-  `MATOMO_CONTAINER_ID`.
-- Tag Manager support is limited to the variable, trigger, and tag types
-  documented for v0.2.0.
+- One Matomo Tag Manager container is selected at a time, either by a
+  `matomo.container` resource or by `MATOMO_CONTAINER_ID`.
+- Tag Manager support includes `matomo.container` plus the variable, trigger,
+  and tag types documented for v0.2.0. Container deletion is not implemented.
 - There is no provider-specific `agoraform publish` command; publication is
   declarative through normal `plan`/`apply`.
 - Rollback, scheduled publication, approval workflows, generalized deployment

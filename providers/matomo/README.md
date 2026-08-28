@@ -1,8 +1,10 @@
 # Matomo provider
 
 The Matomo provider is Agoraform's first production provider. v0.1.0
-introduced analytics goals, and v0.2.0 adds Matomo Tag Manager variables,
-triggers, tags, and declarative container publication.
+introduced analytics goals, v0.2.0 added Tag Manager variables, triggers,
+tags, and declarative container publication, and the current line adds
+`matomo.container` so a Tag Manager container can be declared and imported
+instead of requiring a pre-created container id.
 
 The Agoraform CLI remains provider-neutral. There is no Matomo-specific
 `publish` command.
@@ -15,12 +17,21 @@ Credentials and connection details come from environment variables:
 MATOMO_URL            required   Matomo base URL
 MATOMO_TOKEN_AUTH     required   API token
 MATOMO_SITE_ID        required for managed Matomo site resources
-MATOMO_CONTAINER_ID   required for Tag Manager resources/publication
+MATOMO_CONTAINER_ID   required for Tag Manager resources/publication when no matomo.container resource is declared
 ```
 
 Tokens never belong in the manifest, logs, plan output, or local state.
-`MATOMO_CONTAINER_ID` identifies the single Tag Manager container managed by
-the v0.2.0 implementation.
+
+Agoraform supports two explicit Tag Manager container modes:
+
+1. **Externally managed container** — omit `matomo.container` and set
+   `MATOMO_CONTAINER_ID` to an existing container, as in v0.2.0.
+2. **Agoraform-managed container** — declare one `matomo.container` resource
+   and omit `MATOMO_CONTAINER_ID`. Child Tag Manager resources must reference
+   that container with `container: { $ref: matomo.container.* }`.
+
+Mixing a managed container with `MATOMO_CONTAINER_ID` is rejected before
+mutation. v0.5.0 supports at most one managed Matomo container per manifest.
 
 ## Declarative provider configuration
 
@@ -45,8 +56,11 @@ Unknown provider configuration fields are rejected.
 
 When publication is enabled, plan performs capability-aware, non-mutating
 preflight with `TagManager.getAvailableEnvironmentsWithPublishCapability` and
-makes publication visible as a provider action. Apply creates/publishes a
-version only after all draft resource changes succeed.
+makes publication visible as a provider action. The publication address is
+the managed `matomo.container` resource when one is declared, or
+`matomo.container.external` when `MATOMO_CONTAINER_ID` selects an existing
+container. Apply creates/publishes a version only after all draft resource
+changes succeed.
 
 See [Matomo Tag Manager publication](../../docs/matomo-publishing.md).
 
@@ -68,21 +82,54 @@ Supported configurable fields are `name`, `matchAttribute`, `pattern`, and
 `patternType`. Agoraform preserves unmanaged Goal fields during updates.
 Provider-native goal IDs are stored in local state.
 
+### `matomo.container`
+
+A Tag Manager container:
+
+```yaml
+- address: matomo.container.main
+  attributes:
+    name: Main Website
+    context: web
+    description: primary web container
+```
+
+| Attribute | Required | Notes |
+| --- | --- | --- |
+| `name` | yes | Container display name. |
+| `context` | yes | `web`, `android`, or `ios`. Immutable after create. |
+| `description` | no | Optional description. |
+
+Provider-native container IDs, draft version IDs, publication state, and
+unmanaged Matomo flags such as `ignoreGtmDataLayer` remain computed. Agoraform
+preserves those flags on update.
+
+Container deletion is not implemented. Import an existing container with:
+
+```text
+agoraform import matomo.container.main CONTAINER_ID
+```
+
 ### `matomo.variable`
 
-v0.2.0 Data Layer variable:
+v0.2.0 Data Layer variable. In managed-container mode every child resource
+must name the container:
 
 ```yaml
 - address: matomo.variable.user_id
   attributes:
+    container:
+      $ref: matomo.container.main
     type: dataLayer
     key: userId
     name: User ID
 ```
 
+In external-container mode omit `container` and set `MATOMO_CONTAINER_ID`.
+
 `type: dataLayer` and `key` are required. `name` is optional and defaults to
-`key`. Provider-native IDs/status/version metadata are computed, not desired
-attributes. Updates preserve unmanaged Matomo fields.
+`key`. `container` is required when a `matomo.container` resource is declared
+and omitted when `MATOMO_CONTAINER_ID` selects an existing container.
 
 Agoraform may encounter other, unmanaged Matomo variable types while reading a
 container. Their scalar and structured parameter values are tolerated so they
@@ -95,12 +142,15 @@ v0.2.0 Custom Event trigger:
 ```yaml
 - address: matomo.trigger.trial_started
   attributes:
+    container:
+      $ref: matomo.container.main
     type: customEvent
     event: trialStarted
 ```
 
 `type: customEvent` and `event` are required. `name` is optional and defaults
-to `event`. Updates preserve unmanaged description/conditions.
+to `event`. `container` follows the same managed-versus-external rule as
+variables. Updates preserve unmanaged description/conditions.
 
 ### `matomo.tag`
 
@@ -109,6 +159,8 @@ v0.2.0 Matomo Analytics event tag:
 ```yaml
 - address: matomo.tag.trial_started
   attributes:
+    container:
+      $ref: matomo.container.main
     type: matomoAnalytics
     trigger:
       $ref: matomo.trigger.trial_started
@@ -133,12 +185,30 @@ Supported fields:
 | `eventName` | no | Literal or supported variable `$ref`. |
 | `eventValue` | no | Numeric literal/string or supported variable `$ref`. |
 | `name` | no | Defaults from `eventAction` when possible. |
+| `container` | managed mode | `$ref` to the declared `matomo.container`. |
 
 Apply resolves logical references to provider-native identities at runtime.
 Updates preserve unmanaged Matomo tag fields.
 
 Import reconstructs logical trigger/variable `$ref`s when the related remote
 objects are already represented in local state. Import prerequisites first.
+When a `matomo.container` resource is already bound, child import also
+reconstructs `container: { $ref: ... }`.
+
+## Greenfield and existing-container workflows
+
+**Greenfield (managed container).** Declare `matomo.container`, omit
+`MATOMO_CONTAINER_ID`, and reference the container from every variable,
+trigger, and tag. `apply` creates the container first, then child resources,
+then publication if `publish: true`.
+
+**Existing container.** Either import the container (`agoraform import
+matomo.container.main CONTAINER_ID`) and switch children to `container: $ref`,
+or keep `MATOMO_CONTAINER_ID` and omit the container resource and child
+`container` attributes. The conversion-tracking example uses the external
+`MATOMO_CONTAINER_ID` path.
+
+Do not mix the two modes in one manifest.
 
 ## Publication idempotency
 

@@ -44,7 +44,7 @@ func (p *Provider) readTagSafe(ctx context.Context, res resource.Resource) (reso
 		return p.reconcileTagVariableRefs(ctx, res, live)
 	}
 
-	live, err := p.readTagByID(ctx, res.Address, id, res.Attributes)
+	live, err := p.readTagByID(ctx, res, id)
 	if err != nil {
 		if errors.Is(err, provider.ErrNotFound) {
 			return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: persisted identity %q was not found remotely; refusing to plan a replacement resource: %w", res.Address, id, state.ErrStaleIdentity)
@@ -89,17 +89,19 @@ func (p *Provider) importTag(ctx context.Context, addr resource.Address, id stri
 	if err := validateTagIdentity(addr, id); err != nil {
 		return resource.RemoteResource{}, err
 	}
-	if err := p.requireTagManagerConfig(); err != nil {
+	res, containerID, err := p.importTagManagerResource(addr)
+	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: import %s: %w", addr, err)
 	}
-	live, err := p.readTagByID(ctx, addr, id, nil)
+	live, err := p.readTagByID(ctx, res, id)
 	if err != nil {
 		if errors.Is(err, provider.ErrNotFound) {
 			return resource.RemoteResource{}, fmt.Errorf("matomo: import %s: remote tag %q was not found: %w", addr, id, err)
 		}
 		return resource.RemoteResource{}, fmt.Errorf("matomo: import %s: %w", addr, err)
 	}
-	return p.reconstructTagImportRefs(ctx, addr, live)
+	live = p.attachImportedContainerRef(live, containerID)
+	return p.reconstructTagImportRefs(ctx, res, live)
 }
 
 func (p *Provider) normalizeTagComparableSafe(desired resource.Resource, live *resource.RemoteResource) (resource.Attributes, resource.Attributes, error) {

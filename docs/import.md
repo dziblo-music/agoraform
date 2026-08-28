@@ -288,6 +288,22 @@ for a complete paused Search campaign apply and adoption workflow, and the
 [Google Ads conversion example](../examples/googleads-conversion/README.md)
 for conversion-measurement-only import.
 
+## Matomo containers
+
+Import an existing Tag Manager container by its provider-native container
+id. That id is stored in local state as `remoteId`. Do not copy it into
+YAML. `context` remains immutable for a managed container.
+
+```bash
+agoraform import matomo.container.main 6OMh6taM
+```
+
+Import the container before child Tag Manager resources when you want those
+children to reconstruct `container: { $ref: matomo.container.main }`.
+
+Alternatively, keep using `MATOMO_CONTAINER_ID` without a `matomo.container`
+resource. In that mode child import omits the `container` attribute.
+
 ## Matomo variables
 
 Import a Tag Manager variable by its numeric `idvariable` in the configured

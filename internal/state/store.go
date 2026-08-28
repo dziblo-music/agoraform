@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/dziblo-music/agoraform/internal/resource"
@@ -85,6 +86,45 @@ func (s *Store) Identity(addr resource.Address) (resource.Identity, bool, error)
 		return resource.Identity{}, true, fmt.Errorf("state: %w", err)
 	}
 	return resource.Identity{ID: rec.RemoteID}, true, nil
+}
+
+// Binding is a logical address together with its provider-native identity.
+type Binding struct {
+	Address  resource.Address
+	RemoteID string
+}
+
+// Bindings lists identities stored for provider and resourceType.
+func (s *Store) Bindings(provider, resourceType string) ([]Binding, error) {
+	if s == nil {
+		return nil, nil
+	}
+	provider = strings.TrimSpace(provider)
+	resourceType = strings.TrimSpace(resourceType)
+	if provider == "" || resourceType == "" {
+		return nil, nil
+	}
+	out := make([]Binding, 0)
+	for addrStr, rec := range s.records {
+		if strings.TrimSpace(rec.Provider) != provider {
+			continue
+		}
+		addr, err := resource.ParseAddress(addrStr)
+		if err != nil {
+			return nil, fmt.Errorf("state: %w", err)
+		}
+		if addr.Type != resourceType {
+			continue
+		}
+		if err := validateRecord(addr, rec); err != nil {
+			return nil, fmt.Errorf("state: %w", err)
+		}
+		out = append(out, Binding{Address: addr, RemoteID: rec.RemoteID})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Address.String() < out[j].Address.String()
+	})
+	return out, nil
 }
 
 // AddressByRemoteID finds the logical address bound to a provider-native

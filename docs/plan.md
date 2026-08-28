@@ -52,6 +52,10 @@ For example, Matomo Tag Manager publication can appear as:
 > matomo.container.main: publish -> live
 ```
 
+An externally selected container (`MATOMO_CONTAINER_ID`, no
+`matomo.container` resource) uses `matomo.container.external` as the
+publication address.
+
 The provider decides whether that finalization is required using only
 non-mutating reads. If managed Tag Manager draft resources already have planned
 changes and `providers.matomo.publish` is enabled, the publication consequence

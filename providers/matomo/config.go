@@ -19,7 +19,8 @@ const (
 	// EnvSiteID is an optional default Matomo site identifier.
 	EnvSiteID = "MATOMO_SITE_ID"
 
-	// EnvContainerID is an optional default Tag Manager container id.
+	// EnvContainerID selects an existing Tag Manager container when no
+	// matomo.container resource is declared.
 	EnvContainerID = "MATOMO_CONTAINER_ID"
 )
 

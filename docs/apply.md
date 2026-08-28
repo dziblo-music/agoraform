@@ -107,7 +107,8 @@ matomo.goal.trial_started: created
 Apply complete! 1 created, 0 updated.
 ```
 
-With declarative Matomo publication:
+With declarative Matomo publication, the finalization address is the managed
+container resource or `matomo.container.external`:
 
 ```text
 matomo.tag.trial_started: updating...

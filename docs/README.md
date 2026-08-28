@@ -22,7 +22,9 @@ guides lives here.
 
 The 0.1.0 product release manages `matomo.goal` only. v0.2.0 also manages
 Tag Manager `matomo.variable`, `matomo.trigger`, and `matomo.tag`, plus
-declarative container publication through `plan` and `apply`. v0.3.0 adds
+declarative container publication through `plan` and `apply`. The Matomo
+provider also manages `matomo.container` so the Tag Manager container itself
+can be declared or imported. v0.3.0 adds
 supported website `googleads.conversion_action` and
 `googleads.customer_conversion_goal` resources plus import/adoption of existing
 conversion measurement. v0.4.0 adds the complete Search campaign graph:

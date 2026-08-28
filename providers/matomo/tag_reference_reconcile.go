@@ -14,7 +14,7 @@ func (p *Provider) reconcileTagVariableRefs(ctx context.Context, res resource.Re
 		return live, nil
 	}
 
-	tags, err := p.listDraftTags(ctx)
+	tags, err := p.listDraftTags(ctx, res)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: verify variable references: %w", res.Address, err)
 	}
@@ -43,7 +43,7 @@ func (p *Provider) reconcileTagVariableRefs(ctx context.Context, res resource.Re
 		name := p.lookupName(want.Address)
 		if name == "" {
 			if resolved, ok := resource.AsResolved(desired); ok && resolved.Identity.ID != "" {
-				name, err = p.variableNameByID(ctx, resolved.Identity.ID)
+				name, err = p.variableNameByID(ctx, res, resolved.Identity.ID)
 				if err != nil {
 					return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: resolve %s reference: %w", res.Address, key, err)
 				}

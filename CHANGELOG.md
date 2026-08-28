@@ -10,6 +10,16 @@ prints the SemVer identifier without the prefix (`0.4.0`).
 
 ## [Unreleased]
 
+### Added
+
+- `matomo.container` for Matomo Tag Manager containers (read, create, update, import). Declare `name`, `context` (`web`, `android`, or `ios`), and optional `description`. Provider-native container IDs, draft versions, publication state, and unmanaged Matomo flags remain computed. Context is immutable. Container deletion is out of scope until destroy semantics land.
+- Managed-container mode for Tag Manager children: `matomo.variable`, `matomo.trigger`, and `matomo.tag` declare `container: { $ref: matomo.container.* }` so apply resolves the provider-native container identity from the resource graph. v0.5.0 allows at most one managed Matomo container per manifest.
+
+### Changed
+
+- Tag Manager operations and publication select the container from the resource binding or `MATOMO_CONTAINER_ID` without mutating provider-global configuration. Publication is addressed as the managed `matomo.container` resource, or as `matomo.container.external` when an existing container is selected by environment. Mixing a managed container with `MATOMO_CONTAINER_ID` is rejected before mutation.
+- Existing `MATOMO_CONTAINER_ID` workflows remain supported when no `matomo.container` resource is declared. Child resources omit the `container` attribute in that mode.
+
 ## [0.4.0] - 2026-08-28
 
 Agoraform 0.4.0 adds complete Google Ads Search campaign management while

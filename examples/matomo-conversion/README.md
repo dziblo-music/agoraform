@@ -23,6 +23,11 @@ target environment. Find the site ID and container ID in Matomo; neither is a
 secret, but they are runtime settings so this reusable example does not embed
 them.
 
+To create the container from Agoraform instead of selecting one with
+`MATOMO_CONTAINER_ID`, declare a `matomo.container` resource and add
+`container: { $ref: matomo.container.main }` to each child. See the
+[Matomo provider reference](../../providers/matomo/README.md).
+
 The target container must also already contain a **Matomo Configuration**
 variable. Matomo Analytics tags reference that container-level variable for the
 Matomo URL, site ID, and tracking configuration; v0.2 does not manage
@@ -83,7 +88,8 @@ agoraform plan
 
 Review the first plan before applying it. Because publication is declarative,
 there is no separate `agoraform publish` command: the plan shows
-`matomo.container.main: publish -> live [conditional]`. After all three draft
+`matomo.container.external: publish -> live [conditional]` when this example
+selects an existing container with `MATOMO_CONTAINER_ID`. After all three draft
 resources converge, `apply` creates and publishes a container version only if
 the resulting draft differs from live. The final plan must report `No changes.`
 when the manifest and remote configuration are unchanged.
