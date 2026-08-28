@@ -616,6 +616,50 @@ func TestNormalizeAdGroupImportID(t *testing.T) {
 	}
 }
 
+func TestImportAdGroupUnsupportedType(t *testing.T) {
+	t.Parallel()
+
+	fake := newAdGroupFake()
+	group := sampleSearchAdGroup("31", "Shopping", "21")
+	group["type"] = "SHOPPING_PRODUCT_ADS"
+	fake.seedAdGroup(group)
+	p, _ := testAdGroupProvider(t, fake)
+	_, err := p.Import(context.Background(), mustAdGroupAddress(t, "shopping"), "31")
+	if err == nil {
+		t.Fatal("expected unsupported type error")
+	}
+	if errors.Is(err, provider.ErrNotFound) {
+		t.Fatal("unsupported type must not look like not found")
+	}
+	if !strings.Contains(err.Error(), "SEARCH_STANDARD") {
+		t.Fatalf("error = %q, want SEARCH_STANDARD guidance", err)
+	}
+	if len(fake.mutates) != 0 {
+		t.Fatalf("unsupported import mutated remote: %v", fake.mutates)
+	}
+}
+
+func TestImportAdGroupNotFound(t *testing.T) {
+	t.Parallel()
+
+	p, _ := testAdGroupProvider(t, newAdGroupFake())
+	_, err := p.Import(context.Background(), mustAdGroupAddress(t, "brand"), "31")
+	if !errors.Is(err, provider.ErrNotFound) {
+		t.Fatalf("Import = %v, want ErrNotFound", err)
+	}
+}
+
+func TestImportAdGroupInvalidID(t *testing.T) {
+	t.Parallel()
+
+	p, _ := testAdGroupProvider(t, newAdGroupFake())
+	_, err := p.Import(context.Background(), mustAdGroupAddress(t, "brand"), "abc")
+	if err == nil || !strings.Contains(err.Error(), "not a valid Google Ads ad group id") {
+		t.Fatalf("Import = %v, want invalid id", err)
+	}
+	assertNoProviderSecret(t, err.Error())
+}
+
 func TestPlanAdGroupCreateWhenMissing(t *testing.T) {
 	t.Parallel()
 

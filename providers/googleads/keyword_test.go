@@ -784,6 +784,135 @@ func TestNormalizeKeywordImportID(t *testing.T) {
 	}
 }
 
+func TestImportKeywordUnsupportedType(t *testing.T) {
+	t.Parallel()
+
+	fake := newKeywordFake()
+	item := sampleSearchKeyword("31", "9", "brand", "EXACT", false)
+	item["type"] = "LISTING_GROUP"
+	fake.seedKeyword(item)
+	p, _ := testKeywordProvider(t, fake)
+	_, err := p.Import(context.Background(), mustKeywordAddress(t, "listing"), "31~9")
+	if err == nil {
+		t.Fatal("expected unsupported type error")
+	}
+	if errors.Is(err, provider.ErrNotFound) {
+		t.Fatal("unsupported type must not look like not found")
+	}
+	if !strings.Contains(err.Error(), "KEYWORD") {
+		t.Fatalf("error = %q, want KEYWORD guidance", err)
+	}
+	if len(fake.mutates) != 0 {
+		t.Fatalf("unsupported import mutated remote: %v", fake.mutates)
+	}
+}
+
+func TestImportKeywordNegativeThenPlanUnchanged(t *testing.T) {
+	t.Parallel()
+
+	fake := newKeywordFake()
+	fake.seedBudget(map[string]any{
+		"id":               "11",
+		"name":             "Brand daily budget",
+		"amountMicros":     "50000000",
+		"deliveryMethod":   "STANDARD",
+		"explicitlyShared": false,
+		"period":           "DAILY",
+		"type":             "STANDARD",
+	})
+	fake.seedCampaign(sampleSearchCampaign("21", "Brand", "11"))
+	fake.seedAdGroup(sampleSearchAdGroup("31", "Brand", "21"))
+	item := sampleSearchKeyword("31", "42", "competitor", "PHRASE", true)
+	item["status"] = "ENABLED"
+	fake.seedKeyword(item)
+	p, _ := testKeywordProvider(t, fake)
+
+	st := mustGoogleAdsImportStore(t)
+	if err := st.Bind(mustCampaignBudgetAddress(t, "brand"), resource.Identity{ID: "11"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Bind(mustCampaignAddress(t, "brand"), resource.Identity{ID: "21"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Bind(mustAdGroupAddress(t, "brand"), resource.Identity{ID: "31"}); err != nil {
+		t.Fatal(err)
+	}
+	p.SetIdentityCatalog(st)
+
+	got, err := importer.Run(context.Background(), mustKeywordAddress(t, "competitor_neg"), "31~42", lookupGoogleAds(p), st)
+	if err != nil {
+		t.Fatalf("importer.Run: %v", err)
+	}
+	if got.Identity.ID != "31~42" {
+		t.Fatalf("identity = %q, want 31~42", got.Identity.ID)
+	}
+	if !strings.Contains(got.YAML, "negative: true") {
+		t.Fatalf("generated YAML missing negative:\n%s", got.YAML)
+	}
+	if strings.Contains(got.YAML, "cpcBid") {
+		t.Fatalf("negative keyword YAML leaked cpcBid:\n%s", got.YAML)
+	}
+
+	combined := `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.campaign_budget.brand
+    attributes:
+      name: Brand daily budget
+      amount: 50
+      explicitlyShared: false
+      deliveryMethod: STANDARD
+  - address: googleads.campaign.brand
+    attributes:
+      name: Brand
+      budget:
+        $ref: googleads.campaign_budget.brand
+      bidding:
+        strategy: MANUAL_CPC
+  - address: googleads.ad_group.brand
+    attributes:
+      name: Brand
+      campaign:
+        $ref: googleads.campaign.brand
+` + strings.TrimPrefix(got.YAML, "apiVersion: agoraform.io/v1alpha1\nresources:\n")
+	parsed, err := manifest.Parse([]byte(combined), "generated")
+	if err != nil {
+		t.Fatalf("generated YAML: %v\n%s", err, combined)
+	}
+	planned, err := plan.BuildWithState(context.Background(), parsed.Resources, func(resource.Address) (provider.Reader, error) {
+		return p, nil
+	}, st)
+	if err != nil {
+		t.Fatalf("plan after import: %v", err)
+	}
+	if planned.HasChanges() {
+		t.Fatalf("plan after import has changes: %+v", planned.Changes)
+	}
+	if len(fake.mutates) != 0 {
+		t.Fatalf("import/plan mutated remote: %v", fake.mutates)
+	}
+}
+
+func TestImportKeywordNotFound(t *testing.T) {
+	t.Parallel()
+
+	p, _ := testKeywordProvider(t, newKeywordFake())
+	_, err := p.Import(context.Background(), mustKeywordAddress(t, "brand_exact"), "31~41")
+	if !errors.Is(err, provider.ErrNotFound) {
+		t.Fatalf("Import = %v, want ErrNotFound", err)
+	}
+}
+
+func TestImportKeywordInvalidID(t *testing.T) {
+	t.Parallel()
+
+	p, _ := testKeywordProvider(t, newKeywordFake())
+	_, err := p.Import(context.Background(), mustKeywordAddress(t, "brand_exact"), "abc")
+	if err == nil || !strings.Contains(err.Error(), "not a valid Google Ads keyword id") {
+		t.Fatalf("Import = %v, want invalid id", err)
+	}
+	assertNoProviderSecret(t, err.Error())
+}
+
 func TestPlanKeywordCreateWhenMissing(t *testing.T) {
 	t.Parallel()
 

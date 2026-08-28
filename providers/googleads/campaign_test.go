@@ -531,6 +531,69 @@ func TestNormalizeCampaignImportID(t *testing.T) {
 	}
 }
 
+func TestImportCampaignUnsupportedChannel(t *testing.T) {
+	t.Parallel()
+
+	fake := newCampaignFake()
+	campaign := sampleSearchCampaign("21", "Display", "11")
+	campaign["advertisingChannelType"] = "DISPLAY"
+	fake.seedCampaign(campaign)
+	p, _ := testCampaignProvider(t, fake)
+	_, err := p.Import(context.Background(), mustCampaignAddress(t, "display"), "21")
+	if err == nil {
+		t.Fatal("expected unsupported channel error")
+	}
+	if errors.Is(err, provider.ErrNotFound) {
+		t.Fatal("unsupported channel must not look like not found")
+	}
+	if !strings.Contains(err.Error(), "SEARCH") {
+		t.Fatalf("error = %q, want SEARCH guidance", err)
+	}
+	if len(fake.mutates) != 0 {
+		t.Fatalf("unsupported import mutated remote: %v", fake.mutates)
+	}
+}
+
+func TestImportCampaignNotFound(t *testing.T) {
+	t.Parallel()
+
+	p, _ := testCampaignProvider(t, newCampaignFake())
+	_, err := p.Import(context.Background(), mustCampaignAddress(t, "brand"), "21")
+	if !errors.Is(err, provider.ErrNotFound) {
+		t.Fatalf("Import = %v, want ErrNotFound", err)
+	}
+}
+
+func TestImportCampaignInvalidID(t *testing.T) {
+	t.Parallel()
+
+	p, _ := testCampaignProvider(t, newCampaignFake())
+	_, err := p.Import(context.Background(), mustCampaignAddress(t, "brand"), "abc")
+	if err == nil || !strings.Contains(err.Error(), "not a valid Google Ads campaign id") {
+		t.Fatalf("Import = %v, want invalid id", err)
+	}
+	assertNoProviderSecret(t, err.Error())
+}
+
+func TestImportCampaignAPIError(t *testing.T) {
+	t.Parallel()
+
+	fake := newCampaignFake()
+	fake.searchStatus = http.StatusForbidden
+	p, _ := testCampaignProvider(t, fake)
+	_, err := p.Import(context.Background(), mustCampaignAddress(t, "brand"), "21")
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+	if errors.Is(err, provider.ErrNotFound) {
+		t.Fatal("API failure must not be ErrNotFound")
+	}
+	assertNoProviderSecret(t, err.Error())
+	if len(fake.mutates) != 0 {
+		t.Fatalf("API error import mutated remote: %v", fake.mutates)
+	}
+}
+
 func TestPlanCampaignCreateWhenMissing(t *testing.T) {
 	t.Parallel()
 

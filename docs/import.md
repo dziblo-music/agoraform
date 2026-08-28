@@ -120,6 +120,20 @@ agoraform import googleads.customer_conversion_goal.signup SIGNUP~WEBSITE
 Unsupported origins, such as app or Google-hosted goals, fail with guidance
 instead of reconstructing a website conversion-goal manifest.
 
+## Google Ads Search campaign import
+
+Import v0.4 Search resources one at a time. Parent resources must already
+be bound so Agoraform can reconstruct logical `$ref` values:
+
+```text
+campaign_budget -> campaign -> ad_group | campaign_conversion_goal | campaign_location | campaign_language
+ad_group -> keyword | responsive_search_ad
+```
+
+Import never mutates Google Ads and does not rewrite the manifest.
+Unsupported remote campaign, ad, criterion, and budget types fail with
+guidance instead of emitting a lossy configuration.
+
 ## Google Ads campaign budgets
 
 Import a daily Search campaign budget by its numeric campaign budget ID, or
