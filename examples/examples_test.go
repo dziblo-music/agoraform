@@ -148,6 +148,11 @@ func TestGoogleAdsSearchExampleCoversCampaignWorkflow(t *testing.T) {
 		t.Errorf("campaign budget $ref = %s", budgetRef)
 	}
 
+	customerGoal := onlyResource(t, byType, googleads.TypeCustomerConversionGoal)
+	if got := requireRef(t, customerGoal, googleads.AttrConversionAction); got != "googleads.conversion_action.trial_started" {
+		t.Errorf("customer conversion goal conversionAction $ref = %s", got)
+	}
+
 	adGroups := byType[googleads.TypeAdGroup]
 	if len(adGroups) != 1 {
 		t.Fatalf("ad groups = %d, want 1", len(adGroups))
