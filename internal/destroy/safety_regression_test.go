@@ -141,7 +141,7 @@ func (p *invalidStatusDestroyer) Destroy(context.Context, resource.Resource) (pr
 
 type retryFinalizingDestroyer struct {
 	provider.Provider
-	failFinalize bool
+	failFinalize  bool
 	finalizeCalls int
 }
 
