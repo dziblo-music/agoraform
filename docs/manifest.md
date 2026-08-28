@@ -150,7 +150,8 @@ the two modes is rejected. See the
 
 ### `matomo.variable`
 
-v0.2.0 supports Tag Manager Data Layer variables:
+v0.2.0 supports Tag Manager Data Layer variables. v0.5.0 also supports
+Matomo Configuration variables:
 
 ```yaml
 - address: matomo.variable.user_id
@@ -158,9 +159,19 @@ v0.2.0 supports Tag Manager Data Layer variables:
     type: dataLayer
     key: userId
     name: User ID
+
+- address: matomo.variable.config
+  attributes:
+    type: matomoConfiguration
+    name: Matomo Configuration
+    matomoUrl: https://matomo.example.com
+    siteId: 1
+    enableLinkTracking: true
 ```
 
-`type` and `key` are required; `name` is optional and defaults to `key`.
+For `dataLayer`, `type` and `key` are required; `name` is optional and
+defaults to `key`. For `matomoConfiguration`, `type`, `name`, `matomoUrl`,
+and `siteId` are required; `enableLinkTracking` is optional.
 
 ### `matomo.trigger`
 
@@ -187,10 +198,16 @@ v0.2.0 supports Matomo Analytics event tags:
       $ref: matomo.trigger.trial_started
     eventCategory: signup
     eventAction: trialStarted
+    matomoConfiguration:
+      $ref: matomo.variable.config
 ```
 
 Supported event fields may be literals or, where documented, references to
-managed variables. See the [Matomo provider reference](../providers/matomo/README.md)
+managed variables. `matomoConfiguration` is an optional `$ref` to a managed
+`matomo.variable` of type `matomoConfiguration`. When omitted, Agoraform
+keeps the existing behavior of locating a single pre-existing Matomo
+Configuration variable in the container. See the
+[Matomo provider reference](../providers/matomo/README.md)
 for the complete resource-specific schema and preservation behavior.
 
 ## Google Ads resources

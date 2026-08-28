@@ -134,7 +134,7 @@ func TestAddContainerVariable(t *testing.T) {
 	id, err := c.TagManager().AddContainerVariable(context.Background(), "9", client.VariableInput{
 		Type: "DataLayer",
 		Name: "userId",
-		Parameters: map[string]string{
+		Parameters: map[string]any{
 			"dataLayerName": "userId",
 		},
 	})
@@ -173,7 +173,7 @@ func TestUpdateContainerVariablePreservesUnmanagedFields(t *testing.T) {
 	err := c.TagManager().UpdateContainerVariable(context.Background(), "9", "4", client.VariableInput{
 		Type: "DataLayer",
 		Name: "User ID",
-		Parameters: map[string]string{
+		Parameters: map[string]any{
 			"dataLayerName": "user_id",
 		},
 	}, client.VariablePreservedFields{

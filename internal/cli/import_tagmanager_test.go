@@ -109,6 +109,61 @@ func TestImportMatomoVariablePersistsIdentityThenPlanUnchanged(t *testing.T) {
 	}
 }
 
+func TestImportMatomoConfigurationVariablePersistsIdentityThenPlanUnchanged(t *testing.T) {
+	t.Parallel()
+
+	p, srv := matomoTagManagerServerProvider(t)
+	srv.seedVariable(cliTMVariable{
+		ID:   20,
+		Name: "Matomo Configuration",
+		Type: "MatomoConfiguration",
+		Parameters: map[string]any{
+			"matomoUrl":          "https://matomo.example.com",
+			"idSite":             "1",
+			"enableLinkTracking": true,
+			"domains":            []any{"example.com"},
+		},
+	})
+
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "agoraform.yaml")
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "matomo.variable.config", "20"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("import exit = %d, want %d; stderr=%q stdout=%q", code, cli.ExitOK, stderr.String(), stdout.String())
+	}
+	out := stdout.String()
+	if strings.Contains(out, "cli-test-token") || strings.Contains(out, "idvariable") || strings.Contains(out, "domains") {
+		t.Fatalf("configuration import leaked secret, identity, or unowned field:\n%s", out)
+	}
+	if !strings.Contains(out, "matomoConfiguration") || !strings.Contains(out, "matomoUrl") {
+		t.Fatalf("configuration import YAML missing expected fields:\n%s", out)
+	}
+
+	yamlText := extractYAML(out)
+	if err := os.WriteFile(manifestPath, []byte(yamlText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	assertPersistedRemoteID(t, manifestPath, "matomo.variable.config", "20")
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"plan", "-f", manifestPath}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("plan after configuration import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "No changes.") {
+		t.Fatalf("plan after configuration import = %q", stdout.String())
+	}
+	if srv.mutationCount() != 0 {
+		t.Fatalf("configuration import mutated remote: %d", srv.mutationCount())
+	}
+}
+
 func TestImportMatomoTriggerPersistsIdentityThenPlanUnchanged(t *testing.T) {
 	t.Parallel()
 
@@ -328,10 +383,11 @@ type cliTMContainer struct {
 }
 
 type cliTMVariable struct {
-	ID   int
-	Name string
-	Type string
-	Key  string
+	ID         int
+	Name       string
+	Type       string
+	Key        string
+	Parameters map[string]any
 }
 
 type cliTMTrigger struct {
@@ -482,6 +538,12 @@ func (s *cliTagManagerServer) writeVariables(w http.ResponseWriter) {
 	defer s.mu.Unlock()
 	out := make([]map[string]any, 0, len(s.variables))
 	for id, v := range s.variables {
+		params := map[string]any{}
+		if v.Parameters != nil {
+			params = v.Parameters
+		} else if v.Key != "" {
+			params = map[string]any{"dataLayerName": v.Key}
+		}
 		item := map[string]any{
 			"idvariable":         strconv.Itoa(id),
 			"idcontainerversion": "9",
@@ -489,10 +551,7 @@ func (s *cliTagManagerServer) writeVariables(w http.ResponseWriter) {
 			"type":               v.Type,
 			"name":               v.Name,
 			"status":             "active",
-			"parameters":         map[string]any{},
-		}
-		if v.Key != "" {
-			item["parameters"] = map[string]any{"dataLayerName": v.Key}
+			"parameters":         params,
 		}
 		out = append(out, item)
 	}

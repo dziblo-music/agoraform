@@ -361,7 +361,8 @@ than leaking into configuration.
 
 ### `matomo.variable`
 
-v0.2.0 supports Data Layer variables:
+v0.2.0 supports Data Layer variables. v0.5.0 also supports Matomo
+Configuration variables:
 
 ```yaml
 - address: matomo.variable.user_id
@@ -369,6 +370,14 @@ v0.2.0 supports Data Layer variables:
     type: dataLayer
     key: userId
     name: User ID
+
+- address: matomo.variable.config
+  attributes:
+    type: matomoConfiguration
+    name: Matomo Configuration
+    matomoUrl: https://matomo.example.com
+    siteId: 1
+    enableLinkTracking: true
 ```
 
 ### `matomo.trigger`
@@ -386,7 +395,8 @@ v0.2.0 supports Custom Event triggers:
 
 v0.2.0 supports Matomo Analytics event tags. The fire trigger is a logical
 `$ref`; supported event fields can use literals or supported managed-variable
-references where documented.
+references where documented. Tags may reference a managed Matomo
+Configuration variable with `matomoConfiguration: { $ref: matomo.variable.* }`.
 
 See the [Matomo provider reference](providers/matomo/README.md) for the complete
 supported schemas.
@@ -399,6 +409,7 @@ prints canonical YAML. It does not mutate the remote platform or edit your
 manifest.
 
 ```bash
+agoraform import matomo.variable.config VARIABLE_ID
 agoraform import matomo.variable.user_id VARIABLE_ID
 agoraform import matomo.trigger.trial_started TRIGGER_ID
 agoraform import matomo.tag.trial_started TAG_ID

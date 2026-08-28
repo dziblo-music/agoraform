@@ -15,7 +15,7 @@ func TestFingerprintIgnoresProviderNativeIDs(t *testing.T) {
 			IDContainerVersion: "9",
 			Type:               "DataLayer",
 			Name:               "userId",
-			Parameters:         map[string]string{"dataLayerName": "userId"},
+			Parameters:         map[string]any{"dataLayerName": "userId"},
 		}},
 		nil,
 		[]client.Tag{{
@@ -36,7 +36,7 @@ func TestFingerprintIgnoresProviderNativeIDs(t *testing.T) {
 			IDContainerVersion: "12",
 			Type:               "DataLayer",
 			Name:               "userId",
-			Parameters:         map[string]string{"dataLayerName": "userId"},
+			Parameters:         map[string]any{"dataLayerName": "userId"},
 		}},
 		nil,
 		[]client.Tag{{

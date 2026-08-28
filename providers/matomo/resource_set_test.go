@@ -141,6 +141,60 @@ func TestValidateResourceSetPublicationRequiresContainerSelector(t *testing.T) {
 	}
 }
 
+func TestValidateResourceSetRejectsMatomoConfigurationRefToDataLayer(t *testing.T) {
+	t.Parallel()
+
+	p := matomo.New(client.Config{
+		BaseURL:     "https://matomo.example.com",
+		TokenAuth:   providerToken,
+		SiteID:      "3",
+		ContainerID: variableContainerID,
+	})
+	err := p.ValidateResourceSet(context.Background(), []resource.Resource{
+		variableResource(t, "user_id", resource.Attributes{
+			matomo.AttrType: "dataLayer",
+			matomo.AttrKey:  "userId",
+		}),
+		tagResource(t, "trial_started", resource.Attributes{
+			matomo.AttrType:          "matomoAnalytics",
+			matomo.AttrTrigger:       resource.Ref{Address: mustTriggerAddress(t, "trial_started")},
+			matomo.AttrEventCategory: "signup",
+			matomo.AttrEventAction:   "trialStarted",
+			matomo.AttrMatomoConfiguration: resource.Ref{
+				Address: mustVariableAddress(t, "user_id"),
+			},
+		}),
+	})
+	if err == nil || !strings.Contains(err.Error(), "matomoConfiguration") {
+		t.Fatalf("ValidateResourceSet = %v, want type rejection", err)
+	}
+}
+
+func TestValidateResourceSetAllowsManagedMatomoConfigurationRef(t *testing.T) {
+	t.Parallel()
+
+	p := matomo.New(client.Config{
+		BaseURL:     "https://matomo.example.com",
+		TokenAuth:   providerToken,
+		SiteID:      "3",
+		ContainerID: variableContainerID,
+	})
+	if err := p.ValidateResourceSet(context.Background(), []resource.Resource{
+		variableResource(t, "config", configVariableAttrs(nil)),
+		tagResource(t, "trial_started", resource.Attributes{
+			matomo.AttrType:          "matomoAnalytics",
+			matomo.AttrTrigger:       resource.Ref{Address: mustTriggerAddress(t, "trial_started")},
+			matomo.AttrEventCategory: "signup",
+			matomo.AttrEventAction:   "trialStarted",
+			matomo.AttrMatomoConfiguration: resource.Ref{
+				Address: mustVariableAddress(t, "config"),
+			},
+		}),
+	}); err != nil {
+		t.Fatalf("ValidateResourceSet: %v", err)
+	}
+}
+
 func TestValidateResourceSetPublicationWithManagedContainerOmitsEnvID(t *testing.T) {
 	t.Parallel()
 

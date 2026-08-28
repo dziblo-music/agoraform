@@ -112,8 +112,8 @@ agoraform import matomo.container.main CONTAINER_ID
 
 ### `matomo.variable`
 
-v0.2.0 Data Layer variable. In managed-container mode every child resource
-must name the container:
+v0.2.0 Data Layer variable and v0.5.0 Matomo Configuration variable. In
+managed-container mode every child resource must name the container.
 
 ```yaml
 - address: matomo.variable.user_id
@@ -123,17 +123,46 @@ must name the container:
     type: dataLayer
     key: userId
     name: User ID
+
+- address: matomo.variable.config
+  attributes:
+    container:
+      $ref: matomo.container.main
+    type: matomoConfiguration
+    name: Matomo Configuration
+    matomoUrl: https://matomo.example.com
+    siteId: 1
+    enableLinkTracking: true
 ```
 
 In external-container mode omit `container` and set `MATOMO_CONTAINER_ID`.
 
-`type: dataLayer` and `key` are required. `name` is optional and defaults to
-`key`. `container` is required when a `matomo.container` resource is declared
-and omitted when `MATOMO_CONTAINER_ID` selects an existing container.
+Supported `type` values:
+
+| `type` | Required fields | Notes |
+| --- | --- | --- |
+| `dataLayer` | `key` | `name` optional; defaults to `key`. |
+| `matomoConfiguration` | `name`, `matomoUrl`, `siteId` | `enableLinkTracking` optional boolean. |
+
+`container` is required when a `matomo.container` resource is declared and
+omitted when `MATOMO_CONTAINER_ID` selects an existing container. `type` is
+immutable after the resource is bound.
+
+`matomoConfiguration` manages a stable initial subset: Matomo URL, site ID,
+and optional link tracking. Cookie, consent, domain, cross-domain, and custom
+dimension settings are unowned. Updates read the complete remote variable and
+round-trip every unowned template parameter unchanged. If those parameters
+cannot be represented without loss, apply fails before mutation.
 
 Agoraform may encounter other, unmanaged Matomo variable types while reading a
 container. Their scalar and structured parameter values are tolerated so they
-do not prevent managed Data Layer variables from being planned or applied.
+do not prevent managed variables from being planned or applied.
+
+Import an existing configuration variable with:
+
+```text
+agoraform import matomo.variable.config VARIABLE_ID
+```
 
 ### `matomo.trigger`
 
@@ -166,13 +195,20 @@ v0.2.0 Matomo Analytics event tag:
       $ref: matomo.trigger.trial_started
     eventCategory: signup
     eventAction: trialStarted
+    matomoConfiguration:
+      $ref: matomo.variable.config
 ```
 
-The target Tag Manager container must already contain a **Matomo Configuration**
-variable. Matomo Analytics tags reference that variable for the Matomo URL,
-site ID, and tracking configuration. v0.2 does not manage
-`MatomoConfiguration` variables declaratively, so create one in Matomo before
-managing `matomo.tag` resources if the container does not already have one.
+Matomo Analytics tags need a Matomo Configuration variable for the Matomo URL,
+site ID, and tracking settings. Fully managed setups declare that variable as
+`type: matomoConfiguration` and reference it from the tag. Existing containers
+can keep using a single pre-existing configuration variable: omit
+`matomoConfiguration` and Agoraform locates it in the target container. Import
+the variable when you want Agoraform to own it.
+
+If several configuration variables exist and none is named
+`Matomo Configuration`, implicit discovery fails until you add an explicit
+`$ref` or keep a single configuration variable.
 
 Supported fields:
 
@@ -186,6 +222,7 @@ Supported fields:
 | `eventValue` | no | Numeric literal/string or supported variable `$ref`. |
 | `name` | no | Defaults from `eventAction` when possible. |
 | `container` | managed mode | `$ref` to the declared `matomo.container`. |
+| `matomoConfiguration` | no | `$ref` to a managed `matomo.variable` with `type: matomoConfiguration`. Omitted tags keep implicit/external discovery. |
 
 Apply resolves logical references to provider-native identities at runtime.
 Updates preserve unmanaged Matomo tag fields.
@@ -199,8 +236,10 @@ reconstructs `container: { $ref: ... }`.
 
 **Greenfield (managed container).** Declare `matomo.container`, omit
 `MATOMO_CONTAINER_ID`, and reference the container from every variable,
-trigger, and tag. `apply` creates the container first, then child resources,
-then publication if `publish: true`.
+trigger, and tag. Declare a `matomo.variable` with `type: matomoConfiguration`
+and reference it from `matomo.tag` so the container does not need a
+manually created configuration variable. `apply` creates the container first,
+then child resources, then publication if `publish: true`.
 
 **Existing container.** Either import the container (`agoraform import
 matomo.container.main CONTAINER_ID`) and switch children to `container: $ref`,

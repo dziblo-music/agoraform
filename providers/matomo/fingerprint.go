@@ -97,12 +97,12 @@ func fingerprintContainer(vars []client.Variable, triggers []client.Trigger, tag
 }
 
 type variableFingerprint struct {
-	Type         string            `json:"type"`
-	Name         string            `json:"name"`
-	Parameters   map[string]string `json:"parameters"`
-	DefaultValue string            `json:"defaultValue"`
-	Description  string            `json:"description"`
-	LookupTable  json.RawMessage   `json:"lookupTable"`
+	Type         string          `json:"type"`
+	Name         string          `json:"name"`
+	Parameters   map[string]any  `json:"parameters"`
+	DefaultValue string          `json:"defaultValue"`
+	Description  string          `json:"description"`
+	LookupTable  json.RawMessage `json:"lookupTable"`
 }
 
 type triggerFingerprint struct {

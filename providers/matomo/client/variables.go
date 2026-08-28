@@ -13,10 +13,10 @@ import (
 // Variable is a Matomo Tag Manager variable as returned by
 // TagManager.getContainerVariables.
 //
-// Field names follow the API JSON response. Scalar parameter values are
-// normalized to strings and structured values are preserved as canonical JSON
-// strings so callers do not have to handle Matomo's mixed encodings.
-// IDVariable is the provider-native identifier within the draft version.
+// Field names follow the API JSON response. Parameter values keep JSON types
+// (scalars, arrays, and objects) so unowned template fields can be round-tripped
+// on replacement-style updates. IDVariable is the provider-native identifier
+// within the draft version.
 type Variable struct {
 	IDVariable         string
 	IDContainerVersion string
@@ -26,7 +26,7 @@ type Variable struct {
 	Status             string
 	Description        string
 	DefaultValue       string
-	Parameters         map[string]string
+	Parameters         map[string]any
 	LookupTable        json.RawMessage
 }
 
@@ -35,7 +35,7 @@ type Variable struct {
 type VariableInput struct {
 	Type       string
 	Name       string
-	Parameters map[string]string
+	Parameters map[string]any
 }
 
 // VariablePreservedFields is the unmanaged portion of a Tag Manager
@@ -46,6 +46,7 @@ type VariablePreservedFields struct {
 	DefaultValue string
 	Description  string
 	LookupTable  json.RawMessage
+	Parameters   map[string]any
 }
 
 type rawVariable struct {
@@ -62,7 +63,7 @@ type rawVariable struct {
 }
 
 func (v rawVariable) variable() (Variable, error) {
-	params, err := decodeStringMap(v.Parameters)
+	params, err := decodeAnyMap(v.Parameters)
 	if err != nil {
 		return Variable{}, err
 	}
@@ -139,6 +140,11 @@ func (t *TagManager) UpdateContainerVariable(ctx context.Context, idContainerVer
 	if idVariable == "" {
 		return fmt.Errorf("matomo: idVariable is required")
 	}
+	merged, err := mergeVariableParameters(preserved.Parameters, in.Parameters)
+	if err != nil {
+		return err
+	}
+	in.Parameters = merged
 	params := variableInputValues(in)
 	params.Del("type") // updateContainerVariable does not accept type
 	params.Set("idContainerVersion", idContainerVersion)
@@ -148,7 +154,7 @@ func (t *TagManager) UpdateContainerVariable(ctx context.Context, idContainerVer
 	if err := setFormJSON(params, "lookupTable", preserved.LookupTable, "TagManager.updateContainerVariable"); err != nil {
 		return err
 	}
-	_, err := t.Call(ctx, "updateContainerVariable", params)
+	_, err = t.Call(ctx, "updateContainerVariable", params)
 	return err
 }
 
@@ -159,9 +165,90 @@ func variableInputValues(in VariableInput) url.Values {
 	}
 	params.Set("name", in.Name)
 	for key, value := range in.Parameters {
-		params.Set("parameters["+key+"]", value)
+		setFormValue(params, "parameters["+key+"]", value)
 	}
 	return params
+}
+
+// mergeVariableParameters overlays managed parameters onto the complete
+// remote parameter map. Unowned keys are preserved so Matomo replacement
+// updates do not clear unmanaged template settings.
+func mergeVariableParameters(preserved, managed map[string]any) (map[string]any, error) {
+	out, err := CloneJSONMap(preserved)
+	if err != nil {
+		return nil, fmt.Errorf("matomo: remote variable parameters cannot be preserved without loss: %w", err)
+	}
+	for k, v := range managed {
+		out[k] = v
+	}
+	if err := validatePreservableVariableParameters(out); err != nil {
+		return nil, fmt.Errorf("matomo: remote variable parameters cannot be preserved without loss: %w", err)
+	}
+	return out, nil
+}
+
+// CloneJSONMap returns a JSON round-trip copy of in. Non-JSON values fail
+// so callers can abort before a lossy Matomo replacement update.
+func CloneJSONMap(in map[string]any) (map[string]any, error) {
+	if in == nil {
+		return map[string]any{}, nil
+	}
+	raw, err := json.Marshal(in)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	if out == nil {
+		return map[string]any{}, nil
+	}
+	return out, nil
+}
+
+// validatePreservableVariableParameters rejects JSON values that the Matomo
+// form-encoding used by variable updates cannot represent without changing
+// their meaning. In particular, setFormValue intentionally omits null and
+// empty collections, so accepting those here would silently clear unowned
+// replacement-style template parameters.
+func validatePreservableVariableParameters(parameters map[string]any) error {
+	for key, value := range parameters {
+		if err := validatePreservableFormValue("parameters["+key+"]", value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validatePreservableFormValue(path string, value any) error {
+	switch x := value.(type) {
+	case nil:
+		return fmt.Errorf("%s is null and cannot be represented by Matomo form encoding", path)
+	case map[string]any:
+		if len(x) == 0 {
+			return fmt.Errorf("%s is an empty object and cannot be represented by Matomo form encoding", path)
+		}
+		for key, child := range x {
+			if err := validatePreservableFormValue(path+"["+key+"]", child); err != nil {
+				return err
+			}
+		}
+	case []any:
+		if len(x) == 0 {
+			return fmt.Errorf("%s is an empty array and cannot be represented by Matomo form encoding", path)
+		}
+		for i, child := range x {
+			if err := validatePreservableFormValue(fmt.Sprintf("%s[%d]", path, i), child); err != nil {
+				return err
+			}
+		}
+	case string, float64, json.Number, bool:
+		return nil
+	default:
+		return fmt.Errorf("%s has unsupported value type %T", path, value)
+	}
+	return nil
 }
 
 func decodeVariables(raw json.RawMessage) ([]Variable, error) {

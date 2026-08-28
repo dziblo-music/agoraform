@@ -310,6 +310,12 @@ Import a Tag Manager variable by its numeric `idvariable` in the configured
 container draft. That id is stored in local state as `remoteId`. Do not
 copy it into YAML. `type` remains immutable for a managed variable.
 
+Data Layer and Matomo Configuration variables are both imported through
+`matomo.variable`. Configuration import emits `type`, `name`, `matomoUrl`,
+`siteId`, and `enableLinkTracking` when present. Unowned template settings
+such as domains and custom dimensions are preserved remotely and omitted
+from generated YAML.
+
 ## Matomo triggers
 
 Import a Tag Manager trigger by its numeric `idtrigger` in the configured
@@ -329,11 +335,16 @@ resources are already bound in local state:
 - Event fields that use `{{Variable Name}}` become `$ref`s to managed
   `matomo.variable` resources when those variables are bound. Unmanaged
   templates remain literal strings.
+- A managed Matomo Configuration variable bound in state becomes
+  `matomoConfiguration: { $ref: matomo.variable.NAME }`. If that variable
+  is not bound, the attribute is omitted and implicit discovery remains in
+  effect.
 
 Import order matters. Import (or apply) related triggers and variables
 before importing a tag:
 
 ```bash
+agoraform import matomo.variable.config 20
 agoraform import matomo.variable.user_id 2
 agoraform import matomo.trigger.trial_started 4
 agoraform import matomo.tag.trial_started 1

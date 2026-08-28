@@ -27,9 +27,12 @@ const (
 	// AttrEventValue is an optional Matomo event value for a matomoAnalytics tag.
 	AttrEventValue = "eventValue"
 
+	// AttrMatomoConfiguration is an optional $ref to a managed
+	// matomo.variable of type matomoConfiguration.
+	AttrMatomoConfiguration = "matomoConfiguration"
+
 	tagTypeMatomoAnalytics  = "matomoAnalytics"
 	matomoTypeMatomo        = "Matomo"
-	matomoTypeMatomoConfig  = "MatomoConfiguration"
 	paramTrackingType       = "trackingType"
 	trackingTypeEvent       = "event"
 	paramMatomoConfig       = "matomoConfig"
@@ -48,14 +51,15 @@ const (
 
 var (
 	supportedTagAttrs = map[string]struct{}{
-		AttrType:          {},
-		AttrTrigger:       {},
-		AttrEventCategory: {},
-		AttrEventAction:   {},
-		AttrEventName:     {},
-		AttrEventValue:    {},
-		AttrName:          {},
-		AttrContainer:     {},
+		AttrType:                {},
+		AttrTrigger:             {},
+		AttrEventCategory:       {},
+		AttrEventAction:         {},
+		AttrEventName:           {},
+		AttrEventValue:          {},
+		AttrName:                {},
+		AttrContainer:           {},
+		AttrMatomoConfiguration: {},
 	}
 
 	computedTagAttrs = map[string]struct{}{
@@ -112,7 +116,7 @@ func (p *Provider) validateTag(res resource.Resource) error {
 		if _, computed := computedTagAttrs[key]; computed {
 			return fmt.Errorf("resource %s: %s is computed and cannot be set in configuration", res.Address, key)
 		}
-		return fmt.Errorf("resource %s: unsupported attribute %q; matomo.tag supports %s, %s, %s, %s, optional %s, optional %s, optional %s, and optional %s", res.Address, key, AttrType, AttrTrigger, AttrEventCategory, AttrEventAction, AttrEventName, AttrEventValue, AttrName, AttrContainer)
+		return fmt.Errorf("resource %s: unsupported attribute %q; matomo.tag supports %s, %s, %s, %s, optional %s, optional %s, optional %s, optional %s, and optional %s", res.Address, key, AttrType, AttrTrigger, AttrEventCategory, AttrEventAction, AttrEventName, AttrEventValue, AttrName, AttrContainer, AttrMatomoConfiguration)
 	}
 
 	if _, _, err := optionalContainerRef(res); err != nil {
@@ -128,6 +132,9 @@ func (p *Provider) validateTag(res resource.Resource) error {
 	}
 
 	if _, err := requiredTriggerRef(res); err != nil {
+		return err
+	}
+	if _, _, err := optionalMatomoConfigurationRef(res); err != nil {
 		return err
 	}
 	if err := requiredEventField(res, AttrEventCategory); err != nil {
@@ -377,6 +384,15 @@ func (p *Provider) comparableTag(attrs resource.Attributes, addr resource.Addres
 		}
 		out[key] = v
 	}
+	if _, ok := attrs[AttrMatomoConfiguration]; ok {
+		ref, err := comparableMatomoConfigurationAttr(attrs[AttrMatomoConfiguration])
+		if err != nil {
+			return nil, fmt.Errorf("attribute %q %w", AttrMatomoConfiguration, err)
+		}
+		if ref != nil {
+			out[AttrMatomoConfiguration] = ref
+		}
+	}
 	return withComparableContainer(out, attrs)
 }
 
@@ -411,6 +427,9 @@ func (p *Provider) remoteTag(addr resource.Address, tag client.Tag, desired reso
 		if v := p.liveEventAttr(value, desired[AttrEventValue]); v != nil {
 			attrs[AttrEventValue] = v
 		}
+	}
+	if cfg := p.liveMatomoConfigurationAttr(parameterString(tag.Parameters, paramMatomoConfig), desired[AttrMatomoConfiguration], tag.Parameters[paramMatomoConfig]); cfg != nil {
+		attrs[AttrMatomoConfiguration] = cfg
 	}
 
 	computed := resource.Attributes{}
@@ -558,6 +577,11 @@ func (p *Provider) variableNameByID(ctx context.Context, res resource.Resource, 
 }
 
 func (p *Provider) matomoConfigValue(ctx context.Context, res resource.Resource, live *resource.RemoteResource) (string, error) {
+	if _, set, err := optionalMatomoConfigurationRef(res); err != nil {
+		return "", err
+	} else if set {
+		return p.referencedMatomoConfiguration(ctx, res)
+	}
 	if live != nil {
 		if cfg := computedString(live.Computed, paramMatomoConfig); cfg != "" {
 			if wrapped, ok := client.NormalizeMatomoConfig(cfg).(string); ok {
@@ -566,6 +590,55 @@ func (p *Provider) matomoConfigValue(ctx context.Context, res resource.Resource,
 		}
 	}
 	return p.defaultMatomoConfig(ctx, res)
+}
+
+func (p *Provider) referencedMatomoConfiguration(ctx context.Context, res resource.Resource) (string, error) {
+	v := res.Attributes[AttrMatomoConfiguration]
+	addr := logicalRef(v).Address
+	id := ""
+	if resolved, ok := resource.AsResolved(v); ok {
+		id = resolved.Identity.ID
+	}
+	if id == "" {
+		id = p.lookupID(addr)
+	}
+	name := p.lookupName(addr)
+	if name == "" && id != "" {
+		var err error
+		name, err = p.variableNameByID(ctx, res, id)
+		if err != nil {
+			return "", err
+		}
+	}
+	if name == "" {
+		return "", fmt.Errorf("variable %s has no Tag Manager name", addr)
+	}
+	if id != "" {
+		if err := p.ensureRemoteMatomoConfiguration(ctx, res, addr, id); err != nil {
+			return "", err
+		}
+	}
+	return "{{" + name + "}}", nil
+}
+
+func (p *Provider) ensureRemoteMatomoConfiguration(ctx context.Context, res resource.Resource, addr resource.Address, id string) error {
+	vars, err := p.listDraftVariables(ctx, res)
+	if err != nil {
+		return err
+	}
+	for _, v := range vars {
+		if strings.EqualFold(v.Status, "deleted") {
+			continue
+		}
+		if v.IDVariable != id {
+			continue
+		}
+		if v.Type != matomoTypeMatomoConfiguration {
+			return fmt.Errorf("resource %s: attribute %q must reference a %s.%s resource with type %q; %s is type %q", res.Address, AttrMatomoConfiguration, Name, TypeVariable, variableTypeMatomoConfiguration, addr, v.Type)
+		}
+		return nil
+	}
+	return fmt.Errorf("variable identity %q was not found", id)
 }
 
 func (p *Provider) defaultMatomoConfig(ctx context.Context, res resource.Resource) (string, error) {
@@ -578,13 +651,13 @@ func (p *Provider) defaultMatomoConfig(ctx context.Context, res resource.Resourc
 		if strings.EqualFold(v.Status, "deleted") {
 			continue
 		}
-		if v.Type == matomoTypeMatomoConfig {
+		if v.Type == matomoTypeMatomoConfiguration {
 			matches = append(matches, v)
 		}
 	}
 	switch len(matches) {
 	case 0:
-		return "", fmt.Errorf("container has no Matomo Configuration variable; create one in Tag Manager before managing matomo.tag resources")
+		return "", fmt.Errorf("container has no Matomo Configuration variable; declare a matomo.variable with type %q, or create one in Tag Manager, before managing matomo.tag resources", variableTypeMatomoConfiguration)
 	case 1:
 		return "{{" + matches[0].Name + "}}", nil
 	default:
@@ -593,7 +666,7 @@ func (p *Provider) defaultMatomoConfig(ctx context.Context, res resource.Resourc
 				return "{{" + v.Name + "}}", nil
 			}
 		}
-		return "", fmt.Errorf("container has multiple Matomo Configuration variables; keep a single %q variable", defaultMatomoConfigName)
+		return "", fmt.Errorf("container has multiple Matomo Configuration variables; reference one with %s or keep a single %q variable", AttrMatomoConfiguration, defaultMatomoConfigName)
 	}
 }
 
@@ -633,6 +706,29 @@ func (p *Provider) liveEventAttr(raw string, desired any) any {
 		return nil
 	}
 	return raw
+}
+
+func (p *Provider) liveMatomoConfigurationAttr(raw string, desired any, original any) any {
+	want := logicalRef(desired)
+	if want.IsZero() {
+		return nil
+	}
+	wrapped := raw
+	if wrapped == "" {
+		if s, ok := client.NormalizeMatomoConfig(original).(string); ok {
+			wrapped = s
+		}
+	} else if s, ok := client.NormalizeMatomoConfig(wrapped).(string); ok {
+		wrapped = s
+	}
+	name := p.lookupName(want.Address)
+	if name != "" && (wrapped == "{{"+name+"}}" || raw == name) {
+		return want
+	}
+	if wrapped == "" {
+		return want
+	}
+	return wrapped
 }
 
 func tagPreserved(live resource.RemoteResource) client.TagPreservedFields {
@@ -724,6 +820,46 @@ func requiredTriggerRef(res resource.Resource) (resource.Ref, error) {
 	}
 	if ref.Address.Provider != Name || ref.Address.Type != TypeTrigger {
 		return resource.Ref{}, fmt.Errorf("resource %s: attribute %q must reference a %s.%s resource", res.Address, AttrTrigger, Name, TypeTrigger)
+	}
+	return ref, nil
+}
+
+func optionalMatomoConfigurationRef(res resource.Resource) (resource.Ref, bool, error) {
+	v, ok := res.Attributes[AttrMatomoConfiguration]
+	if !ok {
+		return resource.Ref{}, false, nil
+	}
+	ref, err := matomoConfigurationRefValue(v)
+	if err != nil {
+		return resource.Ref{}, true, fmt.Errorf("resource %s: attribute %q %w", res.Address, AttrMatomoConfiguration, err)
+	}
+	if ref.Address.Provider != Name || ref.Address.Type != TypeVariable {
+		return resource.Ref{}, true, fmt.Errorf("resource %s: attribute %q must reference a %s.%s resource", res.Address, AttrMatomoConfiguration, Name, TypeVariable)
+	}
+	return ref, true, nil
+}
+
+func matomoConfigurationRefValue(v any) (resource.Ref, error) {
+	if resolved, ok := resource.AsResolved(v); ok {
+		return resource.Ref{Address: resolved.Address}, nil
+	}
+	ref, ok := resource.AsRef(v)
+	if !ok {
+		return resource.Ref{}, fmt.Errorf("must be a resource reference ($ref) to a %s.%s resource", Name, TypeVariable)
+	}
+	return ref, nil
+}
+
+func comparableMatomoConfigurationAttr(v any) (any, error) {
+	if v == nil {
+		return nil, nil
+	}
+	ref, err := matomoConfigurationRefValue(v)
+	if err != nil {
+		if s, strErr := coerceString(v); strErr == nil {
+			return s, nil
+		}
+		return nil, err
 	}
 	return ref, nil
 }

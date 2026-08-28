@@ -53,7 +53,7 @@ func (p *Provider) ValidateResourceSet(_ context.Context, resources []resource.R
 				return fmt.Errorf("resource %s: attribute %q must reference %s", child.Address, AttrContainer, containers[0].Address)
 			}
 		}
-		return nil
+		return validateMatomoConfigurationRefs(resources)
 	}
 
 	p.clearManagedContainer()
@@ -67,9 +67,40 @@ func (p *Provider) ValidateResourceSet(_ context.Context, resources []resource.R
 		}
 	}
 
+	if err := validateMatomoConfigurationRefs(resources); err != nil {
+		return err
+	}
+
 	enabled, _ := p.publicationSettings()
 	if enabled && (p == nil || strings.TrimSpace(p.cfg.ContainerID) == "") {
 		return fmt.Errorf("matomo: %s is required when provider publication is enabled without a managed matomo.container resource", EnvContainerID)
+	}
+	return nil
+}
+
+func validateMatomoConfigurationRefs(resources []resource.Resource) error {
+	byAddr := make(map[string]resource.Resource, len(resources))
+	for _, res := range resources {
+		byAddr[res.Address.String()] = res
+	}
+	for _, res := range resources {
+		if res.Address.Provider != Name || res.Address.Type != TypeTag {
+			continue
+		}
+		ref, set, err := optionalMatomoConfigurationRef(res)
+		if err != nil {
+			return err
+		}
+		if !set {
+			continue
+		}
+		target, ok := byAddr[ref.Address.String()]
+		if !ok {
+			continue
+		}
+		if stringAttr(target.Attributes, AttrType) != variableTypeMatomoConfiguration {
+			return fmt.Errorf("resource %s: attribute %q must reference a %s.%s resource with type %q", res.Address, AttrMatomoConfiguration, Name, TypeVariable, variableTypeMatomoConfiguration)
+		}
 	}
 	return nil
 }
