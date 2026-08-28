@@ -95,6 +95,11 @@ func Run(ctx context.Context, desired []resource.Resource, lookup Lookup, st Sto
 	if err != nil {
 		return result, err
 	}
+	if len(planned.Finalizations) > 0 {
+		if err := persistCompletedChanges(planned, st); err != nil {
+			return result, err
+		}
+	}
 	result.Remaining = planned.RemainingCount()
 	if result.Destroyed+result.AlreadyAbsent+result.Removed > 0 || len(planned.Finalizations) > 0 || result.Remaining > 0 {
 		fmt.Fprintln(out)
@@ -108,7 +113,9 @@ func Run(ctx context.Context, desired []resource.Resource, lookup Lookup, st Sto
 
 // Execute carries out planned destroy/remove operations in reverse dependency
 // order. Provider finalizations are not executed here; callers that need the
-// complete lifecycle should use Run.
+// complete lifecycle should use Run. When the reviewed plan contains provider
+// finalizations, state removal is deferred until Run confirms those
+// finalizations succeeded.
 func Execute(ctx context.Context, p *Plan, desired []resource.Resource, lookup Lookup, st Store, out io.Writer) (Result, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -134,6 +141,7 @@ func Execute(ctx context.Context, p *Plan, desired []resource.Resource, lookup L
 	}
 
 	runtime := seedRuntime(changes)
+	persistImmediately := len(p.Finalizations) == 0
 
 	var result Result
 	for _, change := range changes {
@@ -146,7 +154,7 @@ func Execute(ctx context.Context, p *Plan, desired []resource.Resource, lookup L
 				return result, destroyError(change.Address, string(change.Kind), err)
 			}
 			desiredRes.Identity = change.Identity
-			status, err := executeDestroy(ctx, change, desiredRes, lookup, st, out)
+			status, err := executeDestroy(ctx, change, desiredRes, lookup, st, out, persistImmediately)
 			if err != nil {
 				return result, err
 			}
@@ -155,8 +163,10 @@ func Execute(ctx context.Context, p *Plan, desired []resource.Resource, lookup L
 				result.AlreadyAbsent++
 			case provider.DestroyStatusRemoved:
 				result.Removed++
-			default:
+			case provider.DestroyStatusDestroyed:
 				result.Destroyed++
+			default:
+				return result, invalidDestroyStatusError(change, status)
 			}
 		default:
 			return result, fmt.Errorf("destroy %s: unsupported kind %q", change.Address, change.Kind)
@@ -263,10 +273,14 @@ func preflight(changes []Change, lookup Lookup) error {
 	return nil
 }
 
-func executeDestroy(ctx context.Context, change Change, desired resource.Resource, lookup Lookup, st Store, out io.Writer) (provider.DestroyStatus, error) {
+func executeDestroy(ctx context.Context, change Change, desired resource.Resource, lookup Lookup, st Store, out io.Writer, persist bool) (provider.DestroyStatus, error) {
 	addr := change.Address
 	op := string(change.Kind)
-	fmt.Fprintf(out, "%s: destroying...\n", addr)
+	progress := "destroying"
+	if change.Kind == KindRemove {
+		progress = "removing"
+	}
+	fmt.Fprintf(out, "%s: %s...\n", addr, progress)
 
 	p, err := lookup(addr)
 	if err != nil {
@@ -285,23 +299,54 @@ func executeDestroy(ctx context.Context, change Change, desired resource.Resourc
 		return "", destroyError(addr, op, err)
 	}
 	status := result.Status
-	if status == "" {
-		status = provider.DestroyStatusDestroyed
-	}
-
 	switch status {
 	case provider.DestroyStatusAlreadyAbsent:
 		fmt.Fprintf(out, "%s: already absent\n", addr)
 	case provider.DestroyStatusRemoved:
 		fmt.Fprintf(out, "%s: removed\n", addr)
-	default:
+	case provider.DestroyStatusDestroyed:
 		fmt.Fprintf(out, "%s: destroyed\n", addr)
+	default:
+		return "", invalidDestroyStatusError(change, status)
 	}
 
-	if err := st.Remove(addr); err != nil {
-		return "", persistDestroyError(addr, change.Identity, err)
+	if persist {
+		if err := st.Remove(addr); err != nil {
+			return "", persistDestroyError(addr, change.Identity, err)
+		}
 	}
 	return status, nil
+}
+
+func persistCompletedChanges(p *Plan, st Store) error {
+	if p == nil {
+		return nil
+	}
+	for _, change := range p.Changes {
+		switch change.Kind {
+		case KindDestroy, KindRemove:
+			if err := st.Remove(change.Address); err != nil {
+				return persistDestroyError(change.Address, change.Identity, err)
+			}
+		}
+	}
+	return nil
+}
+
+func invalidDestroyStatusError(change Change, status provider.DestroyStatus) error {
+	return &PartialError{
+		Address:         change.Address,
+		Operation:       string(change.Kind),
+		RemoteIdentity:  change.Identity,
+		Stage:           StageMutation,
+		ResourceChanges: true,
+		Err: fmt.Errorf(
+			"destroy %s: %s: provider returned invalid destroy status %q; local state was preserved",
+			change.Address,
+			change.Kind,
+			status,
+		),
+	}
 }
 
 func destroyError(addr resource.Address, op string, err error) error {
