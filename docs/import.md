@@ -283,8 +283,10 @@ agoraform import googleads.campaign_conversion_goal.trial_signup 987654321~SIGNU
 Unsupported origins, such as app or Google-hosted goals, fail with guidance
 instead of reconstructing a website conversion-goal manifest.
 
-See the [Google Ads conversion example](../examples/googleads-conversion/README.md)
-for a complete greenfield apply and adoption workflow.
+See the [Google Ads Search campaign example](../examples/googleads-search/README.md)
+for a complete paused Search campaign apply and adoption workflow, and the
+[Google Ads conversion example](../examples/googleads-conversion/README.md)
+for conversion-measurement-only import.
 
 ## Matomo variables
 

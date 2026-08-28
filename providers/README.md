@@ -67,7 +67,8 @@ and campaign `googleads.campaign_conversion_goal` biddability,
 and uses an authenticated REST client for query and mutate
 operations.
 
-See [googleads/README.md](googleads/README.md) and the
+See [googleads/README.md](googleads/README.md), the
+[Search campaign example](../examples/googleads-search/README.md), and the
 [conversion-measurement example](../examples/googleads-conversion/README.md).
 
 ## Test provider

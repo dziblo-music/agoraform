@@ -157,6 +157,8 @@ non-production Google Ads account.
    examples/matomo-conversion/README.md
    examples/googleads-conversion/agoraform.yaml
    examples/googleads-conversion/README.md
+   examples/googleads-search/agoraform.yaml
+   examples/googleads-search/README.md
    ```
 
 ### 2. Verify authentication and non-mutating planning
@@ -277,7 +279,8 @@ goreleaser release --snapshot --clean
 
 The snapshot uses the same `.goreleaser.yaml` platform/archive matrix without
 publishing a GitHub release. The example test suite automatically parses and
-validates `examples/googleads-conversion/agoraform.yaml` against the provider
+validates `examples/googleads-conversion/agoraform.yaml` and
+`examples/googleads-search/agoraform.yaml` against the provider
 schema. These checks catch cross-platform build, example-schema, and archive
 configuration failures before an immutable tag is created.
 

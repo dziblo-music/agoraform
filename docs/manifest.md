@@ -196,7 +196,8 @@ windows, currency, and `alwaysUseDefaultValue` are documented in the
     primaryForGoal: true
 ```
 
-See the [complete Google Ads conversion example](../examples/googleads-conversion/README.md).
+See the [complete Google Ads conversion example](../examples/googleads-conversion/README.md)
+and the [complete Google Ads Search campaign example](../examples/googleads-search/README.md).
 
 ### `googleads.customer_conversion_goal`
 
@@ -484,6 +485,8 @@ these objects automatically; Agoraform only updates `biddable`.
     conversionAction:
       $ref: googleads.conversion_action.trial_started
 ```
+
+See the [complete Google Ads Search campaign example](../examples/googleads-search/README.md).
 
 ## Matomo provider desired state
 

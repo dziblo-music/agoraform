@@ -226,5 +226,7 @@ primary conversion settings can affect campaign optimization. The v0.3.0
 release checklist requires mutation verification against a non-production
 Google Ads account before publishing the release.
 
-For a complete v0.3.0 conversion example, see
+For a complete v0.4.0 Search campaign example, see
+[`examples/googleads-search/`](../examples/googleads-search/README.md).
+For the conversion-measurement-only v0.3.0 example, see
 [`examples/googleads-conversion/`](../examples/googleads-conversion/README.md).

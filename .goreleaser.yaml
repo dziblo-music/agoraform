@@ -44,6 +44,8 @@ archives:
       - examples/matomo-conversion/agoraform.yaml
       - examples/googleads-conversion/README.md
       - examples/googleads-conversion/agoraform.yaml
+      - examples/googleads-search/README.md
+      - examples/googleads-search/agoraform.yaml
 
 checksum:
   name_template: checksums.txt

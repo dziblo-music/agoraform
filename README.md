@@ -118,9 +118,11 @@ GOOGLE_ADS_LOGIN_CUSTOMER_ID   optional manager-account customer ID
 
 The `googleads` provider manages supported website conversion actions,
 customer conversion-goal biddability, daily Search campaign budgets, Search
-campaigns, campaign conversion-goal biddability, and Search ad groups.
-See the [Google Ads setup guide](docs/google-ads-setup.md),
-[provider reference](providers/googleads/README.md), and
+campaigns, campaign conversion-goal biddability, Search ad groups, Search
+keywords, Responsive Search Ads, and campaign location and language
+targeting. See the [Google Ads setup guide](docs/google-ads-setup.md),
+[provider reference](providers/googleads/README.md),
+[v0.4 Search campaign example](examples/googleads-search/README.md), and
 [v0.3 conversion example](examples/googleads-conversion/README.md).
 
 Non-secret publication desired state belongs in the Matomo provider manifest:
@@ -134,6 +136,68 @@ providers:
 
 `publish` defaults to `false`; `environment` defaults to `live` when
 publication is enabled.
+
+## v0.4 Google Ads Search campaign
+
+The primary v0.4 example manages a paused SaaS paid-acquisition Search
+campaign in Google Ads:
+
+- website `Trial Started` conversion measurement and account-default
+  `SIGNUP` / `WEBSITE` goal biddability;
+- a dedicated daily Search budget and paused Search campaign that
+  maximizes conversions;
+- campaign-level conversion-goal selection, United States location
+  targeting, and English language targeting;
+- a paused Search ad group with explicit `EXACT`, `PHRASE`, and `BROAD`
+  keywords plus negative-keyword coverage;
+- a paused Responsive Search Ad with placeholder copy and
+  `https://example.com/` landing URLs;
+- logical `$ref` values so Agoraform applies the graph in dependency
+  order.
+
+The example stays paused until you verify the campaign in Google Ads and
+intentionally change `status`. Agoraform does not generate creative or
+enable spend automatically.
+
+Set Google Ads runtime configuration, then copy the included example. Load
+secret values from your normal secret manager; for an interactive Bash session,
+`read -s` avoids placing typed secrets in shell command history:
+
+```bash
+export GOOGLE_ADS_CLIENT_ID=replace-with-your-oauth-client-id
+export GOOGLE_ADS_CUSTOMER_ID=1234567890
+
+read -rsp "Google Ads developer token: " GOOGLE_ADS_DEVELOPER_TOKEN; echo
+export GOOGLE_ADS_DEVELOPER_TOKEN
+read -rsp "Google Ads OAuth client secret: " GOOGLE_ADS_CLIENT_SECRET; echo
+export GOOGLE_ADS_CLIENT_SECRET
+read -rsp "Google Ads refresh token: " GOOGLE_ADS_REFRESH_TOKEN; echo
+export GOOGLE_ADS_REFRESH_TOKEN
+
+cp examples/googleads-search/agoraform.yaml agoraform.yaml
+```
+
+Do not substitute literal secret values into those prompt commands. On
+automated systems, inject the `GOOGLE_ADS_*` secrets from your secret manager.
+
+Run:
+
+```bash
+agoraform validate
+agoraform plan
+agoraform apply
+agoraform plan
+```
+
+Review the first plan before applying. Customer and campaign conversion
+goals are created by Google Ads; Agoraform adopts or updates them and never
+attempts unsupported create or delete operations. The final plan should
+report `No changes.` when desired configuration, local state, and remote
+state are unchanged.
+
+See [the Google Ads Search campaign example](examples/googleads-search/README.md)
+for Google Ads verification before enabling spend, and import of an
+equivalent manually configured campaign.
 
 ## v0.3 Google Ads conversion measurement
 
@@ -436,6 +500,7 @@ agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
 - [Google Ads provider](providers/googleads/README.md)
 - [v0.2 Matomo conversion example](examples/matomo-conversion/README.md)
 - [v0.3 Google Ads conversion example](examples/googleads-conversion/README.md)
+- [v0.4 Google Ads Search campaign example](examples/googleads-search/README.md)
 - [Release process](docs/release.md)
 - [Changelog](CHANGELOG.md)
 
