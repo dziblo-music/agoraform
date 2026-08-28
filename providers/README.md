@@ -45,11 +45,10 @@ precedence, security guidance, and examples.
 
 [`matomo/`](matomo/) is the first production provider. It registers as
 `matomo`, loads `MATOMO_URL`, `MATOMO_TOKEN_AUTH`, `MATOMO_SITE_ID`, and
-`MATOMO_CONTAINER_ID` from the environment, and implements `matomo.goal`
-and Tag Manager `matomo.variable`, `matomo.trigger`, and `matomo.tag`.
-
-Tag Manager versions are not implemented yet. See
-[matomo/README.md](matomo/README.md).
+optional `MATOMO_CONTAINER_ID` from the environment, and implements
+`matomo.goal`, `matomo.container`, and Tag Manager `matomo.variable`,
+`matomo.trigger`, and `matomo.tag`. Tag Manager publication is declarative
+through `plan`/`apply`. See [matomo/README.md](matomo/README.md).
 
 ## Google Ads
 

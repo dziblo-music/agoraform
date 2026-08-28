@@ -37,7 +37,7 @@ func (p *Provider) readTriggerSafe(ctx context.Context, res resource.Resource) (
 		return p.readTrigger(ctx, res)
 	}
 
-	live, err := p.readTriggerByID(ctx, res.Address, id)
+	live, err := p.readTriggerByID(ctx, res, id)
 	if err != nil {
 		if errors.Is(err, provider.ErrNotFound) {
 			return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: persisted identity %q was not found remotely; refusing to plan a replacement resource: %w", res.Address, id, state.ErrStaleIdentity)
@@ -82,17 +82,18 @@ func (p *Provider) importTrigger(ctx context.Context, addr resource.Address, id 
 	if err := validateTriggerIdentity(addr, id); err != nil {
 		return resource.RemoteResource{}, err
 	}
-	if err := p.requireTagManagerConfig(); err != nil {
+	res, containerID, err := p.importTagManagerResource(addr)
+	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: import %s: %w", addr, err)
 	}
-	live, err := p.readTriggerByID(ctx, addr, id)
+	live, err := p.readTriggerByID(ctx, res, id)
 	if err != nil {
 		if errors.Is(err, provider.ErrNotFound) {
 			return resource.RemoteResource{}, fmt.Errorf("matomo: import %s: remote trigger %q was not found: %w", addr, id, err)
 		}
 		return resource.RemoteResource{}, fmt.Errorf("matomo: import %s: %w", addr, err)
 	}
-	return live, nil
+	return p.attachImportedContainerRef(live, containerID), nil
 }
 
 func (p *Provider) normalizeTriggerComparableSafe(desired resource.Resource, live *resource.RemoteResource) (resource.Attributes, resource.Attributes, error) {

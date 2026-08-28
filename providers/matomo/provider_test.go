@@ -34,6 +34,9 @@ func TestProviderRegisterAndLookup(t *testing.T) {
 	if !provider.Supports(got, matomo.TypeGoal) {
 		t.Fatal("matomo.goal must be registered")
 	}
+	if !provider.Supports(got, matomo.TypeContainer) {
+		t.Fatal("matomo.container must be registered")
+	}
 	if !provider.Supports(got, matomo.TypeVariable) {
 		t.Fatal("matomo.variable must be registered")
 	}
@@ -50,6 +53,14 @@ func TestProviderRegisterAndLookup(t *testing.T) {
 	}
 	if _, err := reg.LookupFor(addr); err != nil {
 		t.Fatalf("LookupFor goal: %v", err)
+	}
+
+	containerAddr, err := resource.ParseAddress("matomo.container.main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.LookupFor(containerAddr); err != nil {
+		t.Fatalf("LookupFor container: %v", err)
 	}
 
 	variableAddr, err := resource.ParseAddress("matomo.variable.user_id")

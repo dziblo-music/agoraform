@@ -8,7 +8,8 @@ import (
 	"github.com/dziblo-music/agoraform/internal/resource"
 )
 
-func (p *Provider) reconstructTagImportRefs(ctx context.Context, addr resource.Address, live resource.RemoteResource) (resource.RemoteResource, error) {
+func (p *Provider) reconstructTagImportRefs(ctx context.Context, res resource.Resource, live resource.RemoteResource) (resource.RemoteResource, error) {
+	addr := res.Address
 	attrs := live.Attributes.Clone()
 
 	trigger, err := p.importTriggerRef(addr, splitComputedIDs(computedString(live.Computed, "fire_trigger_ids")))
@@ -26,7 +27,7 @@ func (p *Provider) reconstructTagImportRefs(ctx context.Context, addr resource.A
 		if !isTemplate {
 			continue
 		}
-		ref, found, err := p.importVariableRefByName(ctx, addr, name)
+		ref, found, err := p.importVariableRefByName(ctx, res, name)
 		if err != nil {
 			return resource.RemoteResource{}, err
 		}
@@ -60,8 +61,9 @@ func (p *Provider) importTriggerRef(addr resource.Address, fireIDs []string) (re
 	return resource.Ref{Address: managed}, nil
 }
 
-func (p *Provider) importVariableRefByName(ctx context.Context, tagAddr resource.Address, name string) (resource.Ref, bool, error) {
-	vars, err := p.listDraftVariables(ctx)
+func (p *Provider) importVariableRefByName(ctx context.Context, res resource.Resource, name string) (resource.Ref, bool, error) {
+	tagAddr := res.Address
+	vars, err := p.listDraftVariables(ctx, res)
 	if err != nil {
 		return resource.Ref{}, false, fmt.Errorf("matomo: import %s: list variables to reconstruct references: %w", tagAddr, err)
 	}

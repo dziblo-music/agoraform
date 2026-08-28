@@ -136,6 +136,14 @@ func TestAddressByRemoteID(t *testing.T) {
 	if _, ok, err := st.AddressByRemoteID("matomo", "tag", "99"); err != nil || ok {
 		t.Fatalf("missing remote id: ok=%v err=%v", ok, err)
 	}
+
+	bindings, err := st.Bindings("matomo", "tag")
+	if err != nil {
+		t.Fatalf("Bindings: %v", err)
+	}
+	if len(bindings) != 1 || bindings[0].Address != tag || bindings[0].RemoteID != "1" {
+		t.Fatalf("Bindings(tag) = %+v, want %s/1", bindings, tag)
+	}
 }
 
 func TestSaveReplacesFileAtomically(t *testing.T) {

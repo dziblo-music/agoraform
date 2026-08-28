@@ -16,6 +16,7 @@ Use dotenv-style `KEY=VALUE` entries:
 MATOMO_URL=https://matomo.example.com
 MATOMO_TOKEN_AUTH=replace-with-token
 MATOMO_SITE_ID=1
+# Required only when the manifest does not declare matomo.container
 MATOMO_CONTAINER_ID=replace-with-container-id
 
 # Google Ads

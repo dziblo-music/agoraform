@@ -33,9 +33,10 @@ const (
 
 var (
 	supportedTriggerAttrs = map[string]struct{}{
-		AttrType:  {},
-		AttrEvent: {},
-		AttrName:  {},
+		AttrType:      {},
+		AttrEvent:     {},
+		AttrName:      {},
+		AttrContainer: {},
 	}
 
 	computedTriggerAttrs = map[string]struct{}{
@@ -60,7 +61,7 @@ var (
 )
 
 func (p *Provider) validateTrigger(res resource.Resource) error {
-	if err := p.requireTagManagerConfig(); err != nil {
+	if err := p.requireTagManagerConfig(res); err != nil {
 		return fmt.Errorf("resource %s: %w", res.Address, err)
 	}
 
@@ -76,7 +77,11 @@ func (p *Provider) validateTrigger(res resource.Resource) error {
 		if _, computed := computedTriggerAttrs[key]; computed {
 			return fmt.Errorf("resource %s: %s is computed and cannot be set in configuration", res.Address, key)
 		}
-		return fmt.Errorf("resource %s: unsupported attribute %q; v0.2 matomo.trigger supports %s, %s, and optional %s", res.Address, key, AttrType, AttrEvent, AttrName)
+		return fmt.Errorf("resource %s: unsupported attribute %q; matomo.trigger supports %s, %s, optional %s, and optional %s", res.Address, key, AttrType, AttrEvent, AttrName, AttrContainer)
+	}
+
+	if _, _, err := optionalContainerRef(res); err != nil {
+		return err
 	}
 
 	typ, err := requiredString(res, AttrType)
@@ -134,8 +139,11 @@ func (p *Provider) readTrigger(ctx context.Context, res resource.Resource) (reso
 	}
 
 	name := triggerName(res.Attributes)
-	triggers, err := p.listDraftTriggers(ctx)
+	triggers, err := p.listDraftTriggers(ctx, res)
 	if err != nil {
+		if mapped := mapUnavailableContainer(res.Address, err); mapped != err {
+			return resource.RemoteResource{}, mapped
+		}
 		return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: %w", res.Address, err)
 	}
 
@@ -146,6 +154,7 @@ func (p *Provider) readTrigger(ctx context.Context, res resource.Resource) (reso
 	case 1:
 		live, err := remoteTrigger(res.Address, matches[0])
 		if err == nil {
+			live = attachContainerRef(live, res.Attributes)
 			p.rememberBinding(res.Address, live.Identity.ID, matches[0].Name)
 		}
 		return live, err
@@ -159,32 +168,36 @@ func (p *Provider) createTrigger(ctx context.Context, res resource.Resource) (re
 		return resource.RemoteResource{}, err
 	}
 
-	c, err := p.Client()
+	tm, err := p.tagManagerFor(res)
 	if err != nil {
-		return resource.RemoteResource{}, err
+		return resource.RemoteResource{}, fmt.Errorf("matomo: create %s: %w", res.Address, err)
 	}
-	version, err := c.TagManager().DraftVersion(ctx)
+	version, err := tm.DraftVersion(ctx)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: create %s: %w", res.Address, err)
 	}
 
-	id, err := c.TagManager().AddContainerTrigger(ctx, version, triggerInput(res.Attributes))
+	id, err := tm.AddContainerTrigger(ctx, version, triggerInput(res.Attributes))
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: create %s: %w", res.Address, err)
 	}
 
-	live, err := p.readTriggerByID(ctx, res.Address, id)
+	live, err := p.readTriggerByID(ctx, res, id)
 	if err == nil {
 		return live, nil
 	}
 	p.rememberBinding(res.Address, id, triggerName(res.Attributes))
-	return remoteTrigger(res.Address, client.Trigger{
+	fallback, ferr := remoteTrigger(res.Address, client.Trigger{
 		IDTrigger:          id,
 		IDContainerVersion: version,
 		Type:               matomoTriggerType(stringAttr(res.Attributes, AttrType)),
 		Name:               triggerName(res.Attributes),
 		Parameters:         map[string]string{paramEventName: stringAttr(res.Attributes, AttrEvent)},
 	})
+	if ferr != nil {
+		return resource.RemoteResource{}, ferr
+	}
+	return attachContainerRef(fallback, res.Attributes), nil
 }
 
 func (p *Provider) updateTrigger(ctx context.Context, desired resource.Resource, actual resource.RemoteResource) (resource.RemoteResource, error) {
@@ -195,19 +208,22 @@ func (p *Provider) updateTrigger(ctx context.Context, desired resource.Resource,
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: missing remote identity", desired.Address)
 	}
 
-	current, err := p.readTriggerByID(ctx, desired.Address, actual.Identity.ID)
+	current, err := p.readTriggerByID(ctx, desired, actual.Identity.ID)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: refresh remote trigger %q: %w", desired.Address, actual.Identity.ID, err)
 	}
 	if err := ensureImmutableTriggerType(desired, current); err != nil {
 		return resource.RemoteResource{}, err
 	}
-
-	c, err := p.Client()
-	if err != nil {
+	if err := ensureImmutableContainerRef(desired, current); err != nil {
 		return resource.RemoteResource{}, err
 	}
-	version, err := c.TagManager().DraftVersion(ctx)
+
+	tm, err := p.tagManagerFor(desired)
+	if err != nil {
+		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: %w", desired.Address, err)
+	}
+	version, err := tm.DraftVersion(ctx)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: %w", desired.Address, err)
 	}
@@ -216,19 +232,19 @@ func (p *Provider) updateTrigger(ctx context.Context, desired resource.Resource,
 		Description: computedString(current.Computed, "description"),
 		Conditions:  conditionsValue(current.Computed["conditions"]),
 	}
-	if err := c.TagManager().UpdateContainerTrigger(ctx, version, actual.Identity.ID, triggerInput(desired.Attributes), preserved); err != nil {
+	if err := tm.UpdateContainerTrigger(ctx, version, actual.Identity.ID, triggerInput(desired.Attributes), preserved); err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: %w", desired.Address, err)
 	}
 
-	live, err := p.readTriggerByID(ctx, desired.Address, actual.Identity.ID)
+	live, err := p.readTriggerByID(ctx, desired, actual.Identity.ID)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s succeeded but refreshing trigger %q failed: %w", desired.Address, actual.Identity.ID, err)
 	}
 	return live, nil
 }
 
-func (p *Provider) readTriggerByID(ctx context.Context, addr resource.Address, id string) (resource.RemoteResource, error) {
-	triggers, err := p.listDraftTriggers(ctx)
+func (p *Provider) readTriggerByID(ctx context.Context, res resource.Resource, id string) (resource.RemoteResource, error) {
+	triggers, err := p.listDraftTriggers(ctx, res)
 	if err != nil {
 		return resource.RemoteResource{}, err
 	}
@@ -237,9 +253,10 @@ func (p *Provider) readTriggerByID(ctx context.Context, addr resource.Address, i
 			continue
 		}
 		if tr.IDTrigger == id {
-			live, err := remoteTrigger(addr, tr)
+			live, err := remoteTrigger(res.Address, tr)
 			if err == nil {
-				p.rememberBinding(addr, live.Identity.ID, tr.Name)
+				live = attachContainerRef(live, res.Attributes)
+				p.rememberBinding(res.Address, live.Identity.ID, tr.Name)
 			}
 			return live, err
 		}
@@ -247,19 +264,16 @@ func (p *Provider) readTriggerByID(ctx context.Context, addr resource.Address, i
 	return resource.RemoteResource{}, provider.ErrNotFound
 }
 
-func (p *Provider) listDraftTriggers(ctx context.Context) ([]client.Trigger, error) {
-	if err := p.requireTagManagerConfig(); err != nil {
-		return nil, err
-	}
-	c, err := p.Client()
+func (p *Provider) listDraftTriggers(ctx context.Context, res resource.Resource) ([]client.Trigger, error) {
+	tm, err := p.tagManagerFor(res)
 	if err != nil {
 		return nil, err
 	}
-	version, err := c.TagManager().DraftVersion(ctx)
+	version, err := tm.DraftVersion(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return c.TagManager().GetContainerTriggers(ctx, version)
+	return tm.GetContainerTriggers(ctx, version)
 }
 
 func (p *Provider) normalizeTriggerComparable(desired resource.Resource, live *resource.RemoteResource) (resource.Attributes, resource.Attributes, error) {
@@ -296,11 +310,12 @@ func comparableTrigger(attrs resource.Attributes) (resource.Attributes, error) {
 	if name == "" {
 		name = event
 	}
-	return resource.Attributes{
+	out := resource.Attributes{
 		AttrType:  typ,
 		AttrEvent: event,
 		AttrName:  name,
-	}, nil
+	}
+	return withComparableContainer(out, attrs)
 }
 
 func remoteTrigger(addr resource.Address, tr client.Trigger) (resource.RemoteResource, error) {

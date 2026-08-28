@@ -1,7 +1,4 @@
-# Matomo Tag Manager publication (v0.2.0)
-
-Available in Agoraform v0.2.0. For a complete variable/trigger/tag workflow,
-see the [Matomo conversion-tracking quickstart](../examples/matomo-conversion/README.md).
+# Matomo Tag Manager publication
 
 Agoraform keeps its CLI provider-neutral. Matomo Tag Manager publication is
 therefore declarative provider desired state, not a separate `publish`
@@ -14,7 +11,7 @@ providers:
     publish: true
     environment: live
 resources:
-  # matomo.variable / matomo.trigger / matomo.tag resources
+  # matomo.container and/or matomo.variable / matomo.trigger / matomo.tag
 ```
 
 `publish` defaults to `false`. When publication is enabled and `environment`
@@ -28,10 +25,15 @@ configuration:
 MATOMO_URL
 MATOMO_TOKEN_AUTH
 MATOMO_SITE_ID
-MATOMO_CONTAINER_ID
+MATOMO_CONTAINER_ID   # only when no matomo.container resource is declared
 ```
 
 Never put authentication tokens in the manifest.
+
+When a `matomo.container` resource is declared, publication uses that
+resource's provider-native identity. When it is omitted,
+`MATOMO_CONTAINER_ID` selects an existing container and the plan addresses
+publication as `matomo.container.external`.
 
 ## Plan
 
@@ -42,6 +44,11 @@ provider action, for example:
 ```text
 > matomo.container.main: publish -> live
 ```
+
+When `MATOMO_CONTAINER_ID` selects an existing container instead, the same
+action is addressed as `matomo.container.external`. The address always
+identifies the container that will be published; it is not a hard-coded
+orchestration name.
 
 A planned create or update of a managed `matomo.variable`, `matomo.trigger`,
 or `matomo.tag` makes potential publication visible when `publish: true`:
@@ -124,4 +131,5 @@ disabled.
 
 v0.2.0 intentionally does not add provider-specific CLI verbs. Rollback,
 scheduled publication, approval workflows, generalized deployment pipelines,
-and multi-container deployment orchestration remain out of scope.
+and multi-container deployment orchestration remain out of scope. Container
+deletion is a later destroy/lifecycle issue.

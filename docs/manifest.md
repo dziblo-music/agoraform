@@ -121,6 +121,33 @@ v0.1.0 introduced Matomo analytics goals. Common attributes:
 
 Provider-native goal IDs live in local state, not attributes.
 
+### `matomo.container`
+
+A Tag Manager container can be declared instead of requiring
+`MATOMO_CONTAINER_ID`:
+
+```yaml
+- address: matomo.container.main
+  attributes:
+    name: Main Website
+    context: web
+```
+
+`name` and `context` (`web`, `android`, or `ios`) are required.
+`description` is optional. Provider-native container IDs stay in local
+state. v0.5.0 allows at most one `matomo.container` resource.
+
+When that resource is present, Tag Manager children must reference it:
+
+```yaml
+container:
+  $ref: matomo.container.main
+```
+
+When it is absent, omit `container` and set `MATOMO_CONTAINER_ID`. Mixing
+the two modes is rejected. See the
+[Matomo provider reference](../providers/matomo/README.md).
+
 ### `matomo.variable`
 
 v0.2.0 supports Tag Manager Data Layer variables:
@@ -546,8 +573,9 @@ Validation covers:
 - provider-specific resource fields.
 
 Matomo runtime connection settings come from `MATOMO_URL`,
-`MATOMO_TOKEN_AUTH`, and `MATOMO_SITE_ID`; Tag Manager resource/publication
-work also requires `MATOMO_CONTAINER_ID`. Google Ads connection settings come
+`MATOMO_TOKEN_AUTH`, and `MATOMO_SITE_ID`. Tag Manager resources and
+publication also require either a `matomo.container` resource or
+`MATOMO_CONTAINER_ID`. Google Ads connection settings come
 from `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`,
 `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`, and
 `GOOGLE_ADS_CUSTOMER_ID`.

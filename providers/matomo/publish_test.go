@@ -40,6 +40,9 @@ func TestPublicationIsDeclarativeProviderFinalization(t *testing.T) {
 	if planned == nil || planned.Action != "publish" || planned.Target != "live" {
 		t.Fatalf("planned = %+v, want publish -> live", planned)
 	}
+	if planned.Address.String() != "matomo.container.external" {
+		t.Fatalf("publication address = %s, want matomo.container.external", planned.Address)
+	}
 	if !planned.Conditional {
 		t.Fatalf("planned = %+v, want conditional publication", planned)
 	}
@@ -401,6 +404,7 @@ type finalizeServer struct {
 	liveVersion          string
 	creates              int
 	publishes            int
+	gets                 int
 	failCreate           bool
 	failPublish          bool
 	malformedPublishable bool
@@ -447,12 +451,14 @@ func (s *finalizeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeEnvironments(w, []string{"live", "dev"})
 	case "TagManager.getContainer":
 		s.mu.Lock()
+		s.gets++
 		live := s.liveVersion
 		s.mu.Unlock()
 		out := map[string]any{
 			"idcontainer": "6OMh6taM",
 			"idsite":      3,
 			"name":        "Website",
+			"context":     "web",
 			"draft":       map[string]any{"idcontainerversion": 9},
 			"releases":    []any{},
 		}
@@ -534,45 +540,123 @@ func (s *finalizeServer) publishCount() int {
 	return s.publishes
 }
 
-func TestPublicationEnabledConnectionCheckRequiresSiteAndContainer(t *testing.T) {
+func (s *finalizeServer) getContainerCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.gets
+}
+
+func TestPublicationEnabledConnectionCheckRequiresSite(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
-		name string
-		cfg  client.Config
-		want string
-	}{
-		{
-			name: "site",
-			cfg: client.Config{
-				BaseURL:     "https://matomo.example.com",
-				TokenAuth:   "secret",
-				ContainerID: "containerA",
-			},
-			want: matomo.EnvSiteID,
-		},
-		{
-			name: "container",
-			cfg: client.Config{
-				BaseURL:   "https://matomo.example.com",
-				TokenAuth: "secret",
-				SiteID:    "3",
-			},
-			want: matomo.EnvContainerID,
+	p := matomo.New(client.Config{
+		BaseURL:     "https://matomo.example.com",
+		TokenAuth:   "secret",
+		ContainerID: "containerA",
+	})
+	if err := p.Configure(resource.Attributes{"publish": true}); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	err := p.CheckConnection(context.Background())
+	if err == nil || !strings.Contains(err.Error(), matomo.EnvSiteID) {
+		t.Fatalf("CheckConnection = %v, want %s", err, matomo.EnvSiteID)
+	}
+}
+
+func TestPublicationEnabledPlanRequiresContainerWithoutManagedResource(t *testing.T) {
+	t.Parallel()
+
+	p := matomo.New(client.Config{
+		BaseURL:   "https://matomo.example.com",
+		TokenAuth: "secret",
+		SiteID:    "3",
+	})
+	if err := p.Configure(resource.Attributes{"publish": true}); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	_, err := p.PlanFinalization(context.Background(), nil)
+	if err == nil || !strings.Contains(err.Error(), matomo.EnvContainerID) {
+		t.Fatalf("PlanFinalization = %v, want %s", err, matomo.EnvContainerID)
+	}
+}
+
+func TestPublicationUsesManagedContainerAddress(t *testing.T) {
+	t.Parallel()
+
+	s := newFinalizeServer(t)
+	p := matomo.NewWithHTTPClient(client.Config{
+		BaseURL:    s.server.URL,
+		TokenAuth:  "test-secret-token",
+		SiteID:     "3",
+		HTTPClient: s.server.Client(),
+	}, s.server.Client())
+	if err := p.Configure(resource.Attributes{"publish": true, "environment": "live"}); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	container := resource.Resource{
+		Address: resource.Address{Provider: matomo.Name, Type: matomo.TypeContainer, Name: "main"},
+		Attributes: resource.Attributes{
+			matomo.AttrName:    "Website",
+			matomo.AttrContext: "web",
 		},
 	}
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			p := matomo.New(tc.cfg)
-			if err := p.Configure(resource.Attributes{"publish": true}); err != nil {
-				t.Fatalf("Configure: %v", err)
-			}
-			err := p.CheckConnection(context.Background())
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("CheckConnection = %v, want %s", err, tc.want)
-			}
-		})
+	if err := p.ValidateResourceSet(context.Background(), []resource.Resource{container}); err != nil {
+		t.Fatalf("ValidateResourceSet: %v", err)
+	}
+
+	planned, err := p.PlanFinalization(context.Background(), []provider.PendingChange{{
+		Address: container.Address,
+		Action:  "create",
+	}})
+	if err != nil {
+		t.Fatalf("PlanFinalization: %v", err)
+	}
+	if planned == nil || planned.Address.String() != "matomo.container.main" {
+		t.Fatalf("planned = %+v, want matomo.container.main", planned)
+	}
+	if !planned.Conditional {
+		t.Fatalf("pending container create must be conditional, got %+v", planned)
+	}
+	if s.getContainerCount() != 0 {
+		t.Fatalf("pending container create must not read the remote container, gets=%d", s.getContainerCount())
+	}
+}
+
+func TestPublicationAgainstImportedManagedContainer(t *testing.T) {
+	t.Parallel()
+
+	s := newFinalizeServer(t)
+	p := matomo.NewWithHTTPClient(client.Config{
+		BaseURL:    s.server.URL,
+		TokenAuth:  "test-secret-token",
+		SiteID:     "3",
+		HTTPClient: s.server.Client(),
+	}, s.server.Client())
+	if err := p.Configure(resource.Attributes{"publish": true, "environment": "live"}); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	container := resource.Resource{
+		Address: resource.Address{Provider: matomo.Name, Type: matomo.TypeContainer, Name: "main"},
+		Attributes: resource.Attributes{
+			matomo.AttrName:    "Website",
+			matomo.AttrContext: "web",
+		},
+	}
+	if err := p.ValidateResourceSet(context.Background(), []resource.Resource{container}); err != nil {
+		t.Fatalf("ValidateResourceSet: %v", err)
+	}
+	if _, err := p.Import(context.Background(), container.Address, "6OMh6taM"); err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+
+	planned, err := p.PlanFinalization(context.Background(), []provider.PendingChange{{
+		Address: resource.Address{Provider: matomo.Name, Type: matomo.TypeTag, Name: "trial_started"},
+		Action:  "update",
+	}})
+	if err != nil {
+		t.Fatalf("PlanFinalization: %v", err)
+	}
+	if planned == nil || planned.Address.String() != "matomo.container.main" {
+		t.Fatalf("planned = %+v, want matomo.container.main", planned)
 	}
 }

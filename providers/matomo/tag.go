@@ -55,6 +55,7 @@ var (
 		AttrEventName:     {},
 		AttrEventValue:    {},
 		AttrName:          {},
+		AttrContainer:     {},
 	}
 
 	computedTagAttrs = map[string]struct{}{
@@ -95,7 +96,7 @@ var (
 )
 
 func (p *Provider) validateTag(res resource.Resource) error {
-	if err := p.requireTagManagerConfig(); err != nil {
+	if err := p.requireTagManagerConfig(res); err != nil {
 		return fmt.Errorf("resource %s: %w", res.Address, err)
 	}
 
@@ -111,7 +112,11 @@ func (p *Provider) validateTag(res resource.Resource) error {
 		if _, computed := computedTagAttrs[key]; computed {
 			return fmt.Errorf("resource %s: %s is computed and cannot be set in configuration", res.Address, key)
 		}
-		return fmt.Errorf("resource %s: unsupported attribute %q; v0.2 matomo.tag supports %s, %s, %s, %s, optional %s, optional %s, and optional %s", res.Address, key, AttrType, AttrTrigger, AttrEventCategory, AttrEventAction, AttrEventName, AttrEventValue, AttrName)
+		return fmt.Errorf("resource %s: unsupported attribute %q; matomo.tag supports %s, %s, %s, %s, optional %s, optional %s, optional %s, and optional %s", res.Address, key, AttrType, AttrTrigger, AttrEventCategory, AttrEventAction, AttrEventName, AttrEventValue, AttrName, AttrContainer)
+	}
+
+	if _, _, err := optionalContainerRef(res); err != nil {
+		return err
 	}
 
 	typ, err := requiredString(res, AttrType)
@@ -167,8 +172,11 @@ func (p *Provider) readTag(ctx context.Context, res resource.Resource) (resource
 	}
 
 	name := tagName(res)
-	tags, err := p.listDraftTags(ctx)
+	tags, err := p.listDraftTags(ctx, res)
 	if err != nil {
+		if mapped := mapUnavailableContainer(res.Address, err); mapped != err {
+			return resource.RemoteResource{}, mapped
+		}
 		return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: %w", res.Address, err)
 	}
 
@@ -179,6 +187,7 @@ func (p *Provider) readTag(ctx context.Context, res resource.Resource) (resource
 	case 1:
 		live, err := p.remoteTag(res.Address, matches[0], res.Attributes)
 		if err == nil {
+			live = attachContainerRef(live, res.Attributes)
 			p.rememberBinding(res.Address, live.Identity.ID, matches[0].Name)
 		}
 		return live, err
@@ -192,11 +201,11 @@ func (p *Provider) createTag(ctx context.Context, res resource.Resource) (resour
 		return resource.RemoteResource{}, err
 	}
 
-	c, err := p.Client()
+	tm, err := p.tagManagerFor(res)
 	if err != nil {
-		return resource.RemoteResource{}, err
+		return resource.RemoteResource{}, fmt.Errorf("matomo: create %s: %w", res.Address, err)
 	}
-	version, err := c.TagManager().DraftVersion(ctx)
+	version, err := tm.DraftVersion(ctx)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: create %s: %w", res.Address, err)
 	}
@@ -205,17 +214,17 @@ func (p *Provider) createTag(ctx context.Context, res resource.Resource) (resour
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: create %s: %w", res.Address, err)
 	}
-	id, err := c.TagManager().AddContainerTag(ctx, version, in)
+	id, err := tm.AddContainerTag(ctx, version, in)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: create %s: %w", res.Address, err)
 	}
 
-	live, err := p.readTagByID(ctx, res.Address, id, res.Attributes)
+	live, err := p.readTagByID(ctx, res, id)
 	if err == nil {
 		return live, nil
 	}
 	p.rememberBinding(res.Address, id, tagName(res))
-	return p.remoteTag(res.Address, client.Tag{
+	fallback, ferr := p.remoteTag(res.Address, client.Tag{
 		IDTag:              id,
 		IDContainerVersion: version,
 		Type:               matomoTagType(stringAttr(res.Attributes, AttrType)),
@@ -223,6 +232,10 @@ func (p *Provider) createTag(ctx context.Context, res resource.Resource) (resour
 		FireTriggerIDs:     in.FireTriggerIDs,
 		Parameters:         in.Parameters,
 	}, res.Attributes)
+	if ferr != nil {
+		return resource.RemoteResource{}, ferr
+	}
+	return attachContainerRef(fallback, res.Attributes), nil
 }
 
 func (p *Provider) updateTag(ctx context.Context, desired resource.Resource, actual resource.RemoteResource) (resource.RemoteResource, error) {
@@ -233,19 +246,22 @@ func (p *Provider) updateTag(ctx context.Context, desired resource.Resource, act
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: missing remote identity", desired.Address)
 	}
 
-	current, err := p.readTagByID(ctx, desired.Address, actual.Identity.ID, desired.Attributes)
+	current, err := p.readTagByID(ctx, desired, actual.Identity.ID)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: refresh remote tag %q: %w", desired.Address, actual.Identity.ID, err)
 	}
 	if err := ensureImmutableTagType(desired, current); err != nil {
 		return resource.RemoteResource{}, err
 	}
-
-	c, err := p.Client()
-	if err != nil {
+	if err := ensureImmutableContainerRef(desired, current); err != nil {
 		return resource.RemoteResource{}, err
 	}
-	version, err := c.TagManager().DraftVersion(ctx)
+
+	tm, err := p.tagManagerFor(desired)
+	if err != nil {
+		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: %w", desired.Address, err)
+	}
+	version, err := tm.DraftVersion(ctx)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: %w", desired.Address, err)
 	}
@@ -255,19 +271,19 @@ func (p *Provider) updateTag(ctx context.Context, desired resource.Resource, act
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: %w", desired.Address, err)
 	}
 	preserved := tagPreserved(current)
-	if err := c.TagManager().UpdateContainerTag(ctx, version, actual.Identity.ID, in, preserved); err != nil {
+	if err := tm.UpdateContainerTag(ctx, version, actual.Identity.ID, in, preserved); err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: %w", desired.Address, err)
 	}
 
-	live, err := p.readTagByID(ctx, desired.Address, actual.Identity.ID, desired.Attributes)
+	live, err := p.readTagByID(ctx, desired, actual.Identity.ID)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s succeeded but refreshing tag %q failed: %w", desired.Address, actual.Identity.ID, err)
 	}
 	return live, nil
 }
 
-func (p *Provider) readTagByID(ctx context.Context, addr resource.Address, id string, desired resource.Attributes) (resource.RemoteResource, error) {
-	tags, err := p.listDraftTags(ctx)
+func (p *Provider) readTagByID(ctx context.Context, res resource.Resource, id string) (resource.RemoteResource, error) {
+	tags, err := p.listDraftTags(ctx, res)
 	if err != nil {
 		return resource.RemoteResource{}, err
 	}
@@ -276,9 +292,10 @@ func (p *Provider) readTagByID(ctx context.Context, addr resource.Address, id st
 			continue
 		}
 		if tag.IDTag == id {
-			live, err := p.remoteTag(addr, tag, desired)
+			live, err := p.remoteTag(res.Address, tag, res.Attributes)
 			if err == nil {
-				p.rememberBinding(addr, live.Identity.ID, tag.Name)
+				live = attachContainerRef(live, res.Attributes)
+				p.rememberBinding(res.Address, live.Identity.ID, tag.Name)
 			}
 			return live, err
 		}
@@ -286,19 +303,16 @@ func (p *Provider) readTagByID(ctx context.Context, addr resource.Address, id st
 	return resource.RemoteResource{}, provider.ErrNotFound
 }
 
-func (p *Provider) listDraftTags(ctx context.Context) ([]client.Tag, error) {
-	if err := p.requireTagManagerConfig(); err != nil {
-		return nil, err
-	}
-	c, err := p.Client()
+func (p *Provider) listDraftTags(ctx context.Context, res resource.Resource) ([]client.Tag, error) {
+	tm, err := p.tagManagerFor(res)
 	if err != nil {
 		return nil, err
 	}
-	version, err := c.TagManager().DraftVersion(ctx)
+	version, err := tm.DraftVersion(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return c.TagManager().GetContainerTags(ctx, version)
+	return tm.GetContainerTags(ctx, version)
 }
 
 func (p *Provider) normalizeTagComparable(desired resource.Resource, live *resource.RemoteResource) (resource.Attributes, resource.Attributes, error) {
@@ -363,7 +377,7 @@ func (p *Provider) comparableTag(attrs resource.Attributes, addr resource.Addres
 		}
 		out[key] = v
 	}
-	return out, nil
+	return withComparableContainer(out, attrs)
 }
 
 func (p *Provider) remoteTag(addr resource.Address, tag client.Tag, desired resource.Attributes) (resource.RemoteResource, error) {
@@ -435,11 +449,11 @@ func (p *Provider) tagInput(ctx context.Context, res resource.Resource, live *re
 	if err != nil {
 		return client.TagInput{}, err
 	}
-	category, err := p.eventFieldValue(ctx, res.Attributes[AttrEventCategory])
+	category, err := p.eventFieldValue(ctx, res, res.Attributes[AttrEventCategory])
 	if err != nil {
 		return client.TagInput{}, fmt.Errorf("attribute %q: %w", AttrEventCategory, err)
 	}
-	action, err := p.eventFieldValue(ctx, res.Attributes[AttrEventAction])
+	action, err := p.eventFieldValue(ctx, res, res.Attributes[AttrEventAction])
 	if err != nil {
 		return client.TagInput{}, fmt.Errorf("attribute %q: %w", AttrEventAction, err)
 	}
@@ -449,20 +463,20 @@ func (p *Provider) tagInput(ctx context.Context, res resource.Resource, live *re
 		AttrEventAction:   action,
 	}
 	if v, ok := res.Attributes[AttrEventName]; ok {
-		name, err := p.eventFieldValue(ctx, v)
+		name, err := p.eventFieldValue(ctx, res, v)
 		if err != nil {
 			return client.TagInput{}, fmt.Errorf("attribute %q: %w", AttrEventName, err)
 		}
 		params[AttrEventName] = name
 	}
 	if v, ok := res.Attributes[AttrEventValue]; ok {
-		value, err := p.eventFieldValue(ctx, v)
+		value, err := p.eventFieldValue(ctx, res, v)
 		if err != nil {
 			return client.TagInput{}, fmt.Errorf("attribute %q: %w", AttrEventValue, err)
 		}
 		params[AttrEventValue] = value
 	}
-	cfg, err := p.matomoConfigValue(ctx, live)
+	cfg, err := p.matomoConfigValue(ctx, res, live)
 	if err != nil {
 		return client.TagInput{}, err
 	}
@@ -494,12 +508,12 @@ func (p *Provider) resolvedTriggerID(v any) (string, error) {
 	return "", fmt.Errorf("trigger %s has no provider-native identity", ref.Address)
 }
 
-func (p *Provider) eventFieldValue(ctx context.Context, v any) (string, error) {
+func (p *Provider) eventFieldValue(ctx context.Context, res resource.Resource, v any) (string, error) {
 	if resolved, ok := resource.AsResolved(v); ok {
 		name := p.lookupName(resolved.Address)
 		if name == "" {
 			var err error
-			name, err = p.variableNameByID(ctx, resolved.Identity.ID)
+			name, err = p.variableNameByID(ctx, res, resolved.Identity.ID)
 			if err != nil {
 				return "", err
 			}
@@ -523,12 +537,12 @@ func (p *Provider) eventFieldValue(ctx context.Context, v any) (string, error) {
 	return s, nil
 }
 
-func (p *Provider) variableNameByID(ctx context.Context, id string) (string, error) {
+func (p *Provider) variableNameByID(ctx context.Context, res resource.Resource, id string) (string, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return "", fmt.Errorf("variable identity is empty")
 	}
-	vars, err := p.listDraftVariables(ctx)
+	vars, err := p.listDraftVariables(ctx, res)
 	if err != nil {
 		return "", err
 	}
@@ -543,7 +557,7 @@ func (p *Provider) variableNameByID(ctx context.Context, id string) (string, err
 	return "", fmt.Errorf("variable identity %q was not found", id)
 }
 
-func (p *Provider) matomoConfigValue(ctx context.Context, live *resource.RemoteResource) (string, error) {
+func (p *Provider) matomoConfigValue(ctx context.Context, res resource.Resource, live *resource.RemoteResource) (string, error) {
 	if live != nil {
 		if cfg := computedString(live.Computed, paramMatomoConfig); cfg != "" {
 			if wrapped, ok := client.NormalizeMatomoConfig(cfg).(string); ok {
@@ -551,11 +565,11 @@ func (p *Provider) matomoConfigValue(ctx context.Context, live *resource.RemoteR
 			}
 		}
 	}
-	return p.defaultMatomoConfig(ctx)
+	return p.defaultMatomoConfig(ctx, res)
 }
 
-func (p *Provider) defaultMatomoConfig(ctx context.Context) (string, error) {
-	vars, err := p.listDraftVariables(ctx)
+func (p *Provider) defaultMatomoConfig(ctx context.Context, res resource.Resource) (string, error) {
+	vars, err := p.listDraftVariables(ctx, res)
 	if err != nil {
 		return "", err
 	}
