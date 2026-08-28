@@ -113,9 +113,10 @@ func (p *Provider) importContainerID() (string, error) {
 	if err := p.requireSiteID(); err != nil {
 		return "", fmt.Errorf("%s is required to manage Tag Manager resources", EnvSiteID)
 	}
-	envID := ""
 	if p != nil {
-		envID = strings.TrimSpace(p.cfg.ContainerID)
+		if envID := strings.TrimSpace(p.cfg.ContainerID); envID != "" {
+			return envID, nil
+		}
 	}
 	bindings, err := p.boundContainerIdentities()
 	if err != nil {
@@ -125,13 +126,7 @@ func (p *Provider) importContainerID() (string, error) {
 	case len(bindings) > 1:
 		return "", fmt.Errorf("matomo: at most one matomo.container identity may be bound in local state")
 	case len(bindings) == 1:
-		id := strings.TrimSpace(bindings[0].RemoteID)
-		if envID != "" && envID != id {
-			return "", fmt.Errorf("matomo: %s %q does not match managed container %s bound as %s", EnvContainerID, envID, bindings[0].Address, id)
-		}
-		return id, nil
-	case envID != "":
-		return envID, nil
+		return strings.TrimSpace(bindings[0].RemoteID), nil
 	default:
 		return "", fmt.Errorf("%s is required to import Tag Manager resources unless a matomo.container resource is already bound in local state", EnvContainerID)
 	}
@@ -143,6 +138,9 @@ func (p *Provider) importTagManagerResource(addr resource.Address) (resource.Res
 		return resource.Resource{}, "", err
 	}
 	res := resource.Resource{Address: addr, Attributes: resource.Attributes{}}
+	if p != nil && strings.TrimSpace(p.cfg.ContainerID) != "" {
+		return res, containerID, nil
+	}
 	if managed, ok, err := p.lookupManagedAddress(TypeContainer, containerID); err != nil {
 		return resource.Resource{}, "", err
 	} else if ok {
@@ -179,6 +177,9 @@ func (p *Provider) boundContainerIdentities() ([]state.Binding, error) {
 }
 
 func (p *Provider) attachImportedContainerRef(live resource.RemoteResource, containerID string) resource.RemoteResource {
+	if p != nil && strings.TrimSpace(p.cfg.ContainerID) != "" {
+		return live
+	}
 	addr, ok, err := p.lookupManagedAddress(TypeContainer, containerID)
 	if err != nil || !ok {
 		return live
