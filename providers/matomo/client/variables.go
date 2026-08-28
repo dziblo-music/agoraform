@@ -181,6 +181,9 @@ func mergeVariableParameters(preserved, managed map[string]any) (map[string]any,
 	for k, v := range managed {
 		out[k] = v
 	}
+	if err := validatePreservableVariableParameters(out); err != nil {
+		return nil, fmt.Errorf("matomo: remote variable parameters cannot be preserved without loss: %w", err)
+	}
 	return out, nil
 }
 
@@ -202,6 +205,50 @@ func CloneJSONMap(in map[string]any) (map[string]any, error) {
 		return map[string]any{}, nil
 	}
 	return out, nil
+}
+
+// validatePreservableVariableParameters rejects JSON values that the Matomo
+// form-encoding used by variable updates cannot represent without changing
+// their meaning. In particular, setFormValue intentionally omits null and
+// empty collections, so accepting those here would silently clear unowned
+// replacement-style template parameters.
+func validatePreservableVariableParameters(parameters map[string]any) error {
+	for key, value := range parameters {
+		if err := validatePreservableFormValue("parameters["+key+"]", value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validatePreservableFormValue(path string, value any) error {
+	switch x := value.(type) {
+	case nil:
+		return fmt.Errorf("%s is null and cannot be represented by Matomo form encoding", path)
+	case map[string]any:
+		if len(x) == 0 {
+			return fmt.Errorf("%s is an empty object and cannot be represented by Matomo form encoding", path)
+		}
+		for key, child := range x {
+			if err := validatePreservableFormValue(path+"["+key+"]", child); err != nil {
+				return err
+			}
+		}
+	case []any:
+		if len(x) == 0 {
+			return fmt.Errorf("%s is an empty array and cannot be represented by Matomo form encoding", path)
+		}
+		for i, child := range x {
+			if err := validatePreservableFormValue(fmt.Sprintf("%s[%d]", path, i), child); err != nil {
+				return err
+			}
+		}
+	case string, float64, json.Number, bool:
+		return nil
+	default:
+		return fmt.Errorf("%s has unsupported value type %T", path, value)
+	}
+	return nil
 }
 
 func decodeVariables(raw json.RawMessage) ([]Variable, error) {
