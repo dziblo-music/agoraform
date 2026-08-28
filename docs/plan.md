@@ -79,6 +79,25 @@ A plan containing only a provider action still exits with code `2` because
 Destructive deletion is not implemented yet. Unmanaged remote objects are
 ignored.
 
+## Google Ads safety and replacement
+
+`plan` never mutates Google Ads. For the v0.4 Search campaign graph it also
+makes serving-state and replacement behavior reviewable:
+
+- new campaigns, ad groups, positive keywords, and Responsive Search Ads
+  default to `PAUSED`;
+- negative keywords default to `ENABLED` because Google Ads does not allow
+  paused negative ad-group criteria;
+- immutable identity fields such as keyword text/match type/negative, location,
+  language, and parent campaign or ad group fail planning instead of planning
+  a hidden destroy-and-recreate;
+- Responsive Search Ad status updates the ad-group-ad relationship in place;
+  creative list changes replace the underlying ad headlines, descriptions,
+  URLs, and paths and appear as list diffs.
+
+See the [Google Ads Search campaign example](../examples/googleads-search/README.md)
+and the [Google Ads provider reference](../providers/googleads/README.md).
+
 ## Output
 
 Example resource changes:

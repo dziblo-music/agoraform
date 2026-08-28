@@ -168,6 +168,27 @@ for the complete resource-specific schema and preservation behavior.
 
 ## Google Ads resources
 
+v0.4.0 Search resources form a dependency graph. Campaigns require a budget;
+ad groups, targeting, and campaign conversion goals require a campaign;
+keywords and Responsive Search Ads require an ad group:
+
+```text
+googleads.conversion_action
+googleads.customer_conversion_goal
+googleads.campaign_budget
+  └── googleads.campaign
+        ├── googleads.campaign_conversion_goal
+        ├── googleads.campaign_location
+        ├── googleads.campaign_language
+        └── googleads.ad_group
+              ├── googleads.keyword
+              └── googleads.responsive_search_ad
+```
+
+New campaigns, ad groups, positive keywords, and Responsive Search Ads
+default to `PAUSED`. See the
+[complete Google Ads Search campaign example](../examples/googleads-search/README.md).
+
 ### `googleads.conversion_action`
 
 Website conversion actions. Common attributes:

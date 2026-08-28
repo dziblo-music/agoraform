@@ -720,6 +720,11 @@ requests. Override `Config.BaseURL` and `Config.TokenURL` in tests.
 ## Safety
 
 - `agoraform plan` does not mutate Google Ads.
+- New campaigns, ad groups, positive keywords, and Responsive Search Ads
+  default to `PAUSED`. Negative keywords default to `ENABLED`.
+- Immutable identity fields fail planning instead of destroying and
+  recreating the remote object. Creative Responsive Search Ad changes
+  replace ad lists in place and are visible in plan output.
 - Authentication secrets are redacted from provider errors.
 - Tests use local `httptest` servers only.
 - Bound local-state identities are resolved by ID, never by renaming.

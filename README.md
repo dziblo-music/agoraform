@@ -15,25 +15,29 @@ validate -> plan -> apply -> plan
 `import` adopts supported existing remote objects without mutating them.
 Destructive `destroy` behavior is not implemented yet.
 
-## v0.3.0
+## v0.4.0
 
-Agoraform 0.3.0 adds Google Ads conversion measurement while retaining the
-Matomo analytics and Tag Manager functionality from v0.2.0.
+Agoraform 0.4.0 adds complete Google Ads Search campaign management while
+retaining Matomo from v0.2.0 and Google Ads conversion measurement from
+v0.3.0.
 
-| Area | v0.3.0 |
+| Area | v0.4.0 |
 | --- | --- |
 | Commands | `validate`, `plan`, `apply`, `import` |
 | Providers | Matomo, Google Ads (`googleads`) |
 | Matomo resources | `matomo.goal`, `matomo.variable`, `matomo.trigger`, `matomo.tag` |
-| Google Ads resources | `googleads.conversion_action`, `googleads.customer_conversion_goal` |
+| Google Ads conversion | `googleads.conversion_action`, `googleads.customer_conversion_goal` |
+| Google Ads Search | `googleads.campaign_budget`, `googleads.campaign`, `googleads.campaign_conversion_goal`, `googleads.ad_group`, `googleads.keyword`, `googleads.responsive_search_ad`, `googleads.campaign_location`, `googleads.campaign_language` |
 | References | Logical `$ref` dependencies |
-| Import | Supported Matomo resources plus supported Google Ads conversion measurement |
+| Import | Supported Matomo resources plus supported Google Ads conversion measurement and Search campaign resources |
 | Matomo publication | Declarative through provider configuration, visible in `plan`, executed during `apply` |
 | State | local `agoraform.state.json` |
-| Mutations | create and update |
+| Mutations | create and update; new Search serving objects default to `PAUSED` |
 
-v0.2.0 introduced the dependency-aware Matomo Tag Manager workflow; v0.1.0
-was the first public release and managed `matomo.goal` only.
+v0.3.0 added website conversion actions and customer conversion-goal
+biddability. v0.2.0 introduced the dependency-aware Matomo Tag Manager
+workflow. v0.1.0 was the first public release and managed `matomo.goal`
+only.
 
 ## Install
 
@@ -42,7 +46,7 @@ built with Go 1.26.7 and `CGO_ENABLED=0`.
 
 ### GitHub Releases
 
-1. Download the `v0.3.0` archive for your OS and architecture from GitHub
+1. Download the `v0.4.0` archive for your OS and architecture from GitHub
    Releases.
 2. Download `checksums.txt` from the same release and verify the archive.
 3. Extract `agoraform` (`agoraform.exe` on Windows) and place it on `PATH`.
@@ -52,29 +56,30 @@ built with Go 1.26.7 and `CGO_ENABLED=0`.
 agoraform --version
 ```
 
-A v0.3.0 binary prints `0.3.0`. Git tags use the Go convention with a `v`
+A v0.4.0 binary prints `0.4.0`. Git tags use the Go convention with a `v`
 prefix. Untagged local builds print `0.0.0-dev`.
 
 Release archives:
 
 | File | Platform |
 | --- | --- |
-| `agoraform_0.3.0_linux_amd64.tar.gz` | Linux amd64 |
-| `agoraform_0.3.0_linux_arm64.tar.gz` | Linux arm64 |
-| `agoraform_0.3.0_darwin_amd64.tar.gz` | macOS amd64 |
-| `agoraform_0.3.0_darwin_arm64.tar.gz` | macOS arm64 |
-| `agoraform_0.3.0_windows_amd64.zip` | Windows amd64 |
+| `agoraform_0.4.0_linux_amd64.tar.gz` | Linux amd64 |
+| `agoraform_0.4.0_linux_arm64.tar.gz` | Linux arm64 |
+| `agoraform_0.4.0_darwin_amd64.tar.gz` | macOS amd64 |
+| `agoraform_0.4.0_darwin_arm64.tar.gz` | macOS arm64 |
+| `agoraform_0.4.0_windows_amd64.zip` | Windows amd64 |
 
 The archives also contain the README, changelog, license files, the v0.1 goal
-example, the complete v0.2 Matomo conversion example, and the complete v0.3
-Google Ads conversion example.
+example, the complete v0.2 Matomo conversion example, the complete v0.3
+Google Ads conversion example, and the complete v0.4 Google Ads Search
+campaign example.
 
 ### go install
 
 Requires Go 1.26.7 or newer:
 
 ```bash
-go install github.com/dziblo-music/agoraform/cmd/agoraform@v0.3.0
+go install github.com/dziblo-music/agoraform/cmd/agoraform@v0.4.0
 ```
 
 ### Build current source
@@ -198,6 +203,35 @@ state are unchanged.
 See [the Google Ads Search campaign example](examples/googleads-search/README.md)
 for Google Ads verification before enabling spend, and import of an
 equivalent manually configured campaign.
+
+## Safe serving state and replacement
+
+v0.4.0 Search resources stay paused until you review them in Google Ads and
+change `status` in the manifest:
+
+- new campaigns, ad groups, positive keywords, and Responsive Search Ads
+  default to `PAUSED`;
+- negative keywords default to `ENABLED` because Google Ads does not allow
+  paused negative ad-group criteria;
+- enabling spend is a reviewed `status` update, not an automatic side
+  effect of apply.
+
+Agoraform never deletes remote Google Ads objects. Immutable identity
+fields fail planning instead of hiding a destroy-and-recreate:
+
+- keyword `text`, `matchType`, `negative`, and parent ad group;
+- campaign location, language, and whether a location is excluded;
+- Responsive Search Ad parent ad group;
+- ad group parent campaign.
+
+Create a new resource address for those identity changes. Responsive Search
+Ad **status** updates the ad-group-ad relationship in place. Creative
+changes (headlines, descriptions, final URLs, display paths, pinning)
+replace the underlying ad lists and appear as list diffs in `plan`.
+
+Customer and campaign conversion goals are created by Google Ads. Agoraform
+adopts or updates `biddable` and never attempts unsupported create or delete
+operations.
 
 ## v0.3 Google Ads conversion measurement
 
@@ -459,21 +493,19 @@ agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
 
 ## Current development limitations
 
-- v0.3.0 supports Matomo plus Google Ads website conversion measurement. Meta
-  Ads is not implemented.
-- Google Ads support includes website conversion measurement, daily Search
-  `googleads.campaign_budget` resources, Search `googleads.campaign`
-  resources, Search `googleads.ad_group` resources, Search
-  `googleads.keyword` criteria, Search `googleads.responsive_search_ad`
-  resources, campaign location and language targeting,
-  and campaign
-  `googleads.campaign_conversion_goal` biddability. Dynamic Search Ads,
-  Display, video, and Performance Max ads,
-  offline/call/app conversion workflows, and conversion-event uploads
+- v0.4.0 supports Matomo plus Google Ads website conversion measurement and
+  the complete Search campaign graph. Meta Ads is not implemented.
+- Google Ads campaign support is Search only. Performance Max, Display,
+  Video, Shopping, App, Dynamic Search Ads, and other campaign families
   are not implemented.
-- Agoraform v0.3.0 Google Ads authentication uses developer-token + single-user
-  OAuth refresh-token credentials. Service-account, multi-user, and interactive
-  OAuth flows are not implemented.
+- Agoraform does not generate creative, upload image or video assets,
+  enable spend automatically, or apply Google Ads optimization
+  recommendations.
+- Offline/call/app conversion workflows and conversion-event uploads are
+  not implemented.
+- Agoraform Google Ads authentication uses developer-token + single-user
+  OAuth refresh-token credentials. Service-account, multi-user, and
+  interactive OAuth flows are not implemented.
 - One Matomo Tag Manager container is configured at a time through
   `MATOMO_CONTAINER_ID`.
 - Tag Manager support is limited to the variable, trigger, and tag types
@@ -484,6 +516,8 @@ agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
   pipelines, and multi-container deployment orchestration are not implemented.
 - Remote state, workspaces, locking, and encryption are not implemented.
 - `apply` does not delete remote resources and there is no `destroy` command.
+  Immutable Google Ads identity fields fail planning rather than planning a
+  replacement delete.
 - Pre-1.0 releases may intentionally introduce documented breaking changes.
 
 ## Documentation

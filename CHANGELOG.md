@@ -5,10 +5,20 @@ All notable changes to Agoraform are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and Agoraform versions follow [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
-Git tags are `v` plus the SemVer identifier (`v0.3.0`). `agoraform --version`
-prints the SemVer identifier without the prefix (`0.3.0`).
+Git tags are `v` plus the SemVer identifier (`v0.4.0`). `agoraform --version`
+prints the SemVer identifier without the prefix (`0.4.0`).
 
 ## [Unreleased]
+
+## [0.4.0] - 2026-08-28
+
+Agoraform 0.4.0 adds complete Google Ads Search campaign management while
+preserving the Matomo functionality from 0.2.0 and the Google Ads conversion
+measurement from 0.3.0. The release can declare, reconcile, and import a
+paused Search campaign graph from daily budget through campaign, conversion
+goals, targeting, ad group, keywords, and Responsive Search Ad without taking
+responsibility for creative generation, spend enablement, or non-Search
+campaign families.
 
 ### Added
 
@@ -21,6 +31,44 @@ prints the SemVer identifier without the prefix (`0.3.0`).
 - `googleads.campaign_location` and `googleads.campaign_language` for Search campaign targeting criteria (read, create, update, import). Locations and languages reference campaigns with `$ref: googleads.campaign.*`. Manifest values prefer reviewable names and ISO codes; Agoraform resolves them to Google Ads geo/language constants and fails on missing or ambiguous targets before mutation. Excluded locations use `negative: true`. Campaign-level presence vs interest behavior is declared on `googleads.campaign` as `locationTargeting`. Campaign, location/language, and negative are immutable; equivalent remote state, including `US` / `United States` and `en` / `English`, produces no plan diff.
 - `agoraform import` for the v0.4.0 Google Ads Search campaign resource set. Existing daily budgets, Search campaigns, campaign conversion goals, Search ad groups, keywords including negatives, Responsive Search Ads, and location/language criteria can be adopted without mutation. Parent resources must be imported first so logical `$ref` values can be reconstructed. Unsupported remote campaign, ad, criterion, and budget types, including Dynamic Search Ads campaigns and keywords with criterion-level URL or tracking settings, fail with guidance instead of emitting lossy YAML. Imported configuration against unchanged Google Ads state produces a zero-change plan.
 - A complete secret-free Google Ads Search campaign example under `examples/googleads-search/`, automatically validated by the test suite. The example covers conversion measurement, a dedicated daily budget, a paused Search campaign, campaign conversion-goal biddability, location and language targeting, a Search ad group, explicit match-type keywords with negatives, and a paused Responsive Search Ad.
+
+### Supported in 0.4.0
+
+| Area | Scope |
+| --- | --- |
+| Commands | `validate`, `plan`, `apply`, `import` |
+| Providers | Matomo, Google Ads (`googleads`) |
+| Google Ads conversion | `googleads.conversion_action`, `googleads.customer_conversion_goal` |
+| Google Ads Search | `googleads.campaign_budget`, `googleads.campaign`, `googleads.campaign_conversion_goal`, `googleads.ad_group`, `googleads.keyword`, `googleads.responsive_search_ad`, `googleads.campaign_location`, `googleads.campaign_language` |
+| Google Ads import | Supported conversion measurement and Search campaign resources; no mutation; parents imported first |
+| Matomo | All v0.2.0 goal, Tag Manager, dependency, import, and publication behavior |
+| State | Local `agoraform.state.json` beside the manifest |
+| Mutations | Create and update only; new Search serving objects default to `PAUSED` |
+
+### Limitations
+
+- v0.4.0 Google Ads campaign support is Search only. Performance Max, Display, Video, Shopping, App, Dynamic Search Ads, and other campaign families are not implemented.
+- Agoraform does not generate creative, upload image or video assets, enable spend automatically, or apply Google Ads optimization recommendations.
+- Application instrumentation, gtag.js, Google Tag, Google Tag Manager, consent handling, and conversion-event emission remain outside the Google Ads provider.
+- Offline, call, app, and conversion-event upload workflows are not implemented; `googleads.conversion_action` remains limited to supported website (`WEBPAGE`) actions.
+- Customer and campaign conversion goals are created by Google Ads. Agoraform can adopt/read them and reconcile supported `biddable` settings but cannot create or delete them.
+- Immutable identity fields such as keyword text/match type/negative, location, language, and ad-group parent fail planning instead of destroying and recreating the remote object. `apply` still does not delete remote resources and there is no `destroy` command.
+- Google Ads authentication uses developer-token + single-user OAuth refresh-token credentials. Service-account, multi-user, and interactive OAuth flows are not implemented.
+- Remote state, workspaces, locking, and encryption are not implemented.
+- Matomo Tag Manager remains limited to one configured container and the resource types documented for v0.2.0.
+- Pre-1.0: breaking CLI or manifest changes may appear in later `0.x` releases and will be documented.
+
+### Upgrade notes
+
+0.4.0 does not remove or rename the v0.3.0 Google Ads conversion-measurement
+surface or the v0.2.0 Matomo command/resource surface. Search campaign
+resources are opt-in by declaring them in the manifest. Existing
+conversion-only and Matomo-only manifests continue to work with the same
+runtime configuration.
+
+See the [v0.4.0 Google Ads Search campaign example](examples/googleads-search/README.md),
+[Google Ads setup guide](docs/google-ads-setup.md), and
+[release guide](docs/release.md).
 
 ## [0.3.0] - 2026-08-27
 
@@ -184,7 +232,8 @@ First public release.
 
 See the [README](README.md#install) and [docs/release.md](docs/release.md).
 
-[Unreleased]: https://github.com/dziblo-music/agoraform/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/dziblo-music/agoraform/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/dziblo-music/agoraform/releases/tag/v0.4.0
 [0.3.0]: https://github.com/dziblo-music/agoraform/releases/tag/v0.3.0
 [0.2.0]: https://github.com/dziblo-music/agoraform/releases/tag/v0.2.0
 [0.1.0]: https://github.com/dziblo-music/agoraform/releases/tag/v0.1.0

@@ -136,8 +136,12 @@ func (p *Provider) validateKeyword(res resource.Resource) error {
 	if err != nil {
 		return err
 	}
-	if _, _, err := optionalEnum(res, AttrStatus, keywordStatuses); err != nil {
+	status, statusSet, err := optionalEnum(res, AttrStatus, keywordStatuses)
+	if err != nil {
 		return err
+	}
+	if negative && statusSet && status != keywordStatusEnabled {
+		return fmt.Errorf("resource %s: attribute %q must be %s for negative keywords; Google Ads does not support paused negative ad-group criteria", res.Address, AttrStatus, keywordStatusEnabled)
 	}
 	if _, set, err := optionalAdGroupCpcBidMicros(res); err != nil {
 		return err
@@ -683,6 +687,9 @@ func comparableKeyword(attrs resource.Attributes) (resource.Attributes, error) {
 	}
 
 	status := keywordStatusPaused
+	if negative {
+		status = keywordStatusEnabled
+	}
 	if _, ok := attrs[AttrStatus]; ok {
 		raw, err := coerceString(attrs[AttrStatus])
 		if err != nil {
@@ -911,6 +918,9 @@ func rejectImmutableKeywordChanges(want, got resource.Attributes) error {
 	}
 	if !reflect.DeepEqual(want[AttrNegative], got[AttrNegative]) {
 		return fmt.Errorf("negative is immutable and cannot be changed from %v to %v; create a new googleads.keyword resource instead of mutating this criterion", got[AttrNegative], want[AttrNegative])
+	}
+	if negative, _ := want[AttrNegative].(bool); negative && !reflect.DeepEqual(want[AttrStatus], got[AttrStatus]) {
+		return fmt.Errorf("status is immutable for negative keywords and cannot be changed from %s to %s; create a new googleads.keyword resource instead of mutating this criterion", got[AttrStatus], want[AttrStatus])
 	}
 	return nil
 }
