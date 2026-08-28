@@ -3,6 +3,8 @@ package matomo
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -20,10 +22,23 @@ const (
 	AttrType = "type"
 	// AttrKey is the Data Layer key read by a dataLayer variable.
 	AttrKey = "key"
+	// AttrMatomoURL is the Matomo instance URL for a matomoConfiguration variable.
+	AttrMatomoURL = "matomoUrl"
+	// AttrSiteID is the Matomo site identifier for a matomoConfiguration variable.
+	AttrSiteID = "siteId"
+	// AttrEnableLinkTracking is the optional link-tracking flag for a
+	// matomoConfiguration variable.
+	AttrEnableLinkTracking = "enableLinkTracking"
 
-	variableTypeDataLayer = "dataLayer"
-	matomoTypeDataLayer   = "DataLayer"
-	paramDataLayerName    = "dataLayerName"
+	variableTypeDataLayer           = "dataLayer"
+	variableTypeMatomoConfiguration = "matomoConfiguration"
+	matomoTypeDataLayer             = "DataLayer"
+	matomoTypeMatomoConfiguration   = "MatomoConfiguration"
+	paramDataLayerName              = "dataLayerName"
+	paramMatomoURL                  = "matomoUrl"
+	paramIDSite                     = "idSite"
+	paramEnableLinkTracking         = "enableLinkTracking"
+	computedVariableParameters      = "parameters"
 
 	// MaxDataLayerKeyLen is Matomo's maximum length for a Data Layer
 	// variable key (dataLayerName).
@@ -35,10 +50,29 @@ const (
 
 var (
 	supportedVariableAttrs = map[string]struct{}{
+		AttrType:               {},
+		AttrKey:                {},
+		AttrName:               {},
+		AttrContainer:          {},
+		AttrMatomoURL:          {},
+		AttrSiteID:             {},
+		AttrEnableLinkTracking: {},
+	}
+
+	dataLayerVariableAttrs = map[string]struct{}{
 		AttrType:      {},
 		AttrKey:       {},
 		AttrName:      {},
 		AttrContainer: {},
+	}
+
+	matomoConfigurationVariableAttrs = map[string]struct{}{
+		AttrType:               {},
+		AttrName:               {},
+		AttrContainer:          {},
+		AttrMatomoURL:          {},
+		AttrSiteID:             {},
+		AttrEnableLinkTracking: {},
 	}
 
 	computedVariableAttrs = map[string]struct{}{
@@ -61,7 +95,8 @@ var (
 	}
 
 	supportedVariableTypes = map[string]string{
-		variableTypeDataLayer: matomoTypeDataLayer,
+		variableTypeDataLayer:           matomoTypeDataLayer,
+		variableTypeMatomoConfiguration: matomoTypeMatomoConfiguration,
 	}
 )
 
@@ -82,7 +117,7 @@ func (p *Provider) validateVariable(res resource.Resource) error {
 		if _, computed := computedVariableAttrs[key]; computed {
 			return fmt.Errorf("resource %s: %s is computed and cannot be set in configuration", res.Address, key)
 		}
-		return fmt.Errorf("resource %s: unsupported attribute %q; matomo.variable supports %s, %s, optional %s, and optional %s", res.Address, key, AttrType, AttrKey, AttrName, AttrContainer)
+		return fmt.Errorf("resource %s: unsupported attribute %q; matomo.variable supports type %s (%s, optional %s, optional %s) and type %s (%s, %s, %s, optional %s, optional %s)", res.Address, key, variableTypeDataLayer, AttrKey, AttrName, AttrContainer, variableTypeMatomoConfiguration, AttrName, AttrMatomoURL, AttrSiteID, AttrEnableLinkTracking, AttrContainer)
 	}
 
 	if _, _, err := optionalContainerRef(res); err != nil {
@@ -97,12 +132,27 @@ func (p *Provider) validateVariable(res resource.Resource) error {
 		return fmt.Errorf("resource %s: attribute %q must be one of %s", res.Address, AttrType, joinSorted(keys(supportedVariableTypes)))
 	}
 
+	switch typ {
+	case variableTypeDataLayer:
+		return validateDataLayerVariable(res)
+	case variableTypeMatomoConfiguration:
+		return validateMatomoConfigurationVariable(res)
+	default:
+		return fmt.Errorf("resource %s: attribute %q must be one of %s", res.Address, AttrType, joinSorted(keys(supportedVariableTypes)))
+	}
+}
+
+func validateDataLayerVariable(res resource.Resource) error {
+	if err := rejectTypeSpecificAttrs(res, dataLayerVariableAttrs, variableTypeDataLayer); err != nil {
+		return err
+	}
+
 	key, err := requiredString(res, AttrKey)
 	if err != nil {
 		return err
 	}
 	if key == "" {
-		return fmt.Errorf("resource %s: attribute %q must be a non-empty string when %s is %q", res.Address, AttrKey, AttrType, typ)
+		return fmt.Errorf("resource %s: attribute %q must be a non-empty string when %s is %q", res.Address, AttrKey, AttrType, variableTypeDataLayer)
 	}
 	if err := rejectEdgeWhitespace(res.Address, AttrKey, key); err != nil {
 		return err
@@ -134,7 +184,47 @@ func (p *Provider) validateVariable(res resource.Resource) error {
 		}
 		return fmt.Errorf("resource %s: attribute %q must be at most %d characters when %s is omitted because it is used as the Matomo variable name", res.Address, AttrKey, MaxVariableNameLen, AttrName)
 	}
+	return nil
+}
 
+func validateMatomoConfigurationVariable(res resource.Resource) error {
+	if err := rejectTypeSpecificAttrs(res, matomoConfigurationVariableAttrs, variableTypeMatomoConfiguration); err != nil {
+		return err
+	}
+
+	name, err := requiredString(res, AttrName)
+	if err != nil {
+		return err
+	}
+	if name == "" {
+		return fmt.Errorf("resource %s: attribute %q must be a non-empty string when %s is %q", res.Address, AttrName, AttrType, variableTypeMatomoConfiguration)
+	}
+	if err := rejectEdgeWhitespace(res.Address, AttrName, name); err != nil {
+		return err
+	}
+	if utf8.RuneCountInString(name) > MaxVariableNameLen {
+		return fmt.Errorf("resource %s: attribute %q must be at most %d characters", res.Address, AttrName, MaxVariableNameLen)
+	}
+
+	if _, err := requiredHTTPURL(res, AttrMatomoURL); err != nil {
+		return err
+	}
+	if _, err := requiredPositiveSiteID(res, AttrSiteID); err != nil {
+		return err
+	}
+	if _, _, err := optionalBoolAttr(res, AttrEnableLinkTracking); err != nil {
+		return err
+	}
+	return nil
+}
+
+func rejectTypeSpecificAttrs(res resource.Resource, allowed map[string]struct{}, typ string) error {
+	for key := range res.Attributes {
+		if _, ok := allowed[key]; ok {
+			continue
+		}
+		return fmt.Errorf("resource %s: attribute %q is not used when %s is %q", res.Address, key, AttrType, typ)
+	}
 	return nil
 }
 
@@ -204,7 +294,7 @@ func (p *Provider) createVariable(ctx context.Context, res resource.Resource) (r
 		IDContainerVersion: version,
 		Type:               matomoVariableType(stringAttr(res.Attributes, AttrType)),
 		Name:               variableName(res.Attributes),
-		Parameters:         map[string]string{paramDataLayerName: stringAttr(res.Attributes, AttrKey)},
+		Parameters:         variableInput(res.Attributes).Parameters,
 	})
 	if ferr != nil {
 		return resource.RemoteResource{}, ferr
@@ -240,10 +330,15 @@ func (p *Provider) updateVariable(ctx context.Context, desired resource.Resource
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: %w", desired.Address, err)
 	}
 
+	preservedParams, err := parametersFromComputed(desired.Address, current.Computed)
+	if err != nil {
+		return resource.RemoteResource{}, err
+	}
 	preserved := client.VariablePreservedFields{
 		Description:  computedString(current.Computed, "description"),
 		DefaultValue: computedString(current.Computed, "default_value"),
 		LookupTable:  lookupTableValue(current.Computed["lookup_table"]),
+		Parameters:   preservedParams,
 	}
 	if err := tm.UpdateContainerVariable(ctx, version, actual.Identity.ID, variableInput(desired.Attributes), preserved); err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: %w", desired.Address, err)
@@ -301,6 +396,9 @@ func (p *Provider) normalizeVariableComparable(desired resource.Resource, live *
 	if err != nil {
 		return nil, nil, fmt.Errorf("resource %s: %w", desired.Address, err)
 	}
+	if _, ok := desired.Attributes[AttrEnableLinkTracking]; !ok {
+		delete(got, AttrEnableLinkTracking)
+	}
 	return want, got, nil
 }
 
@@ -312,6 +410,15 @@ func comparableVariable(attrs resource.Attributes) (resource.Attributes, error) 
 	if err != nil {
 		return nil, fmt.Errorf("attribute %q %w", AttrType, err)
 	}
+	switch typ {
+	case variableTypeMatomoConfiguration:
+		return comparableMatomoConfiguration(attrs)
+	default:
+		return comparableDataLayerVariable(attrs)
+	}
+}
+
+func comparableDataLayerVariable(attrs resource.Attributes) (resource.Attributes, error) {
 	key, err := coerceString(attrs[AttrKey])
 	if err != nil {
 		return nil, fmt.Errorf("attribute %q %w", AttrKey, err)
@@ -324,9 +431,41 @@ func comparableVariable(attrs resource.Attributes) (resource.Attributes, error) 
 		name = key
 	}
 	out := resource.Attributes{
-		AttrType: typ,
+		AttrType: variableTypeDataLayer,
 		AttrKey:  key,
 		AttrName: name,
+	}
+	return withComparableContainer(out, attrs)
+}
+
+func comparableMatomoConfiguration(attrs resource.Attributes) (resource.Attributes, error) {
+	name, err := coerceString(attrs[AttrName])
+	if err != nil {
+		return nil, fmt.Errorf("attribute %q %w", AttrName, err)
+	}
+	matomoURL, err := coerceString(attrs[AttrMatomoURL])
+	if err != nil {
+		return nil, fmt.Errorf("attribute %q %w", AttrMatomoURL, err)
+	}
+	siteID := ""
+	if _, ok := attrs[AttrSiteID]; ok {
+		siteID, err = coercePositiveSiteID(attrs[AttrSiteID])
+		if err != nil {
+			return nil, fmt.Errorf("attribute %q %w", AttrSiteID, err)
+		}
+	}
+	out := resource.Attributes{
+		AttrType:      variableTypeMatomoConfiguration,
+		AttrName:      name,
+		AttrMatomoURL: matomoURL,
+		AttrSiteID:    siteID,
+	}
+	if _, ok := attrs[AttrEnableLinkTracking]; ok {
+		enabled, err := coerceBool(attrs[AttrEnableLinkTracking])
+		if err != nil {
+			return nil, fmt.Errorf("attribute %q %w", AttrEnableLinkTracking, err)
+		}
+		out[AttrEnableLinkTracking] = enabled
 	}
 	return withComparableContainer(out, attrs)
 }
@@ -334,15 +473,22 @@ func comparableVariable(attrs resource.Attributes) (resource.Attributes, error) 
 func remoteVariable(addr resource.Address, v client.Variable) (resource.RemoteResource, error) {
 	agoraType, ok := agoraVariableType(v.Type)
 	if !ok {
-		return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: remote variable %q has unsupported type %q; v0.2 supports %s", addr, v.IDVariable, v.Type, joinSorted(keys(supportedVariableTypes)))
+		return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: remote variable %q has unsupported type %q; supported types are %s", addr, v.IDVariable, v.Type, joinSorted(keys(supportedVariableTypes)))
 	}
 
 	attrs := resource.Attributes{
 		AttrType: agoraType,
 		AttrName: v.Name,
 	}
-	if key := v.Parameters[paramDataLayerName]; key != "" {
-		attrs[AttrKey] = key
+	switch agoraType {
+	case variableTypeDataLayer:
+		if key := parameterString(v.Parameters, paramDataLayerName); key != "" {
+			attrs[AttrKey] = key
+		}
+	case variableTypeMatomoConfiguration:
+		if err := setRemoteMatomoConfigurationAttrs(addr, v, attrs); err != nil {
+			return resource.RemoteResource{}, err
+		}
 	}
 
 	computed := resource.Attributes{}
@@ -355,6 +501,11 @@ func remoteVariable(addr resource.Address, v client.Variable) (resource.RemoteRe
 	if len(v.LookupTable) > 0 {
 		computed["lookup_table"] = string(v.LookupTable)
 	}
+	cloned, err := client.CloneJSONMap(v.Parameters)
+	if err != nil {
+		return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: remote variable %q has template parameters that cannot be represented without loss: %w", addr, v.IDVariable, err)
+	}
+	computed[computedVariableParameters] = cloned
 
 	return resource.RemoteResource{
 		Address:    addr,
@@ -364,14 +515,60 @@ func remoteVariable(addr resource.Address, v client.Variable) (resource.RemoteRe
 	}, nil
 }
 
-func variableInput(attrs resource.Attributes) client.VariableInput {
-	return client.VariableInput{
-		Type: matomoVariableType(stringAttr(attrs, AttrType)),
-		Name: variableName(attrs),
-		Parameters: map[string]string{
-			paramDataLayerName: stringAttr(attrs, AttrKey),
-		},
+func setRemoteMatomoConfigurationAttrs(addr resource.Address, v client.Variable, attrs resource.Attributes) error {
+	if raw, ok := v.Parameters[paramMatomoURL]; ok {
+		s, err := coerceString(raw)
+		if err != nil {
+			return fmt.Errorf("matomo: read %s: remote variable %q has an unreadable %s: %w", addr, v.IDVariable, AttrMatomoURL, err)
+		}
+		if s != "" {
+			attrs[AttrMatomoURL] = s
+		}
 	}
+	if raw, ok := v.Parameters[paramIDSite]; ok {
+		id, err := coercePositiveSiteID(raw)
+		if err == nil && id != "" {
+			if n, convErr := strconv.Atoi(id); convErr == nil {
+				attrs[AttrSiteID] = n
+			} else {
+				attrs[AttrSiteID] = id
+			}
+		} else if s, sErr := coerceString(raw); sErr == nil && strings.TrimSpace(s) != "" {
+			return fmt.Errorf("matomo: read %s: remote variable %q has an unreadable %s", addr, v.IDVariable, AttrSiteID)
+		}
+	}
+	if raw, ok := v.Parameters[paramEnableLinkTracking]; ok && raw != nil && raw != "" {
+		enabled, err := coerceBool(raw)
+		if err != nil {
+			return fmt.Errorf("matomo: read %s: remote variable %q has an unreadable %s: %w", addr, v.IDVariable, AttrEnableLinkTracking, err)
+		}
+		attrs[AttrEnableLinkTracking] = enabled
+	}
+	return nil
+}
+
+func variableInput(attrs resource.Attributes) client.VariableInput {
+	typ := stringAttr(attrs, AttrType)
+	in := client.VariableInput{
+		Type:       matomoVariableType(typ),
+		Name:       variableName(attrs),
+		Parameters: map[string]any{},
+	}
+	switch typ {
+	case variableTypeMatomoConfiguration:
+		in.Parameters[paramMatomoURL] = stringAttr(attrs, AttrMatomoURL)
+		if id, err := coercePositiveSiteID(attrs[AttrSiteID]); err == nil {
+			in.Parameters[paramIDSite] = id
+		}
+		if _, ok := attrs[AttrEnableLinkTracking]; ok {
+			if enabled, err := coerceBool(attrs[AttrEnableLinkTracking]); err == nil {
+				in.Parameters[paramEnableLinkTracking] = enabled
+			}
+		}
+	default:
+		in.Parameters[paramDataLayerName] = stringAttr(attrs, AttrKey)
+	}
+	return in
 }
 
 func variableName(attrs resource.Attributes) string {
@@ -424,6 +621,139 @@ func lookupTableValue(v any) []byte {
 		return nil
 	}
 	return []byte(s)
+}
+
+func parametersFromComputed(addr resource.Address, computed resource.Attributes) (map[string]any, error) {
+	if computed == nil {
+		return nil, nil
+	}
+	v, ok := computed[computedVariableParameters]
+	if !ok || v == nil {
+		return nil, nil
+	}
+	m, ok := v.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("matomo: update %s: remote variable template parameters cannot be preserved without loss", addr)
+	}
+	return m, nil
+}
+
+func requiredHTTPURL(res resource.Resource, key string) (string, error) {
+	s, err := requiredString(res, key)
+	if err != nil {
+		return "", err
+	}
+	if s == "" {
+		return "", fmt.Errorf("resource %s: attribute %q must be a non-empty http or https URL", res.Address, key)
+	}
+	if err := rejectEdgeWhitespace(res.Address, key, s); err != nil {
+		return "", err
+	}
+	u, err := url.Parse(s)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return "", fmt.Errorf("resource %s: attribute %q must be an http or https URL", res.Address, key)
+	}
+	if u.User != nil || u.Query().Get("token_auth") != "" || u.Query().Get("token") != "" {
+		return "", fmt.Errorf("resource %s: attribute %q must not contain credentials", res.Address, key)
+	}
+	return s, nil
+}
+
+func requiredPositiveSiteID(res resource.Resource, key string) (string, error) {
+	v, ok := res.Attributes[key]
+	if !ok {
+		return "", fmt.Errorf("resource %s: missing required attribute %q", res.Address, key)
+	}
+	id, err := coercePositiveSiteID(v)
+	if err != nil {
+		return "", fmt.Errorf("resource %s: attribute %q %w", res.Address, key, err)
+	}
+	if id == "" {
+		return "", fmt.Errorf("resource %s: attribute %q must be a positive site identifier", res.Address, key)
+	}
+	return id, nil
+}
+
+func optionalBoolAttr(res resource.Resource, key string) (bool, bool, error) {
+	v, ok := res.Attributes[key]
+	if !ok {
+		return false, false, nil
+	}
+	b, err := coerceBool(v)
+	if err != nil {
+		return false, true, fmt.Errorf("resource %s: attribute %q %w", res.Address, key, err)
+	}
+	return b, true, nil
+}
+
+func coercePositiveSiteID(v any) (string, error) {
+	if v == nil {
+		return "", nil
+	}
+	s, err := coerceString(v)
+	if err != nil {
+		return "", fmt.Errorf("must be a positive site identifier")
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", nil
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || n <= 0 {
+		return "", fmt.Errorf("must be a positive site identifier")
+	}
+	return strconv.FormatInt(n, 10), nil
+}
+
+func coerceBool(v any) (bool, error) {
+	switch x := v.(type) {
+	case bool:
+		return x, nil
+	case string:
+		switch strings.ToLower(strings.TrimSpace(x)) {
+		case "true", "1", "yes":
+			return true, nil
+		case "false", "0", "no":
+			return false, nil
+		default:
+			return false, fmt.Errorf("must be a boolean")
+		}
+	case int, int8, int16, int32, int64:
+		n, _ := coerceString(x)
+		switch n {
+		case "1":
+			return true, nil
+		case "0":
+			return false, nil
+		default:
+			return false, fmt.Errorf("must be a boolean")
+		}
+	case uint, uint8, uint16, uint32, uint64:
+		n, _ := coerceString(x)
+		switch n {
+		case "1":
+			return true, nil
+		case "0":
+			return false, nil
+		default:
+			return false, fmt.Errorf("must be a boolean")
+		}
+	case float32, float64:
+		n, err := coerceString(x)
+		if err != nil {
+			return false, fmt.Errorf("must be a boolean")
+		}
+		switch n {
+		case "1":
+			return true, nil
+		case "0":
+			return false, nil
+		default:
+			return false, fmt.Errorf("must be a boolean")
+		}
+	default:
+		return false, fmt.Errorf("must be a boolean")
+	}
 }
 
 func ensureImmutableVariableType(desired resource.Resource, live resource.RemoteResource) error {

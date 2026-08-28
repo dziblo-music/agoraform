@@ -844,6 +844,7 @@ type apiVariable struct {
 	Status       string
 	Version      string
 	IDSite       string
+	Parameters   map[string]any
 }
 
 type variableServer struct {
@@ -959,6 +960,13 @@ func (s *variableServer) writeVariables(w http.ResponseWriter) {
 	}
 	out := make([]map[string]any, 0, len(s.variables))
 	for id, v := range s.variables {
+		params := v.Parameters
+		if params == nil {
+			params = map[string]any{}
+			if v.Key != "" {
+				params["dataLayerName"] = v.Key
+			}
+		}
 		item := map[string]any{
 			"idvariable":         strconv.Itoa(id),
 			"idcontainerversion": v.Version,
@@ -968,7 +976,7 @@ func (s *variableServer) writeVariables(w http.ResponseWriter) {
 			"status":             v.Status,
 			"description":        v.Description,
 			"default_value":      v.DefaultValue,
-			"parameters":         map[string]any{"dataLayerName": v.Key},
+			"parameters":         params,
 		}
 		if v.LookupTable != "" {
 			var table any
@@ -993,13 +1001,14 @@ func (s *variableServer) addVariable(w http.ResponseWriter, vals url.Values) {
 	id := s.nextID
 	s.nextID++
 	s.variables[id] = apiVariable{
-		ID:      id,
-		Name:    vals.Get("name"),
-		Type:    vals.Get("type"),
-		Key:     vals.Get("parameters[dataLayerName]"),
-		Status:  "active",
-		Version: s.version,
-		IDSite:  "3",
+		ID:         id,
+		Name:       vals.Get("name"),
+		Type:       vals.Get("type"),
+		Key:        vals.Get("parameters[dataLayerName]"),
+		Status:     "active",
+		Version:    s.version,
+		IDSite:     "3",
+		Parameters: formVariableParameters(vals),
 	}
 	_, _ = io.WriteString(w, strconv.Itoa(id))
 }
@@ -1023,6 +1032,7 @@ func (s *variableServer) updateVariable(w http.ResponseWriter, vals url.Values) 
 	if key := vals.Get("parameters[dataLayerName]"); key != "" {
 		v.Key = key
 	}
+	v.Parameters = mergeFormVariableParameters(v.Parameters, vals)
 	if desc := vals.Get("description"); desc != "" || vals.Has("description") {
 		v.Description = desc
 	}
@@ -1043,6 +1053,59 @@ func (s *variableServer) lastUpdateValues() url.Values {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.lastUpdate
+}
+
+func formVariableParameters(vals url.Values) map[string]any {
+	out := map[string]any{}
+	for key, values := range vals {
+		name, rest, ok := parseFormParamKey(key)
+		if !ok || len(values) == 0 {
+			continue
+		}
+		setNestedParam(out, append([]string{name}, rest...), values[0])
+	}
+	return out
+}
+
+func mergeFormVariableParameters(existing map[string]any, vals url.Values) map[string]any {
+	out := map[string]any{}
+	for k, v := range existing {
+		out[k] = v
+	}
+	for k, v := range formVariableParameters(vals) {
+		out[k] = v
+	}
+	return out
+}
+
+func parseFormParamKey(key string) (string, []string, bool) {
+	const prefix = "parameters["
+	if !strings.HasPrefix(key, prefix) || !strings.HasSuffix(key, "]") {
+		return "", nil, false
+	}
+	inner := strings.TrimSuffix(strings.TrimPrefix(key, prefix), "]")
+	parts := strings.Split(inner, "][")
+	if len(parts) == 0 || parts[0] == "" {
+		return "", nil, false
+	}
+	return parts[0], parts[1:], true
+}
+
+func setNestedParam(out map[string]any, path []string, value string) {
+	if len(path) == 0 {
+		return
+	}
+	key := path[0]
+	if len(path) == 1 {
+		out[key] = value
+		return
+	}
+	child, _ := out[key].(map[string]any)
+	if child == nil {
+		child = map[string]any{}
+		out[key] = child
+	}
+	setNestedParam(child, path[1:], value)
 }
 
 func (s *variableServer) createCount() int {

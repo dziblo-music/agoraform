@@ -862,6 +862,7 @@ type apiTag struct {
 	Category      string
 	Action        string
 	EventName     string
+	MatomoConfig  string
 	Description   string
 	BlockIDs      []int
 	FireLimit     string
@@ -1102,6 +1103,10 @@ func (s *tagServer) writeTags(w http.ResponseWriter) {
 		for _, bid := range tag.BlockIDs {
 			block = append(block, bid)
 		}
+		configName := tag.MatomoConfig
+		if configName == "" {
+			configName = "Matomo Configuration"
+		}
 		item := map[string]any{
 			"idtag":              strconv.Itoa(id),
 			"idcontainerversion": tag.Version,
@@ -1118,7 +1123,7 @@ func (s *tagServer) writeTags(w http.ResponseWriter) {
 				"eventCategory": tag.Category,
 				"eventAction":   tag.Action,
 				"eventName":     tag.EventName,
-				"matomoConfig":  map[string]any{"name": "Matomo Configuration", "type": "MatomoConfiguration"},
+				"matomoConfig":  map[string]any{"name": configName, "type": "MatomoConfiguration"},
 			},
 		}
 		out = append(out, item)
@@ -1219,16 +1224,23 @@ func (s *tagServer) updateCount() int {
 
 func boundIdentityCatalog(t *testing.T, address, remoteID string) matomo.IdentityCatalog {
 	t.Helper()
+	return boundIdentityCatalogs(t, map[string]string{address: remoteID})
+}
+
+func boundIdentityCatalogs(t *testing.T, ids map[string]string) matomo.IdentityCatalog {
+	t.Helper()
 	st, err := state.New(filepath.Join(t.TempDir(), state.DefaultFilename))
 	if err != nil {
 		t.Fatal(err)
 	}
-	addr, err := resource.ParseAddress(address)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := st.Bind(addr, resource.Identity{ID: remoteID}); err != nil {
-		t.Fatal(err)
+	for address, remoteID := range ids {
+		addr, err := resource.ParseAddress(address)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.Bind(addr, resource.Identity{ID: remoteID}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return st
 }

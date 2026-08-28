@@ -14,6 +14,7 @@ prints the SemVer identifier without the prefix (`0.4.0`).
 
 - `matomo.container` for Matomo Tag Manager containers (read, create, update, import). Declare `name`, `context` (`web`, `android`, or `ios`), and optional `description`. Provider-native container IDs, draft versions, publication state, and unmanaged Matomo flags remain computed. Context is immutable. Container deletion is out of scope until destroy semantics land.
 - Managed-container mode for Tag Manager children: `matomo.variable`, `matomo.trigger`, and `matomo.tag` declare `container: { $ref: matomo.container.* }` so apply resolves the provider-native container identity from the resource graph. v0.5.0 allows at most one managed Matomo container per manifest.
+- `matomo.variable` `type: matomoConfiguration` for the Matomo Configuration variable required by Matomo Analytics tags. Declare `name`, `matomoUrl`, `siteId`, and optional `enableLinkTracking`. Updates preserve unowned template parameters such as cookies, domains, and custom dimensions. `matomo.tag` can reference the managed variable with `matomoConfiguration: { $ref: matomo.variable.* }`. Existing containers can still use a single pre-existing configuration variable through implicit discovery or import.
 
 ### Changed
 

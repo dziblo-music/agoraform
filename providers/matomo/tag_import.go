@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/dziblo-music/agoraform/internal/resource"
+	"github.com/dziblo-music/agoraform/providers/matomo/client"
 )
 
 func (p *Provider) reconstructTagImportRefs(ctx context.Context, res resource.Resource, live resource.RemoteResource) (resource.RemoteResource, error) {
@@ -33,6 +34,24 @@ func (p *Provider) reconstructTagImportRefs(ctx context.Context, res resource.Re
 		}
 		if found {
 			attrs[key] = ref
+		}
+	}
+
+	if cfg := computedString(live.Computed, paramMatomoConfig); cfg != "" {
+		name, isTemplate := parseMatomoVariableTemplate(cfg)
+		if !isTemplate {
+			if wrapped, ok := client.NormalizeMatomoConfig(cfg).(string); ok {
+				name, isTemplate = parseMatomoVariableTemplate(wrapped)
+			}
+		}
+		if isTemplate {
+			ref, found, err := p.importVariableRefByName(ctx, res, name)
+			if err != nil {
+				return resource.RemoteResource{}, err
+			}
+			if found {
+				attrs[AttrMatomoConfiguration] = ref
+			}
 		}
 	}
 

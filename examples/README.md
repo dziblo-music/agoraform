@@ -14,8 +14,8 @@ suite and contain no credentials or private deployment values.
 - [matomo-conversion](matomo-conversion/README.md) — primary v0.2.0 quickstart:
   complete Matomo Tag Manager conversion workflow in an existing container
   selected by `MATOMO_CONTAINER_ID`, with a Data Layer variable, Custom Event
-  trigger, Matomo Analytics event tag, logical references, import
-  guidance, and declarative publication.
+  trigger, Matomo Analytics event tag, optional managed Matomo Configuration
+  variable, logical references, import guidance, and declarative publication.
 - [agoraform.yaml](agoraform.yaml) — minimal `matomo.goal` example retained from
   v0.1.0.
 

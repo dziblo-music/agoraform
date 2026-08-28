@@ -28,14 +28,30 @@ To create the container from Agoraform instead of selecting one with
 `container: { $ref: matomo.container.main }` to each child. See the
 [Matomo provider reference](../../providers/matomo/README.md).
 
-The target container must also already contain a **Matomo Configuration**
-variable. Matomo Analytics tags reference that container-level variable for the
-Matomo URL, site ID, and tracking configuration; v0.2 does not manage
-`MatomoConfiguration` variables declaratively. In Matomo Tag Manager, create
-one under **Variables -> Create New Variable -> Matomo Configuration** before
-running this example if the container does not already have one. The variable
-may use Matomo's normal scalar or structured options such as domains, custom
-dimensions, and custom data.
+The conversion example uses an existing container selected by
+`MATOMO_CONTAINER_ID`. Matomo Analytics tags need a Matomo Configuration
+variable for the Matomo URL, site ID, and tracking settings.
+
+Fully managed setups declare that variable in the manifest:
+
+```yaml
+- address: matomo.variable.config
+  attributes:
+    type: matomoConfiguration
+    name: Matomo Configuration
+    matomoUrl: https://matomo.example.com
+    siteId: 1
+    enableLinkTracking: true
+```
+
+and reference it from the tag with `matomoConfiguration: { $ref: matomo.variable.config }`.
+
+This example keeps the existing-container path: omit `matomoConfiguration` on
+the tag so Agoraform locates a single pre-existing configuration variable in
+the target container. If the container does not already have one, either
+create it in Tag Manager, import it (`agoraform import matomo.variable.config VARIABLE_ID`),
+or add the managed resource above. Cookie, domain, and custom-dimension
+options stay unowned and are preserved on update.
 
 Set the four required environment variables:
 
@@ -109,6 +125,7 @@ exist, import dependencies before the tag, using the numeric IDs shown by
 Matomo:
 
 ```bash
+agoraform import matomo.variable.config VARIABLE_ID
 agoraform import matomo.variable.user_id VARIABLE_ID
 agoraform import matomo.trigger.trial_started TRIGGER_ID
 agoraform import matomo.tag.trial_started TAG_ID
