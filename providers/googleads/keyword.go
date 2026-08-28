@@ -136,8 +136,12 @@ func (p *Provider) validateKeyword(res resource.Resource) error {
 	if err != nil {
 		return err
 	}
-	if _, _, err := optionalEnum(res, AttrStatus, keywordStatuses); err != nil {
+	status, statusSet, err := optionalEnum(res, AttrStatus, keywordStatuses)
+	if err != nil {
 		return err
+	}
+	if negative && statusSet && status != keywordStatusEnabled {
+		return fmt.Errorf("resource %s: attribute %q must be %s for negative keywords; Google Ads does not support paused negative ad-group criteria", res.Address, AttrStatus, keywordStatusEnabled)
 	}
 	if _, set, err := optionalAdGroupCpcBidMicros(res); err != nil {
 		return err
@@ -683,6 +687,9 @@ func comparableKeyword(attrs resource.Attributes) (resource.Attributes, error) {
 	}
 
 	status := keywordStatusPaused
+	if negative {
+		status = keywordStatusEnabled
+	}
 	if _, ok := attrs[AttrStatus]; ok {
 		raw, err := coerceString(attrs[AttrStatus])
 		if err != nil {
