@@ -145,6 +145,26 @@ func (t *TagManager) UpdateContainerTrigger(ctx context.Context, idContainerVers
 	return err
 }
 
+// DeleteContainerTrigger deletes a trigger from a container version.
+func (t *TagManager) DeleteContainerTrigger(ctx context.Context, idContainerVersion, idTrigger string) error {
+	if t == nil || t.c == nil {
+		return fmt.Errorf("matomo: tag manager client is nil")
+	}
+	idContainerVersion = strings.TrimSpace(idContainerVersion)
+	if idContainerVersion == "" {
+		return fmt.Errorf("matomo: idContainerVersion is required")
+	}
+	idTrigger = strings.TrimSpace(idTrigger)
+	if idTrigger == "" {
+		return fmt.Errorf("matomo: idTrigger is required")
+	}
+	params := url.Values{}
+	params.Set("idContainerVersion", idContainerVersion)
+	params.Set("idTrigger", idTrigger)
+	_, err := t.Call(ctx, "deleteContainerTrigger", params)
+	return err
+}
+
 func triggerInputValues(in TriggerInput) url.Values {
 	params := url.Values{}
 	if in.Type != "" {

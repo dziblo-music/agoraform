@@ -389,6 +389,75 @@ func TestPathForManifest(t *testing.T) {
 	}
 }
 
+func TestAddressesAreDeterministic(t *testing.T) {
+	t.Parallel()
+
+	st, err := New(filepath.Join(t.TempDir(), DefaultFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := mustAddr(t, "fake.widget.homepage")
+	first := mustAddr(t, "matomo.goal.trial_started")
+	if err := st.Bind(second, resource.Identity{ID: "widget-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Bind(first, resource.Identity{ID: "12"}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := st.Addresses()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].String() != "fake.widget.homepage" || got[1].String() != "matomo.goal.trial_started" {
+		t.Fatalf("Addresses() = %v, want [fake.widget.homepage matomo.goal.trial_started]", got)
+	}
+}
+
+func TestRemoveDeletesBindingAndIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), DefaultFilename)
+	st, err := New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keep := mustAddr(t, "fake.widget.keep")
+	drop := mustAddr(t, "fake.widget.drop")
+	if err := st.Bind(keep, resource.Identity{ID: "keep-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Bind(drop, resource.Identity{ID: "drop-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := st.Remove(drop); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := st.Identity(drop); err != nil || ok {
+		t.Fatalf("Identity(drop) after Remove = (%v, %v)", ok, err)
+	}
+	id, ok, err := st.Identity(keep)
+	if err != nil || !ok || id.ID != "keep-1" {
+		t.Fatalf("Identity(keep) = (%v, %v, %v)", id, ok, err)
+	}
+
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := loaded.Identity(drop); err != nil || ok {
+		t.Fatal("removed binding still on disk")
+	}
+
+	if err := st.Remove(drop); err != nil {
+		t.Fatalf("idempotent Remove: %v", err)
+	}
+}
+
 func mustAddr(t *testing.T, s string) resource.Address {
 	t.Helper()
 	addr, err := resource.ParseAddress(s)

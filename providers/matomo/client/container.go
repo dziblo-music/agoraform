@@ -204,6 +204,25 @@ func (t *TagManager) UpdateContainer(ctx context.Context, idContainer string, in
 	return err
 }
 
+// DeleteContainer deletes a Tag Manager container by provider-native id.
+//
+// The container id must be supplied explicitly. This method never falls back
+// to Config.ContainerID so an externally selected container cannot be deleted
+// by accident.
+func (t *TagManager) DeleteContainer(ctx context.Context, idContainer string) error {
+	if t == nil || t.c == nil {
+		return fmt.Errorf("matomo: tag manager client is nil")
+	}
+	idContainer = strings.TrimSpace(idContainer)
+	if idContainer == "" {
+		return fmt.Errorf("matomo: idContainer is required")
+	}
+	params := url.Values{}
+	params.Set("idContainer", idContainer)
+	_, err := t.c.Call(ctx, "TagManager.deleteContainer", t.c.withSiteID(params))
+	return err
+}
+
 // DraftVersion returns the draft container version id for Tag Manager
 // resource operations.
 func (t *TagManager) DraftVersion(ctx context.Context) (string, error) {

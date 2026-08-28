@@ -59,10 +59,12 @@ preflight with `TagManager.getAvailableEnvironmentsWithPublishCapability` and
 makes publication visible as a provider action. The publication address is
 the managed `matomo.container` resource when one is declared, or
 `matomo.container.external` when `MATOMO_CONTAINER_ID` selects an existing
-container. Apply creates/publishes a version only after all draft resource
-changes succeed.
+container. Apply and destroy create/publish a version only after all draft
+resource mutations succeed. Destroy does not publish an intermediate version
+when the same plan will delete the managed container.
 
-See [Matomo Tag Manager publication](../../docs/matomo-publishing.md).
+See [Matomo Tag Manager publication](../../docs/matomo-publishing.md) and
+[Destroy](../../docs/destroy.md).
 
 ## Resources
 
@@ -104,7 +106,10 @@ Provider-native container IDs, draft version IDs, publication state, and
 unmanaged Matomo flags such as `ignoreGtmDataLayer` remain computed. Agoraform
 preserves those flags on update.
 
-Container deletion is not implemented. Import an existing container with:
+Container deletion is implemented by `agoraform destroy` for containers that
+are present in the manifest and bound in local state. Containers selected
+only by `MATOMO_CONTAINER_ID` are never deleted. Import an existing
+container with:
 
 ```text
 agoraform import matomo.container.main CONTAINER_ID

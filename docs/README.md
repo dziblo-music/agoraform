@@ -8,6 +8,7 @@ guides lives here.
 - [Manifest format (0.1.0)](manifest.md)
 - [Plan engine (0.1.0)](plan.md)
 - [Apply execution (0.1.0)](apply.md)
+- [Destroy lifecycle](destroy.md)
 - [Import (0.1.0)](import.md)
 - [Local provider configuration](local-configuration.md)
 - [Matomo Tag Manager publication (v0.2.0)](matomo-publishing.md)
@@ -22,9 +23,10 @@ guides lives here.
 
 The 0.1.0 product release manages `matomo.goal` only. v0.2.0 also manages
 Tag Manager `matomo.variable`, `matomo.trigger`, and `matomo.tag`, plus
-declarative container publication through `plan` and `apply`. The Matomo
+declarative container publication through `plan` and `apply`. `agoraform
+destroy` tears down managed resources in reverse dependency order. The Matomo
 provider also manages `matomo.container` so the Tag Manager container itself
-can be declared or imported. `matomo.variable` also supports
+can be declared, imported, or destroyed when Agoraform-managed. `matomo.variable` also supports
 `type: matomoConfiguration`. v0.3.0 adds
 supported website `googleads.conversion_action` and
 `googleads.customer_conversion_goal` resources plus import/adoption of existing

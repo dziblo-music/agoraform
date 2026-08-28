@@ -158,6 +158,26 @@ func (t *TagManager) UpdateContainerVariable(ctx context.Context, idContainerVer
 	return err
 }
 
+// DeleteContainerVariable deletes a variable from a container version.
+func (t *TagManager) DeleteContainerVariable(ctx context.Context, idContainerVersion, idVariable string) error {
+	if t == nil || t.c == nil {
+		return fmt.Errorf("matomo: tag manager client is nil")
+	}
+	idContainerVersion = strings.TrimSpace(idContainerVersion)
+	if idContainerVersion == "" {
+		return fmt.Errorf("matomo: idContainerVersion is required")
+	}
+	idVariable = strings.TrimSpace(idVariable)
+	if idVariable == "" {
+		return fmt.Errorf("matomo: idVariable is required")
+	}
+	params := url.Values{}
+	params.Set("idContainerVersion", idContainerVersion)
+	params.Set("idVariable", idVariable)
+	_, err := t.Call(ctx, "deleteContainerVariable", params)
+	return err
+}
+
 func variableInputValues(in VariableInput) url.Values {
 	params := url.Values{}
 	if in.Type != "" {

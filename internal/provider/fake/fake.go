@@ -7,6 +7,7 @@ package fake
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/dziblo-music/agoraform/internal/provider"
@@ -45,13 +46,17 @@ type Provider struct {
 	resources  map[string]resource.RemoteResource // keyed by address.String()
 	byID       map[string]string                  // identity ID -> address.String()
 
-	reads   int
-	creates int
-	updates int
-	imports int
+	reads    int
+	creates  int
+	updates  int
+	imports  int
+	destroys int
 }
 
-var _ provider.Provider = (*Provider)(nil)
+var (
+	_ provider.Provider  = (*Provider)(nil)
+	_ provider.Destroyer = (*Provider)(nil)
+)
 
 // New returns an empty fake provider.
 func New() *Provider {
@@ -111,6 +116,37 @@ func (p *Provider) Calls() (reads, creates, updates, imports int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.reads, p.creates, p.updates, p.imports
+}
+
+// Destroys returns how many times Destroy has been invoked.
+func (p *Provider) Destroys() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.destroys
+}
+
+// DestroyCapability implements provider.Destroyer.
+func (p *Provider) DestroyCapability(resource.Resource) (provider.DestroyCapability, error) {
+	return provider.DestroySupported, nil
+}
+
+// Destroy implements provider.Destroyer.
+func (p *Provider) Destroy(_ context.Context, res resource.Resource) (provider.DestroyResult, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.destroys++
+
+	id := strings.TrimSpace(res.Identity.ID)
+	if id == "" {
+		return provider.DestroyResult{}, fmt.Errorf("resource %s: missing identity", res.Address)
+	}
+	key, ok := p.byID[id]
+	if !ok {
+		return provider.DestroyResult{Status: provider.DestroyStatusAlreadyAbsent}, nil
+	}
+	delete(p.resources, key)
+	delete(p.byID, id)
+	return provider.DestroyResult{Status: provider.DestroyStatusDestroyed}, nil
 }
 
 // Validate implements provider.Provider.

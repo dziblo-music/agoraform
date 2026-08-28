@@ -67,6 +67,7 @@ func NewRootCommandWithRegistry(streams IOStreams, reg *provider.Registry) *cobr
 	cmd.AddCommand(newValidateCommand(reg))
 	cmd.AddCommand(newPlanCommand(reg))
 	cmd.AddCommand(newApplyCommand(reg))
+	cmd.AddCommand(newDestroyCommand(reg))
 	cmd.AddCommand(newImportCommand(reg))
 
 	return cmd
@@ -94,6 +95,9 @@ func ExecuteWithRegistry(streams IOStreams, args []string, reg *provider.Registr
 	if err := cmd.Execute(); err != nil {
 		if errors.Is(err, errPlanHasChanges) {
 			return ExitChanges
+		}
+		if errors.Is(err, errDestroyCancelled) {
+			return ExitOK
 		}
 		fmt.Fprintln(streams.ErrOut, "Error:", err)
 		if isUsageError(err) {

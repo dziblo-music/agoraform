@@ -118,6 +118,21 @@ func (a *Analytics) UpdateGoal(ctx context.Context, idGoal string, in GoalInput)
 	return err
 }
 
+// DeleteGoal deletes a goal identified by idGoal.
+func (a *Analytics) DeleteGoal(ctx context.Context, idGoal string) error {
+	if a == nil || a.c == nil {
+		return fmt.Errorf("matomo: analytics client is nil")
+	}
+	idGoal = strings.TrimSpace(idGoal)
+	if idGoal == "" {
+		return fmt.Errorf("matomo: idGoal is required")
+	}
+	params := url.Values{}
+	params.Set("idGoal", idGoal)
+	_, err := a.Call(ctx, "Goals.deleteGoal", params)
+	return err
+}
+
 func goalInputValues(in GoalInput) url.Values {
 	params := url.Values{}
 	params.Set("name", in.Name)

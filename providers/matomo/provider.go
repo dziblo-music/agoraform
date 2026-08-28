@@ -50,6 +50,7 @@ var (
 	_ provider.Configurator         = (*Provider)(nil)
 	_ provider.Finalizer            = (*Provider)(nil)
 	_ provider.ResourceSetValidator = (*Provider)(nil)
+	_ provider.Destroyer            = (*Provider)(nil)
 )
 
 // New returns a Matomo provider using cfg.

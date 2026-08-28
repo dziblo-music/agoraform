@@ -52,9 +52,10 @@ CI also checks that `gofmt` would not change any files. Run `gofmt -l .` locally
 Do not commit API tokens, credentials, personal data, or machine-local paths.
 
 The manifest format, including resource references, is documented in [docs/manifest.md](docs/manifest.md).
-Plan, apply, and import behavior are documented in [docs/plan.md](docs/plan.md),
-[docs/apply.md](docs/apply.md), and [docs/import.md](docs/import.md). Local
-identity state is documented in [docs/state.md](docs/state.md).
+Plan, apply, destroy, and import behavior are documented in [docs/plan.md](docs/plan.md),
+[docs/apply.md](docs/apply.md), [docs/destroy.md](docs/destroy.md), and
+[docs/import.md](docs/import.md). Local identity state is documented in
+[docs/state.md](docs/state.md).
 
 ## Pull requests
 

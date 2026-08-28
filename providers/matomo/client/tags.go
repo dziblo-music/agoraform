@@ -192,6 +192,26 @@ func (t *TagManager) UpdateContainerTag(ctx context.Context, idContainerVersion,
 	return err
 }
 
+// DeleteContainerTag deletes a tag from a container version.
+func (t *TagManager) DeleteContainerTag(ctx context.Context, idContainerVersion, idTag string) error {
+	if t == nil || t.c == nil {
+		return fmt.Errorf("matomo: tag manager client is nil")
+	}
+	idContainerVersion = strings.TrimSpace(idContainerVersion)
+	if idContainerVersion == "" {
+		return fmt.Errorf("matomo: idContainerVersion is required")
+	}
+	idTag = strings.TrimSpace(idTag)
+	if idTag == "" {
+		return fmt.Errorf("matomo: idTag is required")
+	}
+	params := url.Values{}
+	params.Set("idContainerVersion", idContainerVersion)
+	params.Set("idTag", idTag)
+	_, err := t.Call(ctx, "deleteContainerTag", params)
+	return err
+}
+
 func tagInputValues(in TagInput, preserved TagPreservedFields) url.Values {
 	params := url.Values{}
 	if in.Type != "" {

@@ -107,6 +107,12 @@ A successful apply or import followed by plan resolves the same remote
 object from state rather than rediscovering it by a mutable field such as
 name. See [import.md](import.md).
 
+`agoraform destroy` removes a state binding only after the provider confirms
+the remote object was destroyed, removed, or is already absent. Failed and
+unattempted resources keep their identities. State entries that are not in
+the manifest are preserved; destroy does not prune them. See
+[destroy.md](destroy.md).
+
 ## Recovery
 
 Remote mutations and local state writes are not a distributed transaction.
