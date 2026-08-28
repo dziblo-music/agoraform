@@ -13,11 +13,14 @@ Providers implement `internal/provider.Provider`:
 - `Validate` for provider-specific configuration checks
 - `Read` for current remote state (`provider.ErrNotFound` if absent)
 - `Create` / `Update` for apply-time mutations
+- Optional `Destroyer` for destroy-time native teardown
 - `Import` for binding an existing remote identity to a logical address
 
 `agoraform plan` uses `provider.Reader` only (`Name`, `ResourceTypes`,
 `Validate`, `Read`). `agoraform apply` then dispatches `Create` and
-`Update` for the actions in that plan. `agoraform import` calls `Import`
+`Update` for the actions in that plan. `agoraform destroy` queries optional
+`provider.Destroyer` support and dispatches native teardown in reverse
+dependency order. `agoraform import` calls `Import`
 to read an existing remote identity; implementations must not create,
 update, or delete the remote resource. Providers may also implement
 `provider.ImportIDNormalizer` so aliases such as resource names are stored
@@ -48,7 +51,7 @@ precedence, security guidance, and examples.
 optional `MATOMO_CONTAINER_ID` from the environment, and implements
 `matomo.goal`, `matomo.container`, and Tag Manager `matomo.variable`,
 `matomo.trigger`, and `matomo.tag`. Tag Manager publication is declarative
-through `plan`/`apply`. See [matomo/README.md](matomo/README.md).
+through `plan`/`apply`/`destroy`. See [matomo/README.md](matomo/README.md).
 
 ## Google Ads
 
@@ -74,4 +77,4 @@ See [googleads/README.md](googleads/README.md), the
 
 `internal/provider/fake` is an in-memory `widget` provider used by unit tests.
 It is not a user-facing marketing provider. It exists to prove the core
-contract and to support plan, apply, and import tests without network calls.
+contract and to support plan, apply, destroy, and import tests without network calls.

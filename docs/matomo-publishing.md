@@ -101,6 +101,20 @@ resulting error says the outcome is uncertain and tells you to inspect the
 remote container before retrying. Do not create another version until that
 status is known.
 
+## Destroy
+
+`agoraform destroy` uses the same publication contract. Planned Tag Manager
+deletions make potential publication visible before mutation. Publication
+runs only after every destructive draft mutation succeeds. A failed draft
+deletion does not publish. Retrying a destroy that has already published
+does not create another version.
+
+When child resources are destroyed and the container remains, publication is
+addressed to that container (`matomo.container.main` or
+`matomo.container.external`). When the same destroy plan will delete an
+Agoraform-managed container, destroy does not publish an intermediate
+version: it deletes children, then the container. See [Destroy](destroy.md).
+
 ## Permission and environment preflight
 
 Before any version is created, Agoraform asks Matomo for the environments the
@@ -132,4 +146,5 @@ disabled.
 v0.2.0 intentionally does not add provider-specific CLI verbs. Rollback,
 scheduled publication, approval workflows, generalized deployment pipelines,
 and multi-container deployment orchestration remain out of scope. Container
-deletion is a later destroy/lifecycle issue.
+deletion is implemented by `agoraform destroy` for Agoraform-managed
+containers; see [Destroy](destroy.md).

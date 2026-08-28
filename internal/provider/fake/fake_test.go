@@ -79,9 +79,30 @@ func TestFakeProviderLifecycle(t *testing.T) {
 		t.Fatalf("Import identity = %+v, want %+v", imported.Identity, created.Identity)
 	}
 
+	destroyed, err := p.Destroy(ctx, resource.Resource{Address: res.Address, Identity: created.Identity})
+	if err != nil {
+		t.Fatalf("Destroy: %v", err)
+	}
+	if destroyed.Status != provider.DestroyStatusDestroyed {
+		t.Fatalf("Destroy status = %q, want %s", destroyed.Status, provider.DestroyStatusDestroyed)
+	}
+	if _, err := p.Read(ctx, resource.Resource{Address: res.Address, Identity: created.Identity}); !errors.Is(err, provider.ErrNotFound) {
+		t.Fatalf("Read after Destroy = %v, want ErrNotFound", err)
+	}
+	again, err := p.Destroy(ctx, resource.Resource{Address: res.Address, Identity: created.Identity})
+	if err != nil {
+		t.Fatalf("Destroy already absent: %v", err)
+	}
+	if again.Status != provider.DestroyStatusAlreadyAbsent {
+		t.Fatalf("Destroy status = %q, want %s", again.Status, provider.DestroyStatusAlreadyAbsent)
+	}
+	if p.Destroys() != 2 {
+		t.Fatalf("Destroys() = %d, want 2", p.Destroys())
+	}
+
 	reads, creates, updates, imports := p.Calls()
-	if reads != 2 || creates != 1 || updates != 1 || imports != 1 {
-		t.Fatalf("Calls() = %d %d %d %d, want 2 1 1 1", reads, creates, updates, imports)
+	if reads != 3 || creates != 1 || updates != 1 || imports != 1 {
+		t.Fatalf("Calls() = %d %d %d %d, want 3 1 1 1", reads, creates, updates, imports)
 	}
 }
 

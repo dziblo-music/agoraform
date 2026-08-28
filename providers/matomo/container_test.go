@@ -840,6 +840,7 @@ type containerServer struct {
 	creates            int
 	updates            int
 	variableCreates    int
+	deletes            int
 	lastCreate         url.Values
 	lastUpdate         url.Values
 	lastVariableCreate url.Values
@@ -940,10 +941,14 @@ func (s *containerServer) serve(w http.ResponseWriter, r *http.Request) {
 		s.addContainer(w, vals)
 	case "TagManager.updateContainer":
 		s.updateContainer(w, vals)
+	case "TagManager.deleteContainer":
+		s.deleteContainer(w, vals)
 	case "TagManager.getContainerVariables":
 		s.writeVariables(w, vals.Get("idContainer"))
 	case "TagManager.addContainerVariable":
 		s.addVariable(w, vals)
+	case "TagManager.deleteContainerVariable":
+		s.deleteVariable(w, vals)
 	case "TagManager.getAvailableEnvironmentsWithPublishCapability":
 		_, _ = io.WriteString(w, `[{"id":"live","name":"Live"}]`)
 	default:
@@ -1063,6 +1068,39 @@ func (s *containerServer) addVariable(w http.ResponseWriter, vals url.Values) {
 		Key:  vals.Get("parameters[dataLayerName]"),
 	}
 	_, _ = io.WriteString(w, strconv.Itoa(id))
+}
+
+func (s *containerServer) deleteContainer(w http.ResponseWriter, vals url.Values) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.deletes++
+	id := vals.Get("idContainer")
+	c, ok := s.containers[id]
+	if !ok || strings.EqualFold(c.Status, "deleted") {
+		_, _ = io.WriteString(w, `{"result":"error","message":"The requested container does not exist"}`)
+		return
+	}
+	c.Status = "deleted"
+	s.containers[id] = c
+	_, _ = io.WriteString(w, `true`)
+}
+
+func (s *containerServer) deleteVariable(w http.ResponseWriter, vals url.Values) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	containerID := vals.Get("idContainer")
+	id, err := strconv.Atoi(vals.Get("idVariable"))
+	if err != nil {
+		_, _ = io.WriteString(w, `{"result":"error","message":"invalid idVariable"}`)
+		return
+	}
+	vars := s.variables[containerID]
+	if _, ok := vars[id]; !ok {
+		_, _ = io.WriteString(w, `{"result":"error","message":"The requested container variable does not exist"}`)
+		return
+	}
+	delete(vars, id)
+	_, _ = io.WriteString(w, `true`)
 }
 
 func (s *containerServer) allocateIDLocked() string {

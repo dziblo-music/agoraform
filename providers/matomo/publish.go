@@ -64,6 +64,9 @@ func (p *Provider) PlanFinalization(ctx context.Context, pending []provider.Pend
 	if !enabled {
 		return nil, nil
 	}
+	if pendingManagedContainerDestroy(pending) {
+		return nil, nil
+	}
 	if err := p.requirePublishConfig(); err != nil {
 		return nil, err
 	}
@@ -254,6 +257,24 @@ func pendingContainerCreate(pending []provider.PendingChange) bool {
 		}
 	}
 	return false
+}
+
+func pendingManagedContainerDestroy(pending []provider.PendingChange) bool {
+	for _, change := range pending {
+		if change.Address.Provider == Name && change.Address.Type == TypeContainer && isDestroyAction(change.Action) {
+			return true
+		}
+	}
+	return false
+}
+
+func isDestroyAction(action string) bool {
+	switch strings.TrimSpace(action) {
+	case "destroy", "delete", "remove":
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *Provider) ensurePublishEnvironment(ctx context.Context, tm *client.TagManager, environment string) error {

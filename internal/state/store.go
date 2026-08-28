@@ -234,6 +234,56 @@ func (s *Store) RecordImport(addr resource.Address, remoteID string) error {
 	return s.persist(addr, resource.Identity{ID: remoteID}, "import")
 }
 
+// Addresses lists persisted logical addresses in address order.
+func (s *Store) Addresses() ([]resource.Address, error) {
+	if s == nil {
+		return nil, nil
+	}
+	keys := make([]string, 0, len(s.records))
+	for k := range s.records {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([]resource.Address, 0, len(keys))
+	for _, k := range keys {
+		addr, err := resource.ParseAddress(k)
+		if err != nil {
+			return nil, fmt.Errorf("state: %w", err)
+		}
+		if err := validateRecord(addr, s.records[k]); err != nil {
+			return nil, fmt.Errorf("state: %w", err)
+		}
+		out = append(out, addr)
+	}
+	return out, nil
+}
+
+// Remove deletes the identity binding for addr after a confirmed remote
+// terminal result. A missing address is a no-op. If the atomic write fails,
+// the in-memory and on-disk bindings are left unchanged so retry can confirm
+// terminal state safely.
+func (s *Store) Remove(addr resource.Address) error {
+	if s == nil {
+		return fmt.Errorf("state: store is nil")
+	}
+	if err := addr.Validate(); err != nil {
+		return fmt.Errorf("state: %w", err)
+	}
+	key := addr.String()
+	prev := cloneRecords(s.records)
+	if _, ok := prev[key]; !ok {
+		return nil
+	}
+	next := cloneRecords(s.records)
+	delete(next, key)
+	s.records = next
+	if err := s.Save(); err != nil {
+		s.records = prev
+		return err
+	}
+	return nil
+}
+
 func (s *Store) persist(addr resource.Address, id resource.Identity, op string) error {
 	prev := cloneRecords(s.records)
 	if err := s.Bind(addr, id); err != nil {

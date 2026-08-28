@@ -1030,6 +1030,12 @@ func (s *tagServer) serve(w http.ResponseWriter, r *http.Request) {
 		s.addTag(w, vals)
 	case "TagManager.updateContainerTag":
 		s.updateTag(w, vals)
+	case "TagManager.deleteContainerTag":
+		s.deleteTag(w, vals)
+	case "TagManager.deleteContainerTrigger":
+		s.deleteTrigger(w, vals)
+	case "TagManager.deleteContainerVariable":
+		s.deleteVariable(w, vals)
 	default:
 		_, _ = io.WriteString(w, `{"result":"error","message":"unknown method"}`)
 	}
@@ -1196,6 +1202,54 @@ func (s *tagServer) updateTag(w http.ResponseWriter, vals url.Values) {
 	}
 	s.tags[id] = tag
 	_, _ = io.WriteString(w, `null`)
+}
+
+func (s *tagServer) deleteTag(w http.ResponseWriter, vals url.Values) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id, err := strconv.Atoi(vals.Get("idTag"))
+	if err != nil {
+		_, _ = io.WriteString(w, `{"result":"error","message":"invalid idTag"}`)
+		return
+	}
+	if _, ok := s.tags[id]; !ok {
+		_, _ = io.WriteString(w, `{"result":"error","message":"The requested container tag does not exist"}`)
+		return
+	}
+	delete(s.tags, id)
+	_, _ = io.WriteString(w, `true`)
+}
+
+func (s *tagServer) deleteTrigger(w http.ResponseWriter, vals url.Values) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id, err := strconv.Atoi(vals.Get("idTrigger"))
+	if err != nil {
+		_, _ = io.WriteString(w, `{"result":"error","message":"invalid idTrigger"}`)
+		return
+	}
+	if _, ok := s.triggers[id]; !ok {
+		_, _ = io.WriteString(w, `{"result":"error","message":"The requested container trigger does not exist"}`)
+		return
+	}
+	delete(s.triggers, id)
+	_, _ = io.WriteString(w, `true`)
+}
+
+func (s *tagServer) deleteVariable(w http.ResponseWriter, vals url.Values) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id, err := strconv.Atoi(vals.Get("idVariable"))
+	if err != nil {
+		_, _ = io.WriteString(w, `{"result":"error","message":"invalid idVariable"}`)
+		return
+	}
+	if _, ok := s.variables[id]; !ok {
+		_, _ = io.WriteString(w, `{"result":"error","message":"The requested container variable does not exist"}`)
+		return
+	}
+	delete(s.variables, id)
+	_, _ = io.WriteString(w, `true`)
 }
 
 func (s *tagServer) lastCreateValues() url.Values {

@@ -225,7 +225,8 @@ retrying apply immediately can snapshot another unused version.
 - Publication permission/environment preflight happens before resource
   mutations when publication is planned.
 - Provider secrets are not written to output or local state.
-- Destructive deletion, rollback, and parallel mutation are not implemented.
+- Destructive deletion is not part of apply. Use `agoraform destroy` for
+  teardown. Apply does not implement rollback or parallel mutation.
 
-See [plan.md](plan.md), [state.md](state.md), and
+See [plan.md](plan.md), [destroy.md](destroy.md), [state.md](state.md), and
 [Matomo Tag Manager publication](matomo-publishing.md).

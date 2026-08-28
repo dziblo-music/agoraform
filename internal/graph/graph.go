@@ -65,6 +65,17 @@ func (g *Graph) Order() []resource.Address {
 	return out
 }
 
+// ReverseOrder returns resources in deterministic dependent-first order,
+// the reverse of apply execution. Destroy uses this so dependents are
+// removed before prerequisites.
+func (g *Graph) ReverseOrder() []resource.Address {
+	order := g.Order()
+	for i, j := 0, len(order)-1; i < j; i, j = i+1, j-1 {
+		order[i], order[j] = order[j], order[i]
+	}
+	return order
+}
+
 // Dependencies returns the direct prerequisites of addr in address order.
 func (g *Graph) Dependencies(addr resource.Address) []resource.Address {
 	if g == nil {

@@ -940,6 +940,8 @@ func (s *variableServer) serve(w http.ResponseWriter, r *http.Request) {
 		s.addVariable(w, vals)
 	case "TagManager.updateContainerVariable":
 		s.updateVariable(w, vals)
+	case "TagManager.deleteContainerVariable":
+		s.deleteVariable(w, vals)
 	default:
 		_, _ = io.WriteString(w, `{"result":"error","message":"unknown method"}`)
 	}
@@ -1041,6 +1043,22 @@ func (s *variableServer) updateVariable(w http.ResponseWriter, vals url.Values) 
 	}
 	s.variables[id] = v
 	_, _ = io.WriteString(w, `null`)
+}
+
+func (s *variableServer) deleteVariable(w http.ResponseWriter, vals url.Values) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id, err := strconv.Atoi(vals.Get("idVariable"))
+	if err != nil {
+		_, _ = io.WriteString(w, `{"result":"error","message":"invalid idVariable"}`)
+		return
+	}
+	if _, ok := s.variables[id]; !ok {
+		_, _ = io.WriteString(w, `{"result":"error","message":"The requested container variable does not exist"}`)
+		return
+	}
+	delete(s.variables, id)
+	_, _ = io.WriteString(w, `true`)
 }
 
 func (s *variableServer) lastCreateValues() url.Values {

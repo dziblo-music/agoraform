@@ -181,6 +181,13 @@ func TestProviderLifecycleNotImplemented(t *testing.T) {
 	if _, err := p.Import(context.Background(), addr, "1"); err == nil || !strings.Contains(err.Error(), "not implemented") {
 		t.Fatalf("Import = %v, want not implemented", err)
 	}
+	if _, err := p.Destroy(context.Background(), res); err == nil || !strings.Contains(err.Error(), "not implemented") {
+		t.Fatalf("Destroy = %v, want not implemented", err)
+	}
+	cap, err := p.DestroyCapability(res)
+	if err != nil || cap != provider.DestroyUnsupported {
+		t.Fatalf("DestroyCapability = (%v, %v), want unsupported", cap, err)
+	}
 }
 
 func TestCheckProvidersInvokesConnectionChecker(t *testing.T) {

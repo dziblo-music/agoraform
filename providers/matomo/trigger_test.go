@@ -933,6 +933,8 @@ func (s *triggerServer) serve(w http.ResponseWriter, r *http.Request) {
 		s.addTrigger(w, vals)
 	case "TagManager.updateContainerTrigger":
 		s.updateTrigger(w, vals)
+	case "TagManager.deleteContainerTrigger":
+		s.deleteTrigger(w, vals)
 	default:
 		_, _ = io.WriteString(w, `{"result":"error","message":"unknown method"}`)
 	}
@@ -1018,6 +1020,22 @@ func (s *triggerServer) updateTrigger(w http.ResponseWriter, vals url.Values) {
 	}
 	s.triggers[id] = tr
 	_, _ = io.WriteString(w, `null`)
+}
+
+func (s *triggerServer) deleteTrigger(w http.ResponseWriter, vals url.Values) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id, err := strconv.Atoi(vals.Get("idTrigger"))
+	if err != nil {
+		_, _ = io.WriteString(w, `{"result":"error","message":"invalid idTrigger"}`)
+		return
+	}
+	if _, ok := s.triggers[id]; !ok {
+		_, _ = io.WriteString(w, `{"result":"error","message":"The requested container trigger does not exist"}`)
+		return
+	}
+	delete(s.triggers, id)
+	_, _ = io.WriteString(w, `true`)
 }
 
 func (s *triggerServer) lastCreateValues() url.Values {

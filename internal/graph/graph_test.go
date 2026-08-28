@@ -80,6 +80,11 @@ func TestBuildTransitiveDependencies(t *testing.T) {
 
 	g := mustBuild(t, []resource.Resource{leaf, root, mid})
 	assertOrder(t, g, []string{"fake.widget.root", "fake.widget.mid", "fake.widget.leaf"})
+	got := addresses(g.ReverseOrder())
+	want := []string{"fake.widget.leaf", "fake.widget.mid", "fake.widget.root"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ReverseOrder() = %v, want %v", got, want)
+	}
 	if got := addresses(g.Dependencies(leaf.Address)); !reflect.DeepEqual(got, []string{"fake.widget.mid"}) {
 		t.Fatalf("leaf dependencies = %v, want direct mid only", got)
 	}
@@ -243,6 +248,9 @@ func TestNilGraphAccessors(t *testing.T) {
 	var g *graph.Graph
 	if g.Order() != nil {
 		t.Fatalf("nil Order = %v", g.Order())
+	}
+	if g.ReverseOrder() != nil {
+		t.Fatalf("nil ReverseOrder = %v", g.ReverseOrder())
 	}
 	if g.Dependencies(mustAddress(t, "fake.widget.homepage")) != nil {
 		t.Fatal("nil Dependencies should be nil")

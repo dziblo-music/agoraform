@@ -528,6 +528,7 @@ type goalServer struct {
 	fails   map[string]string
 	creates int
 	updates int
+	deletes int
 	server  *httptest.Server
 }
 
@@ -599,6 +600,8 @@ func (s *goalServer) serve(w http.ResponseWriter, r *http.Request) {
 		s.addGoal(w, vals)
 	case "Goals.updateGoal":
 		s.updateGoal(w, vals)
+	case "Goals.deleteGoal":
+		s.deleteGoal(w, vals)
 	default:
 		_, _ = io.WriteString(w, `{"result":"error","message":"unknown method"}`)
 	}
@@ -675,6 +678,23 @@ func (s *goalServer) updateGoal(w http.ResponseWriter, vals url.Values) {
 	g.PatternType = vals.Get("patternType")
 	s.goals[id] = g
 	_, _ = io.WriteString(w, `null`)
+}
+
+func (s *goalServer) deleteGoal(w http.ResponseWriter, vals url.Values) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.deletes++
+	id, err := strconv.Atoi(vals.Get("idGoal"))
+	if err != nil {
+		_, _ = io.WriteString(w, `{"result":"error","message":"invalid idGoal"}`)
+		return
+	}
+	if _, ok := s.goals[id]; !ok {
+		_, _ = io.WriteString(w, `{"result":"error","message":"goal not found"}`)
+		return
+	}
+	delete(s.goals, id)
+	_, _ = io.WriteString(w, `true`)
 }
 
 func testGoalProvider(t *testing.T, srv *goalServer) *matomo.Provider {

@@ -13,7 +13,8 @@ validate -> plan -> apply -> plan
 ```
 
 `import` adopts supported existing remote objects without mutating them.
-Destructive `destroy` behavior is not implemented yet.
+`destroy` tears down managed resources in reverse dependency order after an
+explicit confirmation (or `--auto-approve`).
 
 ## v0.4.0
 
@@ -523,15 +524,18 @@ agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
 - One Matomo Tag Manager container is selected at a time, either by a
   `matomo.container` resource or by `MATOMO_CONTAINER_ID`.
 - Tag Manager support includes `matomo.container` plus the variable, trigger,
-  and tag types documented for v0.2.0. Container deletion is not implemented.
+  and tag types documented for v0.2.0. Agoraform-managed containers can be
+  destroyed after their children; containers selected only by
+  `MATOMO_CONTAINER_ID` are never deleted.
 - There is no provider-specific `agoraform publish` command; publication is
-  declarative through normal `plan`/`apply`.
+  declarative through normal `plan`/`apply`/`destroy`.
 - Rollback, scheduled publication, approval workflows, generalized deployment
   pipelines, and multi-container deployment orchestration are not implemented.
 - Remote state, workspaces, locking, and encryption are not implemented.
-- `apply` does not delete remote resources and there is no `destroy` command.
-  Immutable Google Ads identity fields fail planning rather than planning a
-  replacement delete.
+- `apply` does not delete remote resources. Use `agoraform destroy` to tear
+  down managed resources. Immutable Google Ads identity fields fail planning
+  rather than planning a replacement delete. Google Ads destroy/removal is
+  not implemented yet; those resources remain in state as unsupported.
 - Pre-1.0 releases may intentionally introduce documented breaking changes.
 
 ## Documentation
@@ -539,6 +543,7 @@ agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
 - [Manifest format](docs/manifest.md)
 - [Plan engine](docs/plan.md)
 - [Apply execution](docs/apply.md)
+- [Destroy](docs/destroy.md)
 - [Import](docs/import.md)
 - [Local provider configuration](docs/local-configuration.md)
 - [Google Ads setup](docs/google-ads-setup.md)
