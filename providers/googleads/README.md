@@ -702,6 +702,23 @@ lossy `WEBSITE` goal. Import does not emit a `conversionAction` `$ref`; add
 that optionally after import if the matching conversion action is also
 managed.
 
+## Destroy
+
+`agoraform destroy` tears down bound Google Ads resources in reverse `$ref`
+order. Google Ads mutate `remove` sets `status` to `REMOVED`; Agoraform
+plans that as `remove`, not a hard delete. Already-`REMOVED` or missing
+identities converge as already-absent. Paused, hidden, and enabled objects
+are still removed.
+
+Customer and campaign conversion goals are provider-owned. Destroy does not
+call remove/delete on them, keeps their state bindings, and exits non-zero
+after supported resources are removed. Apply remains the way to reconcile
+`biddable`. Budgets are refused while `referenceCount > 0`.
+
+The exhaustive per-type mutate operation, terminal state, and capability
+table lives in [Destroy](../../docs/destroy.md#google-ads). Closing a
+customer account or billing remains out of scope.
+
 ## HTTP client
 
 `providers/googleads/client` centralizes Google Ads REST calls, including:
@@ -722,6 +739,14 @@ requests. Override `Config.BaseURL` and `Config.TokenURL` in tests.
 - `agoraform plan` does not mutate Google Ads.
 - New campaigns, ad groups, positive keywords, and Responsive Search Ads
   default to `PAUSED`. Negative keywords default to `ENABLED`.
+- `agoraform destroy` uses Google Ads mutate `remove` operations. Those set
+  remote `status` to `REMOVED` and never enable serving or spend. Paused,
+  hidden, and enabled objects are distinct from already-`REMOVED` ones.
+- Customer and campaign conversion goals are provider-owned: destroy does not
+  issue remove/delete mutations, leaves them in state, and still exits
+  non-zero after supported teardown.
+- Campaign budgets are not removed while Google Ads still reports
+  `referenceCount > 0`. Destroy campaigns first.
 - Immutable identity fields fail planning instead of destroying and
   recreating the remote object. Creative Responsive Search Ad changes
   replace ad lists in place and are visible in plan output.

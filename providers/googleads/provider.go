@@ -45,6 +45,7 @@ var (
 	_ provider.Configurator       = (*Provider)(nil)
 	_ provider.Normalizer         = (*Provider)(nil)
 	_ provider.ImportIDNormalizer = (*Provider)(nil)
+	_ provider.Destroyer          = (*Provider)(nil)
 )
 
 // New returns a Google Ads provider using cfg.

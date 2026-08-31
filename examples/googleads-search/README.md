@@ -164,8 +164,9 @@ New campaigns, ad groups, positive keywords, and the Responsive Search Ad
 are created `PAUSED`. Negative keywords are created `ENABLED` because Google
 Ads does not allow paused negative ad-group criteria.
 
-Agoraform never deletes remote Google Ads objects. Changing an immutable
-identity field fails `plan` instead of hiding a replacement:
+Agoraform does not hide a destroy-and-recreate behind immutable identity
+changes. Changing an immutable identity field fails `plan` instead of
+replacing the remote object:
 
 - keyword `text`, `matchType`, `negative`, or parent ad group;
 - campaign location, language, or whether a location is excluded;
@@ -180,6 +181,19 @@ in `plan`.
 Customer and campaign conversion goals are created by Google Ads. Agoraform
 adopts or updates `biddable` and never attempts unsupported create or delete
 operations.
+
+## Destroy
+
+`agoraform destroy --auto-approve` removes the managed Search graph in
+reverse `$ref` order: the ad and keywords, then location/language criteria,
+then the ad group, then the campaign, then the budget and conversion action.
+Google Ads `remove` sets `status` to `REMOVED`. Destroy never enables spend.
+
+Customer and campaign conversion goals stay in state as provider-owned
+remnants. Supported teardown still runs; the command exits non-zero while
+those bindings remain. Closing the Google Ads customer is out of scope.
+
+See [Destroy](../../docs/destroy.md).
 
 ## Verify in Google Ads
 

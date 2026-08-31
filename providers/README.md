@@ -67,7 +67,8 @@ resources, Search `googleads.ad_group` resources, Search
 resources, campaign location and language targeting,
 and campaign `googleads.campaign_conversion_goal` biddability,
 and uses an authenticated REST client for query and mutate
-operations.
+operations. `agoraform destroy` removes supported Google Ads resources with
+native `remove` operations; conversion goals are provider-owned.
 
 See [googleads/README.md](googleads/README.md), the
 [Search campaign example](../examples/googleads-search/README.md), and the

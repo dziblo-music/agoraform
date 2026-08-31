@@ -35,7 +35,9 @@ daily `googleads.campaign_budget` resources, Search `googleads.campaign`
 resources, Search `googleads.ad_group` resources, Search
 `googleads.keyword` criteria, Search `googleads.responsive_search_ad`
 resources, campaign location and language targeting, and campaign
-`googleads.campaign_conversion_goal` biddability. See the
+`googleads.campaign_conversion_goal` biddability. `agoraform destroy` uses
+Google Ads mutate `remove` for supported resources; customer and campaign
+conversion goals remain provider-owned. See the
 [Google Ads setup guide](google-ads-setup.md),
 [Google Ads Search campaign example](../examples/googleads-search/README.md),
 and [Google Ads conversion example](../examples/googleads-conversion/README.md).

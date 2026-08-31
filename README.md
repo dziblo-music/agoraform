@@ -534,8 +534,9 @@ agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
 - Remote state, workspaces, locking, and encryption are not implemented.
 - `apply` does not delete remote resources. Use `agoraform destroy` to tear
   down managed resources. Immutable Google Ads identity fields fail planning
-  rather than planning a replacement delete. Google Ads destroy/removal is
-  not implemented yet; those resources remain in state as unsupported.
+  rather than planning a replacement delete. Google Ads destroy uses native
+  `remove` operations; customer and campaign conversion goals are
+  provider-owned and remain in state.
 - Pre-1.0 releases may intentionally introduce documented breaking changes.
 
 ## Documentation

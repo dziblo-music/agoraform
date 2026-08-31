@@ -213,6 +213,9 @@ func TestProviderLifecycleNotImplemented(t *testing.T) {
 	if _, err := p.Import(context.Background(), addr, "1"); err == nil || !strings.Contains(err.Error(), "not implemented") {
 		t.Fatalf("Import = %v, want not implemented", err)
 	}
+	if _, err := p.Destroy(context.Background(), res); err == nil || !strings.Contains(err.Error(), "not implemented") {
+		t.Fatalf("Destroy = %v, want not implemented", err)
+	}
 }
 
 func TestProviderConfigureRejectsSecrets(t *testing.T) {
