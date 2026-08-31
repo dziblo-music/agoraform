@@ -33,10 +33,10 @@ func (p *Provider) reconcileTagVariableRefs(ctx context.Context, res resource.Re
 	}
 
 	attrs := live.Attributes.Clone()
-	for _, key := range []string{AttrEventCategory, AttrEventAction, AttrEventName, AttrEventValue} {
+	for key, param := range tagVariableParamKeys(res.Attributes) {
 		desired := res.Attributes[key]
 		want := logicalRef(desired)
-		if want.IsZero() {
+		if want.IsZero() || want.HasOutput() {
 			continue
 		}
 
@@ -50,7 +50,7 @@ func (p *Provider) reconcileTagVariableRefs(ctx context.Context, res resource.Re
 			}
 		}
 
-		remoteValue := parameterString(raw.Parameters, key)
+		remoteValue := parameterString(raw.Parameters, param)
 		if name != "" && remoteValue == "{{"+name+"}}" {
 			attrs[key] = want
 			continue
@@ -66,10 +66,34 @@ func (p *Provider) reconcileTagVariableRefs(ctx context.Context, res resource.Re
 }
 
 func tagUsesVariableRefs(attrs resource.Attributes) bool {
-	for _, key := range []string{AttrEventCategory, AttrEventAction, AttrEventName, AttrEventValue} {
-		if !logicalRef(attrs[key]).IsZero() {
+	for _, key := range tagVariableAttrKeys() {
+		ref := logicalRef(attrs[key])
+		if !ref.IsZero() && !ref.HasOutput() {
 			return true
 		}
 	}
 	return false
+}
+
+func tagVariableAttrKeys() []string {
+	return []string{
+		AttrEventCategory, AttrEventAction, AttrEventName, AttrEventValue,
+		AttrConversionID, AttrConversionLabel, AttrConversionValue,
+		AttrConversionCurrency, AttrConversionTransactionID,
+	}
+}
+
+func tagVariableParamKeys(attrs resource.Attributes) map[string]string {
+	out := map[string]string{
+		AttrEventCategory: AttrEventCategory,
+		AttrEventAction:   AttrEventAction,
+		AttrEventName:     AttrEventName,
+		AttrEventValue:    AttrEventValue,
+	}
+	if stringAttr(attrs, AttrType) == tagTypeGoogleAdsConversion {
+		for attr, param := range googleAdsConversionParamByAttr {
+			out[attr] = param
+		}
+	}
+	return out
 }

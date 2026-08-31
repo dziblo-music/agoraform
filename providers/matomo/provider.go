@@ -38,6 +38,7 @@ type Provider struct {
 	mu                 sync.Mutex
 	known              map[string]remoteBinding
 	identities         IdentityCatalog
+	outputs            provider.OutputMatcher
 	managedContainer   resource.Address
 	publishEnabled     bool
 	publishEnvironment string
@@ -92,6 +93,18 @@ func (p *Provider) SetIdentityCatalog(c IdentityCatalog) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.identities = c
+}
+
+// SetOutputMatcher supplies a provider-neutral catalog of declared
+// non-sensitive outputs for import relationship reconstruction. Passing
+// nil clears the matcher.
+func (p *Provider) SetOutputMatcher(m provider.OutputMatcher) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.outputs = m
 }
 
 // Name implements provider.Provider.

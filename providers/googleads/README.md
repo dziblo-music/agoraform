@@ -106,6 +106,11 @@ conversionLabel:
   output: conversionLabel
 ```
 
+A Matomo Tag Manager `googleAdsConversion` tag can consume those outputs.
+Agoraform still does not emit the application event or manage Google Tag
+(`gtag.js`) inside the Matomo container. See the
+[Matomo provider](../matomo/README.md).
+
 Omitted optional fields are not forced onto the remote resource. Equivalent
 live values, including Google Ads enum aliases and default windows, do not
 produce a plan diff.

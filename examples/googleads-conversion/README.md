@@ -102,6 +102,12 @@ gtag("event", "conversion", {
 Google Tag Manager, Google Tag, and server-side tagging use the same
 conversion ID and label. Agoraform does not configure those tools.
 
+A Matomo Tag Manager `googleAdsConversion` tag can consume `conversionId` and
+`conversionLabel` as `{ $ref, output }` instead of copying those values into
+YAML. Agoraform still does not emit the application event, and it does not
+manage Google Tag (`gtag.js`) in the Matomo container. See the
+[Matomo provider](../../providers/matomo/README.md).
+
 ## Apply
 
 Run the full lifecycle from the directory containing the copied manifest:

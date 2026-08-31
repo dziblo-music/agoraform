@@ -19,6 +19,13 @@ prints the SemVer identifier without the prefix (`0.4.0`).
   values. Sensitive, unknown, unavailable, and wrong-kind outputs fail before
   the dependent mutation. `googleads.conversion_action` exposes `conversionId`
   and `conversionLabel`. The state schema is unchanged.
+- `matomo.tag` `type: googleAdsConversion` for Matomo Tag Manager's Google
+  Ads conversion template. Tags consume `conversionId` and `conversionLabel`
+  from a managed `googleads.conversion_action` through `{ $ref, output }`,
+  fire from a logical `matomo.trigger`, and preserve unmanaged template
+  parameters on update. Equivalent conversion IDs such as `9988776655` and
+  `AW-9988776655` compare equal. Import reconstructs `{ $ref, output }` only
+  on a unique bound-output match; absent and ambiguous matches emit literals.
 - `matomo.container` for Matomo Tag Manager containers (read, create, update, import, destroy). Declare `name`, `context` (`web`, `android`, or `ios`), and optional `description`. Provider-native container IDs, draft versions, publication state, and unmanaged Matomo flags remain computed. Context is immutable. A container present in the manifest and bound in state is managed and eligible for destroy; a container selected only by `MATOMO_CONTAINER_ID` is never deleted.
 - `agoraform destroy` for provider-neutral teardown. The command plans supported destructions in reverse dependency order, requires interactive confirmation or `--auto-approve`, removes local state only after a confirmed remote terminal or already-absent result, and runs planned provider finalizations after those mutations succeed. Unsupported and provider-owned resources remain in state and do not block supported teardown.
 - Matomo destroy for `matomo.goal`, Data Layer and Matomo Configuration `matomo.variable`, `matomo.trigger`, `matomo.tag`, and Agoraform-managed `matomo.container`. Tag Manager child deletions follow the existing publication contract: `publish: false` leaves the draft unpublished, `publish: true` publishes after successful draft mutations, already-published retries do not create duplicate versions, and a plan that deletes its managed container does not publish an intermediate version.

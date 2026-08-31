@@ -408,6 +408,11 @@ v0.2.0 supports Matomo Analytics event tags. The fire trigger is a logical
 references where documented. Tags may reference a managed Matomo
 Configuration variable with `matomoConfiguration: { $ref: matomo.variable.* }`.
 
+`type: googleAdsConversion` uses Matomo Tag Manager's Google Ads conversion
+template. `conversionId` and `conversionLabel` may be literals or selected
+outputs from a managed `googleads.conversion_action`. Agoraform does not emit
+the application event or manage Google Tag (`gtag.js`) in the container.
+
 See the [Matomo provider reference](providers/matomo/README.md) for the complete
 supported schemas.
 
@@ -533,9 +538,11 @@ agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
 - One Matomo Tag Manager container is selected at a time, either by a
   `matomo.container` resource or by `MATOMO_CONTAINER_ID`.
 - Tag Manager support includes `matomo.container` plus the variable, trigger,
-  and tag types documented for v0.2.0. Agoraform-managed containers can be
-  destroyed after their children; containers selected only by
-  `MATOMO_CONTAINER_ID` are never deleted.
+  and tag types documented in the Matomo provider, including Matomo Analytics
+  and Google Ads conversion tags. Agoraform does not emit application events
+  or manage Google Tag (`gtag.js`) in the Matomo container. Agoraform-managed
+  containers can be destroyed after their children; containers selected only
+  by `MATOMO_CONTAINER_ID` are never deleted.
 - There is no provider-specific `agoraform publish` command; publication is
   declarative through normal `plan`/`apply`/`destroy`.
 - Rollback, scheduled publication, approval workflows, generalized deployment

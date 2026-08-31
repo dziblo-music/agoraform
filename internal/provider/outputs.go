@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -35,6 +36,35 @@ type OutputSpec struct {
 // outputs a resource type may expose.
 type OutputCatalog interface {
 	Outputs(resourceType string) []OutputSpec
+}
+
+// OutputMatchQuery asks for a unique already-bound resource whose declared
+// non-sensitive output equals Value.
+type OutputMatchQuery struct {
+	Provider     string
+	ResourceType string
+	Output       string
+	Value        string
+}
+
+// OutputMatch is the deterministic result of an output relationship lookup.
+type OutputMatch int
+
+const (
+	// OutputMatchNone means no bound resource produced Value for Output.
+	OutputMatchNone OutputMatch = iota
+	// OutputMatchUnique means exactly one bound resource produced Value.
+	OutputMatchUnique
+	// OutputMatchAmbiguous means more than one bound resource produced Value.
+	OutputMatchAmbiguous
+)
+
+// OutputMatcher looks up already-bound resources by declared safe outputs.
+//
+// Implementations must not mutate remote systems. Zero and multiple matches
+// are distinct from errors; callers must not guess in those cases.
+type OutputMatcher interface {
+	Match(ctx context.Context, query OutputMatchQuery) (resource.Address, OutputMatch, error)
 }
 
 // OutputsOf returns the declared outputs for resourceType, or nil when

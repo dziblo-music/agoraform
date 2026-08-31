@@ -4,5 +4,6 @@
 // Matomo, Google Ads, or other vendor APIs. Concrete providers belong under
 // the top-level providers/ directory. A test double lives in provider/fake.
 // Optional OutputCatalog declares named non-sensitive resource outputs that
-// manifests may select with { $ref, output }.
+// manifests may select with { $ref, output }. Optional OutputMatcher looks up
+// already-bound resources by those declared outputs during import.
 package provider

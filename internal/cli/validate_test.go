@@ -89,6 +89,29 @@ resources:
       eventAction: trialStarted
 `
 
+const matomoGoogleAdsConversionTagManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.conversion_action.trial_started
+    attributes:
+      name: Trial Started
+      category: SIGNUP
+  - address: matomo.trigger.trial_started
+    attributes:
+      type: customEvent
+      event: trialStarted
+  - address: matomo.tag.google_ads_trial_started
+    attributes:
+      type: googleAdsConversion
+      trigger:
+        $ref: matomo.trigger.trial_started
+      conversionId:
+        $ref: googleads.conversion_action.trial_started
+        output: conversionId
+      conversionLabel:
+        $ref: googleads.conversion_action.trial_started
+        output: conversionLabel
+`
+
 const invalidManifest = `apiVersion: agoraform.io/v1alpha1
 resources:
   - address: not-an-address
@@ -1527,6 +1550,30 @@ func TestValidateMatomoTagWithProvider(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "2 resources") {
 		t.Fatalf("stdout = %q, want 2 resources", stdout.String())
+	}
+}
+
+func TestValidateMatomoGoogleAdsConversionTag(t *testing.T) {
+	t.Parallel()
+
+	matomoP, _ := matomoVariableTestProvider(t)
+	adsP, _ := googleAdsTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(matomoP); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Register(adsP); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", matomoGoogleAdsConversionTagManifest)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("exit code = %d, want %d; stderr=%q stdout=%q", code, cli.ExitOK, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "3 resources") {
+		t.Fatalf("stdout = %q, want 3 resources", stdout.String())
 	}
 }
 
