@@ -154,14 +154,15 @@ func (p *Provider) remoteGoogleAdsConversionTag(addr resource.Address, tag clien
 		if attr == AttrConversionID || attr == AttrConversionLabel {
 			continue
 		}
+		desiredValue, managed := desired[attr]
+		if !managed {
+			continue
+		}
 		raw, err := templateParameterString(tag.Parameters[param])
 		if err != nil {
 			return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: remote tag %q has malformed %s: %w", addr, tag.IDTag, param, err)
 		}
-		if raw == "" && desired[attr] == nil {
-			continue
-		}
-		if v := p.liveConversionAttr(raw, desired[attr]); v != nil && v != "" {
+		if v := p.liveConversionAttr(raw, desiredValue); v != nil && v != "" {
 			attrs[attr] = v
 		}
 	}
@@ -296,6 +297,22 @@ func stripGoogleAdsConversionPrefix(s string) string {
 
 func (p *Provider) reconstructGoogleAdsConversionImport(ctx context.Context, res resource.Resource, live resource.RemoteResource) (resource.RemoteResource, error) {
 	attrs := live.Attributes.Clone()
+	if rawParams, ok := live.Computed[computedTagParameters]; ok {
+		params := asStringMap(rawParams)
+		for _, key := range optionalGoogleAdsConversionAttrs {
+			if _, exists := attrs[key]; exists {
+				continue
+			}
+			param := googleAdsConversionParamByAttr[key]
+			raw, err := templateParameterString(params[param])
+			if err != nil {
+				return resource.RemoteResource{}, fmt.Errorf("matomo: import %s: remote tag %q has malformed %s: %w", res.Address, live.Identity.ID, param, err)
+			}
+			if raw != "" {
+				attrs[key] = raw
+			}
+		}
+	}
 	for _, key := range append([]string{AttrConversionID, AttrConversionLabel}, optionalGoogleAdsConversionAttrs...) {
 		raw, ok := attrs[key].(string)
 		if !ok || raw == "" {
