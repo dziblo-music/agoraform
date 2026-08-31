@@ -301,15 +301,15 @@ func TestMatomoGoogleAdsExampleCoversLifecycleWorkflow(t *testing.T) {
 		t.Errorf("config container $ref = %s, want %s", got, container.Address)
 	}
 
-	userID := resourceByAddress(t, m.Resources, "matomo.variable.user_id")
-	if got, _ := userID.Attributes[matomo.AttrType].(string); got != "dataLayer" {
-		t.Errorf("user_id type = %q, want dataLayer", got)
+	trialID := resourceByAddress(t, m.Resources, "matomo.variable.trial_id")
+	if got, _ := trialID.Attributes[matomo.AttrType].(string); got != "dataLayer" {
+		t.Errorf("trial_id type = %q, want dataLayer", got)
 	}
-	if got, _ := userID.Attributes[matomo.AttrKey].(string); got != "userId" {
-		t.Errorf("user_id key = %q, want userId", got)
+	if got, _ := trialID.Attributes[matomo.AttrKey].(string); got != "trialId" {
+		t.Errorf("trial_id key = %q, want trialId", got)
 	}
-	if got := requireRef(t, userID, matomo.AttrContainer); got != container.Address.String() {
-		t.Errorf("user_id container $ref = %s, want %s", got, container.Address)
+	if got := requireRef(t, trialID, matomo.AttrContainer); got != container.Address.String() {
+		t.Errorf("trial_id container $ref = %s, want %s", got, container.Address)
 	}
 
 	trigger := resourceByAddress(t, m.Resources, "matomo.trigger.trial_started")
@@ -345,8 +345,8 @@ func TestMatomoGoogleAdsExampleCoversLifecycleWorkflow(t *testing.T) {
 	}
 	requireOutputRef(t, tag, matomo.AttrConversionID, action.Address.String(), googleads.OutputConversionID)
 	requireOutputRef(t, tag, matomo.AttrConversionLabel, action.Address.String(), googleads.OutputConversionLabel)
-	if got := requireRef(t, tag, matomo.AttrConversionTransactionID); got != userID.Address.String() {
-		t.Errorf("tag conversionTransactionId $ref = %s, want %s", got, userID.Address)
+	if got := requireRef(t, tag, matomo.AttrConversionTransactionID); got != trialID.Address.String() {
+		t.Errorf("tag conversionTransactionId $ref = %s, want %s", got, trialID.Address)
 	}
 
 	for _, res := range m.Resources {
@@ -399,7 +399,7 @@ func TestMatomoGoogleAdsExampleApplyAndDestroyOrder(t *testing.T) {
 		"matomo.container.main",
 		"matomo.trigger.trial_started",
 		"matomo.variable.config",
-		"matomo.variable.user_id",
+		"matomo.variable.trial_id",
 		"matomo.tag.google_ads_trial_started",
 	})
 }
@@ -413,7 +413,7 @@ func TestMatomoGoogleAdsExternalExampleApplyAndDestroyOrder(t *testing.T) {
 		"googleads.customer_conversion_goal.signup",
 		"matomo.trigger.trial_started",
 		"matomo.variable.config",
-		"matomo.variable.user_id",
+		"matomo.variable.trial_id",
 		"matomo.tag.google_ads_trial_started",
 	})
 }
