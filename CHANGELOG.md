@@ -12,6 +12,12 @@ prints the SemVer identifier without the prefix (`0.4.0`).
 
 ### Added
 
+- Cross-provider import matching: `agoraform import` builds a read-only
+  catalog of declared non-sensitive outputs from already-bound state
+  resources. Providers can request a unique match by provider, resource type,
+  and one or more named output values without importing another provider
+  package. A unique match becomes `{ $ref, output }`; missing and ambiguous
+  matches never guess. The catalog is ephemeral and is not persisted.
 - Cross-provider resource outputs: manifests can select one declared
   non-sensitive named output with `{ $ref, output }` while address-only
   `$ref` stays unchanged. Apply resolves the value after the prerequisite

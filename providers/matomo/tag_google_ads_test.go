@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/dziblo-music/agoraform/internal/apply"
+	"github.com/dziblo-music/agoraform/internal/importer"
 	"github.com/dziblo-music/agoraform/internal/plan"
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/resource"
@@ -406,8 +407,8 @@ func TestImportGoogleAdsConversionTagReconstructsUniqueOutputs(t *testing.T) {
 	p.SetIdentityCatalog(boundIdentityCatalog(t, "matomo.trigger.trial_started", "4"))
 	action := mustParseAddr(t, "googleads.conversion_action.trial_started")
 	p.SetOutputMatcher(staticOutputMatcher{
-		provider.OutputMatchQuery{Provider: "googleads", ResourceType: "conversion_action", Output: "conversionId", Value: "9988776655"}:       action,
-		provider.OutputMatchQuery{Provider: "googleads", ResourceType: "conversion_action", Output: "conversionLabel", Value: "AbC-D_efG-h12"}: action,
+		{Output: "conversionId", Value: "9988776655", Address: action},
+		{Output: "conversionLabel", Value: "AbC-D_efG-h12", Address: action},
 	})
 
 	live, err := p.Import(context.Background(), mustTagAddress(t, "google_ads_trial_started"), "1")
@@ -424,6 +425,63 @@ func TestImportGoogleAdsConversionTagReconstructsUniqueOutputs(t *testing.T) {
 	}
 	if err := p.Validate(context.Background(), resource.Resource{Address: live.Address, Attributes: live.Attributes.Clone()}); err != nil {
 		t.Fatalf("imported attributes must validate: %v", err)
+	}
+}
+
+func TestImportGoogleAdsConversionTagMatchesThroughOutputCatalog(t *testing.T) {
+	t.Parallel()
+
+	srv := newTagServer(t)
+	srv.seedTrigger(apiTagTrigger{ID: 4, Name: "trialStarted", Event: "trialStarted"})
+	srv.seedTag(apiTag{
+		ID:            1,
+		Name:          "Google Ads trial started",
+		Type:          "GoogleAdsConversion",
+		FireTriggerID: 4,
+		Parameters: map[string]any{
+			"googleAdsConversionId":    "AW-9988776655",
+			"googleAdsConversionLabel": "AbC-D_efG-h12",
+		},
+	})
+	p := testTagProvider(t, srv)
+	p.SetIdentityCatalog(boundIdentityCatalog(t, "matomo.trigger.trial_started", "4"))
+
+	action := mustParseAddr(t, "googleads.conversion_action.trial_started")
+	actions := &conversionActionStub{live: resource.RemoteResource{
+		Address:  action,
+		Identity: resource.Identity{ID: "12"},
+		Computed: resource.Attributes{
+			"conversionId":    "9988776655",
+			"conversionLabel": "AbC-D_efG-h12",
+		},
+	}}
+	var catalog provider.OutputMatcher
+	lookup := func(addr resource.Address) (provider.Provider, error) {
+		if addr.Provider == "googleads" {
+			return actions, nil
+		}
+		return p, nil
+	}
+	catalog = importer.NewOutputCatalog(conversionActionBindings{
+		{Address: action, RemoteID: "12"},
+	}, lookup)
+	p.SetOutputMatcher(catalog)
+
+	live, err := p.Import(context.Background(), mustTagAddress(t, "google_ads_trial_started"), "1")
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	idRef, ok := resource.AsRef(live.Attributes[matomo.AttrConversionID])
+	if !ok || idRef.Address != action || idRef.Output != "conversionId" {
+		t.Fatalf("conversionId = %+v, want catalog output ref", live.Attributes[matomo.AttrConversionID])
+	}
+	labelRef, ok := resource.AsRef(live.Attributes[matomo.AttrConversionLabel])
+	if !ok || labelRef.Address != action || labelRef.Output != "conversionLabel" {
+		t.Fatalf("conversionLabel = %+v, want catalog output ref", live.Attributes[matomo.AttrConversionLabel])
+	}
+
+	if srv.createCount() != 0 || srv.updateCount() != 0 {
+		t.Fatalf("catalog matching mutated Matomo: creates=%d updates=%d", srv.createCount(), srv.updateCount())
 	}
 }
 
@@ -735,18 +793,37 @@ func (s *conversionActionStub) Import(_ context.Context, addr resource.Address, 
 	return live, nil
 }
 
-type staticOutputMatcher map[provider.OutputMatchQuery]resource.Address
+type conversionActionBindings []importer.RemoteBinding
 
-func (m staticOutputMatcher) Match(_ context.Context, query provider.OutputMatchQuery) (resource.Address, provider.OutputMatch, error) {
-	addr, ok := m[query]
-	if !ok {
-		return resource.Address{}, provider.OutputMatchNone, nil
+func (s conversionActionBindings) Bindings(providerName, resourceType string) ([]importer.RemoteBinding, error) {
+	out := make([]importer.RemoteBinding, 0, len(s))
+	for _, b := range s {
+		if b.Address.Provider == providerName && b.Address.Type == resourceType {
+			out = append(out, b)
+		}
 	}
-	return addr, provider.OutputMatchUnique, nil
+	return out, nil
+}
+
+type staticOutputMatch struct {
+	Output  string
+	Value   string
+	Address resource.Address
+}
+
+type staticOutputMatcher []staticOutputMatch
+
+func (m staticOutputMatcher) Match(_ context.Context, query provider.OutputMatchQuery) (resource.Ref, provider.OutputMatch, error) {
+	for _, item := range m {
+		if item.Output == query.Output && item.Value == query.Value {
+			return resource.Ref{Address: item.Address, Output: query.SelectedOutput()}, provider.OutputMatchUnique, nil
+		}
+	}
+	return resource.Ref{}, provider.OutputMatchNone, nil
 }
 
 type ambiguousOutputMatcher struct{}
 
-func (ambiguousOutputMatcher) Match(context.Context, provider.OutputMatchQuery) (resource.Address, provider.OutputMatch, error) {
-	return resource.Address{}, provider.OutputMatchAmbiguous, nil
+func (ambiguousOutputMatcher) Match(context.Context, provider.OutputMatchQuery) (resource.Ref, provider.OutputMatch, error) {
+	return resource.Ref{}, provider.OutputMatchAmbiguous, nil
 }

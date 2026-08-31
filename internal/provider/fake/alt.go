@@ -29,6 +29,7 @@ type Alt struct {
 	nextID    int
 	resources map[string]resource.RemoteResource
 	byID      map[string]string
+	outputs   provider.OutputMatcher
 	reads     int
 	creates   int
 	updates   int
@@ -46,6 +47,18 @@ func NewAlt() *Alt {
 		resources: make(map[string]resource.RemoteResource),
 		byID:      make(map[string]string),
 	}
+}
+
+// SetOutputMatcher supplies a provider-neutral catalog of declared
+// non-sensitive outputs for import relationship reconstruction. Passing
+// nil clears the matcher.
+func (p *Alt) SetOutputMatcher(m provider.OutputMatcher) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.outputs = m
 }
 
 // Name implements provider.Provider.
@@ -185,7 +198,7 @@ func (p *Alt) Update(ctx context.Context, desired resource.Resource, actual reso
 }
 
 // Import implements provider.Provider.
-func (p *Alt) Import(_ context.Context, addr resource.Address, id string) (resource.RemoteResource, error) {
+func (p *Alt) Import(ctx context.Context, addr resource.Address, id string) (resource.RemoteResource, error) {
 	if strings.TrimSpace(id) == "" {
 		return resource.RemoteResource{}, fmt.Errorf("import id is empty")
 	}
@@ -197,15 +210,44 @@ func (p *Alt) Import(_ context.Context, addr resource.Address, id string) (resou
 	}
 
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	p.imports++
-
 	currentAddr, ok := p.byID[id]
+	var remote resource.RemoteResource
+	if ok {
+		remote = cloneRemote(p.resources[currentAddr])
+		remote.Address = addr
+	}
+	matcher := p.outputs
+	p.mu.Unlock()
 	if !ok {
 		return resource.RemoteResource{}, provider.ErrNotFound
 	}
-	remote := cloneRemote(p.resources[currentAddr])
-	remote.Address = addr
+	return reconstructNoteImport(ctx, matcher, remote)
+}
+
+func reconstructNoteImport(ctx context.Context, matcher provider.OutputMatcher, remote resource.RemoteResource) (resource.RemoteResource, error) {
+	if matcher == nil {
+		return remote, nil
+	}
+	text, ok := remote.Attributes[AttrText].(string)
+	if !ok || text == "" {
+		return remote, nil
+	}
+	ref, result, err := matcher.Match(ctx, provider.OutputMatchQuery{
+		Provider:     Name,
+		ResourceType: TypeWidget,
+		Output:       OutputToken,
+		Value:        text,
+	})
+	if err != nil {
+		return resource.RemoteResource{}, err
+	}
+	if result != provider.OutputMatchUnique {
+		return remote, nil
+	}
+	attrs := remote.Attributes.Clone()
+	attrs[AttrText] = ref
+	remote.Attributes = attrs
 	return remote, nil
 }
 

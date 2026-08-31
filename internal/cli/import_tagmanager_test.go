@@ -400,10 +400,12 @@ type cliTMTrigger struct {
 type cliTMTag struct {
 	ID            int
 	Name          string
+	Type          string
 	FireTriggerID int
 	Category      string
 	Action        string
 	EventName     string
+	Parameters    map[string]any
 }
 
 type cliTagManagerServer struct {
@@ -586,20 +588,27 @@ func (s *cliTagManagerServer) writeTags(w http.ResponseWriter) {
 		if tag.FireTriggerID != 0 {
 			fire = []any{tag.FireTriggerID}
 		}
-		params := map[string]any{
-			"trackingType":  "event",
-			"eventCategory": tag.Category,
-			"eventAction":   tag.Action,
-			"matomoConfig":  map[string]any{"name": "Matomo Configuration", "type": "MatomoConfiguration"},
+		typ := tag.Type
+		if typ == "" {
+			typ = "Matomo"
 		}
-		if tag.EventName != "" {
-			params["eventName"] = tag.EventName
+		params := tag.Parameters
+		if params == nil {
+			params = map[string]any{
+				"trackingType":  "event",
+				"eventCategory": tag.Category,
+				"eventAction":   tag.Action,
+				"matomoConfig":  map[string]any{"name": "Matomo Configuration", "type": "MatomoConfiguration"},
+			}
+			if tag.EventName != "" {
+				params["eventName"] = tag.EventName
+			}
 		}
 		out = append(out, map[string]any{
 			"idtag":              strconv.Itoa(id),
 			"idcontainerversion": "9",
 			"idsite":             "3",
-			"type":               "Matomo",
+			"type":               typ,
 			"name":               tag.Name,
 			"status":             "active",
 			"fireTriggerIds":     fire,

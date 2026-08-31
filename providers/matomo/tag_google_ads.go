@@ -313,6 +313,23 @@ func (p *Provider) reconstructGoogleAdsConversionImport(ctx context.Context, res
 			}
 		}
 	}
+	pairedOutputMatchAttempted := false
+	if id, ok := attrs[AttrConversionID].(string); ok {
+		label, labelOK := attrs[AttrConversionLabel].(string)
+		_, idTemplate := parseMatomoVariableTemplate(id)
+		_, labelTemplate := parseMatomoVariableTemplate(label)
+		if labelOK && id != "" && label != "" && !idTemplate && !labelTemplate {
+			pairedOutputMatchAttempted = true
+			ref, matched, err := p.matchGoogleAdsConversionOutputs(ctx, stripGoogleAdsConversionPrefix(id), label)
+			if err != nil {
+				return resource.RemoteResource{}, fmt.Errorf("matomo: import %s: %w", res.Address, err)
+			}
+			if matched {
+				attrs[AttrConversionID] = resource.Ref{Address: ref.Address, Output: AttrConversionID}
+				attrs[AttrConversionLabel] = resource.Ref{Address: ref.Address, Output: AttrConversionLabel}
+			}
+		}
+	}
 	for _, key := range append([]string{AttrConversionID, AttrConversionLabel}, optionalGoogleAdsConversionAttrs...) {
 		raw, ok := attrs[key].(string)
 		if !ok || raw == "" {
@@ -327,6 +344,9 @@ func (p *Provider) reconstructGoogleAdsConversionImport(ctx context.Context, res
 			if found {
 				attrs[key] = ref
 			}
+			continue
+		}
+		if pairedOutputMatchAttempted && (key == AttrConversionID || key == AttrConversionLabel) {
 			continue
 		}
 		if key != AttrConversionID && key != AttrConversionLabel {
@@ -344,6 +364,43 @@ func (p *Provider) reconstructGoogleAdsConversionImport(ctx context.Context, res
 	return live, nil
 }
 
+func (p *Provider) matchGoogleAdsConversionOutputs(ctx context.Context, conversionID, conversionLabel string) (resource.Ref, bool, error) {
+	ref, result, err := p.matchOutput(ctx, provider.OutputMatchQuery{
+		Provider:     googleAdsOutputProvider,
+		ResourceType: googleAdsOutputConversionAction,
+		Output:       AttrConversionID,
+		Equals: map[string]string{
+			AttrConversionID:    conversionID,
+			AttrConversionLabel: conversionLabel,
+		},
+	})
+	if err != nil {
+		return resource.Ref{}, false, err
+	}
+	switch result {
+	case provider.OutputMatchUnique:
+		return ref, true, nil
+	case provider.OutputMatchAmbiguous:
+		return resource.Ref{}, false, nil
+	}
+
+	idRef, idMatched, err := p.matchGoogleAdsConversionOutput(ctx, AttrConversionID, conversionID)
+	if err != nil {
+		return resource.Ref{}, false, err
+	}
+	if !idMatched {
+		return resource.Ref{}, false, nil
+	}
+	labelRef, labelMatched, err := p.matchGoogleAdsConversionOutput(ctx, AttrConversionLabel, conversionLabel)
+	if err != nil {
+		return resource.Ref{}, false, err
+	}
+	if !labelMatched || idRef.Address != labelRef.Address {
+		return resource.Ref{}, false, nil
+	}
+	return resource.Ref{Address: idRef.Address, Output: AttrConversionID}, true, nil
+}
+
 func (p *Provider) matchGoogleAdsConversionOutput(ctx context.Context, attr, value string) (resource.Ref, bool, error) {
 	output := attr
 	candidates := []string{value}
@@ -352,10 +409,10 @@ func (p *Provider) matchGoogleAdsConversionOutput(ctx context.Context, attr, val
 			candidates = append(candidates, stripped)
 		}
 	}
-	var matched resource.Address
+	var matched resource.Ref
 	found := false
 	for _, candidate := range candidates {
-		addr, result, err := p.matchOutput(ctx, provider.OutputMatchQuery{
+		ref, result, err := p.matchOutput(ctx, provider.OutputMatchQuery{
 			Provider:     googleAdsOutputProvider,
 			ResourceType: googleAdsOutputConversionAction,
 			Output:       output,
@@ -370,28 +427,28 @@ func (p *Provider) matchGoogleAdsConversionOutput(ctx context.Context, attr, val
 		case provider.OutputMatchAmbiguous:
 			return resource.Ref{}, false, nil
 		case provider.OutputMatchUnique:
-			if found && matched != addr {
+			if found && matched.Address != ref.Address {
 				return resource.Ref{}, false, nil
 			}
-			matched = addr
+			matched = ref
 			found = true
 		}
 	}
 	if !found {
 		return resource.Ref{}, false, nil
 	}
-	return resource.Ref{Address: matched, Output: output}, true, nil
+	return matched, true, nil
 }
 
-func (p *Provider) matchOutput(ctx context.Context, query provider.OutputMatchQuery) (resource.Address, provider.OutputMatch, error) {
+func (p *Provider) matchOutput(ctx context.Context, query provider.OutputMatchQuery) (resource.Ref, provider.OutputMatch, error) {
 	if p == nil {
-		return resource.Address{}, provider.OutputMatchNone, nil
+		return resource.Ref{}, provider.OutputMatchNone, nil
 	}
 	p.mu.Lock()
 	matcher := p.outputs
 	p.mu.Unlock()
 	if matcher == nil {
-		return resource.Address{}, provider.OutputMatchNone, nil
+		return resource.Ref{}, provider.OutputMatchNone, nil
 	}
 	return matcher.Match(ctx, query)
 }

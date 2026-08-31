@@ -25,7 +25,7 @@ func TestOutputCatalogUniqueMatch(t *testing.T) {
 		{Address: parent, RemoteID: "widget-imported"},
 	}, lookupProvider(widgets))
 
-	addr, result, err := cat.Match(context.Background(), provider.OutputMatchQuery{
+	ref, result, err := cat.Match(context.Background(), provider.OutputMatchQuery{
 		Provider:     fake.Name,
 		ResourceType: fake.TypeWidget,
 		Output:       fake.OutputToken,
@@ -34,8 +34,8 @@ func TestOutputCatalogUniqueMatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
-	if result != provider.OutputMatchUnique || addr != parent {
-		t.Fatalf("Match = (%s, %v), want unique %s", addr, result, parent)
+	if result != provider.OutputMatchUnique || ref.Address != parent || ref.Output != fake.OutputToken {
+		t.Fatalf("Match = (%+v, %v), want unique %s output %s", ref, result, parent, fake.OutputToken)
 	}
 }
 
@@ -60,7 +60,7 @@ func TestOutputCatalogNoneAndAmbiguous(t *testing.T) {
 		{Address: side, RemoteID: "widget-side"},
 	}, lookupProvider(widgets))
 
-	_, result, err := cat.Match(context.Background(), provider.OutputMatchQuery{
+	ref, result, err := cat.Match(context.Background(), provider.OutputMatchQuery{
 		Provider:     fake.Name,
 		ResourceType: fake.TypeWidget,
 		Output:       fake.OutputToken,
@@ -69,11 +69,11 @@ func TestOutputCatalogNoneAndAmbiguous(t *testing.T) {
 	if err != nil {
 		t.Fatalf("missing Match: %v", err)
 	}
-	if result != provider.OutputMatchNone {
-		t.Fatalf("missing result = %v, want none", result)
+	if result != provider.OutputMatchNone || !ref.IsZero() {
+		t.Fatalf("missing result = (%+v, %v), want none", ref, result)
 	}
 
-	_, result, err = cat.Match(context.Background(), provider.OutputMatchQuery{
+	ref, result, err = cat.Match(context.Background(), provider.OutputMatchQuery{
 		Provider:     fake.Name,
 		ResourceType: fake.TypeWidget,
 		Output:       fake.OutputToken,
@@ -82,8 +82,150 @@ func TestOutputCatalogNoneAndAmbiguous(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ambiguous Match: %v", err)
 	}
-	if result != provider.OutputMatchAmbiguous {
-		t.Fatalf("shared result = %v, want ambiguous", result)
+	if result != provider.OutputMatchAmbiguous || !ref.IsZero() {
+		t.Fatalf("shared result = (%+v, %v), want ambiguous", ref, result)
+	}
+}
+
+func TestOutputCatalogMultipleFieldMatch(t *testing.T) {
+	t.Parallel()
+
+	widgets := fake.New()
+	home := widgetAddr(t, "homepage")
+	side := widgetAddr(t, "sidebar")
+	seedImported(t, widgets, home, resource.Attributes{fake.AttrTitle: "Home"}, resource.Attributes{
+		fake.AttrSerial:  1,
+		fake.OutputToken: "shared",
+	})
+	if err := widgets.Seed(resource.RemoteResource{
+		Address:    side,
+		Identity:   resource.Identity{ID: "widget-side"},
+		Attributes: resource.Attributes{fake.AttrTitle: "Side"},
+		Computed:   resource.Attributes{fake.AttrSerial: 2, fake.OutputToken: "shared"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	cat := importer.NewOutputCatalog(staticBindings{
+		{Address: side, RemoteID: "widget-side"},
+		{Address: home, RemoteID: "widget-imported"},
+	}, lookupProvider(widgets))
+
+	ref, result, err := cat.Match(context.Background(), provider.OutputMatchQuery{
+		Provider:     fake.Name,
+		ResourceType: fake.TypeWidget,
+		Output:       fake.OutputToken,
+		Equals: map[string]string{
+			fake.OutputToken: "shared",
+			fake.AttrSerial:  "1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Match: %v", err)
+	}
+	if result != provider.OutputMatchUnique || ref.Address != home || ref.Output != fake.OutputToken {
+		t.Fatalf("Match = (%+v, %v), want unique %s", ref, result, home)
+	}
+
+	ref, result, err = cat.Match(context.Background(), provider.OutputMatchQuery{
+		Provider:     fake.Name,
+		ResourceType: fake.TypeWidget,
+		Output:       fake.OutputToken,
+		Equals: map[string]string{
+			fake.OutputToken: "shared",
+			fake.AttrSerial:  "99",
+		},
+	})
+	if err != nil {
+		t.Fatalf("missing multi-field Match: %v", err)
+	}
+	if result != provider.OutputMatchNone || !ref.IsZero() {
+		t.Fatalf("missing multi-field = (%+v, %v), want none", ref, result)
+	}
+}
+
+func TestOutputCatalogMatchesCreatedAndImportedPrerequisites(t *testing.T) {
+	t.Parallel()
+
+	widgets := fake.New()
+	created := widgetAddr(t, "created")
+	live, err := widgets.Create(context.Background(), resource.Resource{
+		Address:    created,
+		Attributes: resource.Attributes{fake.AttrTitle: "Created"},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	token, _ := live.Computed[fake.OutputToken].(string)
+	if token == "" {
+		t.Fatal("created widget missing token")
+	}
+
+	imported := widgetAddr(t, "imported")
+	if err := widgets.Seed(resource.RemoteResource{
+		Address:    imported,
+		Identity:   resource.Identity{ID: "widget-imported"},
+		Attributes: resource.Attributes{fake.AttrTitle: "Imported"},
+		Computed:   resource.Attributes{fake.AttrSerial: 9, fake.OutputToken: "tok-imported"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	cat := importer.NewOutputCatalog(staticBindings{
+		{Address: created, RemoteID: live.Identity.ID},
+		{Address: imported, RemoteID: "widget-imported"},
+	}, lookupProvider(widgets))
+
+	ref, result, err := cat.Match(context.Background(), provider.OutputMatchQuery{
+		Provider:     fake.Name,
+		ResourceType: fake.TypeWidget,
+		Output:       fake.OutputToken,
+		Value:        token,
+	})
+	if err != nil {
+		t.Fatalf("created Match: %v", err)
+	}
+	if result != provider.OutputMatchUnique || ref.Address != created {
+		t.Fatalf("created Match = (%+v, %v), want unique %s", ref, result, created)
+	}
+
+	ref, result, err = cat.Match(context.Background(), provider.OutputMatchQuery{
+		Provider:     fake.Name,
+		ResourceType: fake.TypeWidget,
+		Output:       fake.OutputToken,
+		Value:        "tok-imported",
+	})
+	if err != nil {
+		t.Fatalf("imported Match: %v", err)
+	}
+	if result != provider.OutputMatchUnique || ref.Address != imported || ref.Output != fake.OutputToken {
+		t.Fatalf("imported Match = (%+v, %v), want unique %s", ref, result, imported)
+	}
+}
+
+func TestOutputCatalogMissingDeclaredOutput(t *testing.T) {
+	t.Parallel()
+
+	widgets := fake.New()
+	parent := widgetAddr(t, "homepage")
+	seedImported(t, widgets, parent, resource.Attributes{fake.AttrTitle: "Homepage"}, resource.Attributes{
+		fake.AttrSerial: 1,
+	})
+	cat := importer.NewOutputCatalog(staticBindings{
+		{Address: parent, RemoteID: "widget-imported"},
+	}, lookupProvider(widgets))
+
+	ref, result, err := cat.Match(context.Background(), provider.OutputMatchQuery{
+		Provider:     fake.Name,
+		ResourceType: fake.TypeWidget,
+		Output:       fake.OutputToken,
+		Value:        "tok-homepage",
+	})
+	if err != nil {
+		t.Fatalf("Match: %v", err)
+	}
+	if result != provider.OutputMatchNone || !ref.IsZero() {
+		t.Fatalf("missing output = (%+v, %v), want none", ref, result)
 	}
 }
 
@@ -101,7 +243,7 @@ func TestOutputCatalogExcludesSensitiveAndUndeclared(t *testing.T) {
 		{Address: parent, RemoteID: "widget-imported"},
 	}, lookupProvider(widgets))
 
-	_, result, err := cat.Match(context.Background(), provider.OutputMatchQuery{
+	ref, result, err := cat.Match(context.Background(), provider.OutputMatchQuery{
 		Provider:     fake.Name,
 		ResourceType: fake.TypeWidget,
 		Output:       fake.OutputSecret,
@@ -110,11 +252,11 @@ func TestOutputCatalogExcludesSensitiveAndUndeclared(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sensitive Match: %v", err)
 	}
-	if result != provider.OutputMatchNone {
-		t.Fatalf("sensitive result = %v, want none", result)
+	if result != provider.OutputMatchNone || !ref.IsZero() {
+		t.Fatalf("sensitive result = (%+v, %v), want none", ref, result)
 	}
 
-	_, result, err = cat.Match(context.Background(), provider.OutputMatchQuery{
+	ref, result, err = cat.Match(context.Background(), provider.OutputMatchQuery{
 		Provider:     fake.Name,
 		ResourceType: fake.TypeWidget,
 		Output:       "etag",
@@ -123,8 +265,8 @@ func TestOutputCatalogExcludesSensitiveAndUndeclared(t *testing.T) {
 	if err != nil {
 		t.Fatalf("undeclared Match: %v", err)
 	}
-	if result != provider.OutputMatchNone {
-		t.Fatalf("undeclared result = %v, want none", result)
+	if result != provider.OutputMatchNone || !ref.IsZero() {
+		t.Fatalf("undeclared result = (%+v, %v), want none", ref, result)
 	}
 }
 
@@ -147,6 +289,9 @@ func TestOutputCatalogReadFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), parent.String()) {
 		t.Fatalf("error = %q, want address", err)
+	}
+	if strings.Contains(err.Error(), "s3cret") || strings.Contains(err.Error(), "tok-homepage") {
+		t.Fatalf("error leaked an output value: %q", err)
 	}
 }
 
@@ -176,6 +321,60 @@ func TestOutputCatalogDoesNotMutate(t *testing.T) {
 	}
 	if importsAfter != imports+1 {
 		t.Fatalf("imports = %d, want %d", importsAfter, imports+1)
+	}
+}
+
+func TestOutputCatalogDeterministicOrdering(t *testing.T) {
+	t.Parallel()
+
+	widgets := fake.New()
+	zeta := widgetAddr(t, "zeta")
+	alpha := widgetAddr(t, "alpha")
+	if err := widgets.Seed(resource.RemoteResource{
+		Address:    zeta,
+		Identity:   resource.Identity{ID: "widget-zeta"},
+		Attributes: resource.Attributes{fake.AttrTitle: "Zeta"},
+		Computed:   resource.Attributes{fake.OutputToken: "tok-unique"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := widgets.Seed(resource.RemoteResource{
+		Address:    alpha,
+		Identity:   resource.Identity{ID: "widget-alpha"},
+		Attributes: resource.Attributes{fake.AttrTitle: "Alpha"},
+		Computed:   resource.Attributes{fake.OutputToken: "other"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	first := importer.NewOutputCatalog(staticBindings{
+		{Address: zeta, RemoteID: "widget-zeta"},
+		{Address: alpha, RemoteID: "widget-alpha"},
+	}, lookupProvider(widgets))
+	second := importer.NewOutputCatalog(staticBindings{
+		{Address: alpha, RemoteID: "widget-alpha"},
+		{Address: zeta, RemoteID: "widget-zeta"},
+	}, lookupProvider(widgets))
+
+	query := provider.OutputMatchQuery{
+		Provider:     fake.Name,
+		ResourceType: fake.TypeWidget,
+		Output:       fake.OutputToken,
+		Value:        "tok-unique",
+	}
+	a, resultA, err := first.Match(context.Background(), query)
+	if err != nil {
+		t.Fatalf("first Match: %v", err)
+	}
+	b, resultB, err := second.Match(context.Background(), query)
+	if err != nil {
+		t.Fatalf("second Match: %v", err)
+	}
+	if resultA != provider.OutputMatchUnique || resultB != provider.OutputMatchUnique {
+		t.Fatalf("results = %v / %v, want unique", resultA, resultB)
+	}
+	if a != b || a.Address != zeta || a.Output != fake.OutputToken {
+		t.Fatalf("Match order-dependent: %+v vs %+v", a, b)
 	}
 }
 
