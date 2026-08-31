@@ -223,7 +223,12 @@ func resolveDesired(res resource.Resource, runtime map[string]resource.Resolved)
 	mapped, err := resource.MapRefs(res.Attributes, func(path string, ref resource.Ref) (any, error) {
 		got, ok := runtime[ref.Address.String()]
 		if !ok || got.Identity.IsZero() {
-			return nil, fmt.Errorf("attribute %q: dependency %s has no provider-native identity", displayPath(path), ref.Address)
+			// Destroy is identity-driven. A referenced resource may be
+			// intentionally unmanaged or unsupported while the current
+			// resource is still safe to tear down. Preserve the logical
+			// reference and let the provider decide whether that attribute is
+			// actually required for destruction.
+			return ref, nil
 		}
 		if !ref.HasOutput() {
 			return resource.Resolved{
