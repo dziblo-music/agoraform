@@ -9,14 +9,15 @@ The primary manifest manages:
 
 - `matomo.container.main` as a greenfield Tag Manager container;
 - `matomo.variable.config` as the Matomo Configuration variable;
-- `matomo.variable.user_id` reading `userId` from the data layer;
+- `matomo.variable.trial_id` reading `trialId` from the data layer;
 - `matomo.trigger.trial_started` listening for the `trialStarted` custom event;
 - `googleads.conversion_action.trial_started` as a website `SIGNUP` conversion;
 - `googleads.customer_conversion_goal.signup` so `SIGNUP` / `WEBSITE` is
   biddable as an account-default optimization goal;
 - `matomo.tag.google_ads_trial_started` as a Google Ads conversion tag that
   selects `conversionId` and `conversionLabel` from the managed conversion
-  action and uses the data-layer variable as `conversionTransactionId`;
+  action and uses the per-conversion data-layer variable as
+  `conversionTransactionId`;
 - `providers.matomo.publish: true` so `apply` publishes the converged draft
   to `live`.
 
@@ -100,14 +101,16 @@ created:
 ```javascript
 window._mtm.push({
   event: "trialStarted",
-  userId: "..."
+  trialId: "trial_abc123"
 })
 ```
 
 Both names are case-sensitive and must match the manifest. Emit the event
-once per successful conversion. Use a stable, non-secret, non-email
-identifier for `userId`, and apply the privacy and consent rules appropriate
-to your site.
+once per successful conversion. `trialId` is used as the Google Ads
+transaction ID, so it must be a unique opaque identifier for that individual
+trial conversion. Do not reuse a stable user/account identifier, email
+address, or other value that identifies a person. Apply the privacy and
+consent rules appropriate to your site.
 
 Agoraform does not generate or own that application code. Matomo Tag Manager
 fires the conversion tag; Google Ads owns the conversion action.
@@ -141,7 +144,7 @@ until apply compares the converged draft with live:
 + matomo.tag.google_ads_trial_started
 + matomo.trigger.trial_started
 + matomo.variable.config
-+ matomo.variable.user_id
++ matomo.variable.trial_id
 > matomo.container.main: publish -> live [conditional]
 ```
 
@@ -155,7 +158,7 @@ googleads.customer_conversion_goal.signup
 matomo.container.main
 matomo.trigger.trial_started
 matomo.variable.config
-matomo.variable.user_id
+matomo.variable.trial_id
 matomo.tag.google_ads_trial_started
 ```
 
@@ -189,7 +192,7 @@ Expected destroy plan:
 Agoraform will destroy the following resources:
 
 - matomo.tag.google_ads_trial_started
-- matomo.variable.user_id
+- matomo.variable.trial_id
 - matomo.variable.config
 - matomo.trigger.trial_started
 - matomo.container.main
@@ -224,11 +227,12 @@ In Matomo, for the website from `MATOMO_SITE_ID`:
 1. Open Tag Manager and confirm **Main Website** exists as a web container
    created by Agoraform (not a container you selected with
    `MATOMO_CONTAINER_ID`).
-2. Confirm the draft contains **Matomo Configuration**, **Trial user ID**,
+2. Confirm the draft contains **Matomo Configuration**, **Trial ID**,
    **Trial started**, and **Google Ads trial started**.
 3. Open the Google Ads conversion tag and confirm it uses the conversion ID
    and conversion label assigned to **Trial Started** in Google Ads, and that
-   it fires from the **Trial started** trigger.
+   it fires from the **Trial started** trigger with **Trial ID** as the
+   transaction ID.
 4. Open Versions/Environments and confirm a version was published to **live**
    only when the draft differed from that environment.
 5. Run `agoraform apply` again without changing the manifest and confirm no
@@ -246,9 +250,10 @@ In the Google Ads customer from `GOOGLE_ADS_CUSTOMER_ID`:
 
 Install the container snippet on a non-production page, add Google Tag in
 the Matomo container if it is missing, then use Tag Manager preview/debug
-to push the `trialStarted` event. Confirm the conversion tag fires and that
-Google Ads records the conversion against **Trial Started**. Diagnosing tag
-execution, consent mode, and event delivery is outside Agoraform.
+to push the `trialStarted` event with a unique `trialId`. Confirm the
+conversion tag fires and that Google Ads records the conversion against
+**Trial Started**. Diagnosing tag execution, consent mode, and event delivery
+is outside Agoraform.
 
 ## Adopt existing resources
 
@@ -262,7 +267,7 @@ agoraform import googleads.conversion_action.trial_started CONVERSION_ACTION_ID
 agoraform import googleads.customer_conversion_goal.signup SIGNUP~WEBSITE
 agoraform import matomo.container.main CONTAINER_ID
 agoraform import matomo.variable.config VARIABLE_ID
-agoraform import matomo.variable.user_id VARIABLE_ID
+agoraform import matomo.variable.trial_id VARIABLE_ID
 agoraform import matomo.trigger.trial_started TRIGGER_ID
 agoraform import matomo.tag.google_ads_trial_started TAG_ID
 ```
@@ -302,7 +307,7 @@ googleads.conversion_action.trial_started
 googleads.customer_conversion_goal.signup
 matomo.trigger.trial_started
 matomo.variable.config
-matomo.variable.user_id
+matomo.variable.trial_id
 matomo.tag.google_ads_trial_started
 ```
 
@@ -317,7 +322,7 @@ Expected destroy plan:
 Agoraform will destroy the following resources:
 
 - matomo.tag.google_ads_trial_started
-- matomo.variable.user_id
+- matomo.variable.trial_id
 - matomo.variable.config
 - matomo.trigger.trial_started
 - googleads.conversion_action.trial_started (remove)
