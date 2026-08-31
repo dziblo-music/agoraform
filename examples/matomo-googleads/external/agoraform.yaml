@@ -17,11 +17,11 @@ resources:
       siteId: 1
       enableLinkTracking: true
 
-  - address: matomo.variable.user_id
+  - address: matomo.variable.trial_id
     attributes:
       type: dataLayer
-      key: userId
-      name: Trial user ID
+      key: trialId
+      name: Trial ID
 
   - address: matomo.trigger.trial_started
     attributes:
@@ -58,4 +58,4 @@ resources:
         $ref: googleads.conversion_action.trial_started
         output: conversionLabel
       conversionTransactionId:
-        $ref: matomo.variable.user_id
+        $ref: matomo.variable.trial_id
