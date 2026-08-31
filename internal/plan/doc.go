@@ -9,6 +9,8 @@
 // Format step so apply and CI tooling can consume the same change model.
 // Live computed outputs are retained on Change for apply-time reference
 // resolution and are omitted from Before, After, Diffs, and Format.
-// Plan never calls provider mutation methods. Plans use logical resource
-// addresses; they do not require provider-native IDs in configuration.
+// Output selectors in configuration render as logical { $ref, output }
+// expressions. Plan never calls provider mutation methods. Plans use
+// logical resource addresses; they do not require provider-native IDs
+// in configuration.
 package plan

@@ -64,18 +64,29 @@ func BuildWithState(ctx context.Context, desired []resource.Resource, lookup Loo
 	if err := validateProviderResourceSets(ctx, desired, lookup); err != nil {
 		return nil, err
 	}
+	if err := provider.ValidateOutputRefs(desired, lookup); err != nil {
+		return nil, fmt.Errorf("plan: %w", err)
+	}
 
 	byAddr := make(map[string]resource.Resource, len(desired))
 	for _, res := range desired {
 		byAddr[res.Address.String()] = res
 	}
 
+	knownOutputs := make(map[string]resource.Attributes, len(desired))
 	changes := make([]Change, 0, len(desired))
 	for _, addr := range g.Order() {
 		res := byAddr[addr.String()]
-		change, err := planResource(ctx, res, lookup, identities)
+		change, err := planResource(ctx, res, lookup, identities, knownOutputs)
 		if err != nil {
 			return nil, err
+		}
+		// Only outputs from unchanged prerequisites are safe to substitute while
+		// planning dependents. An updating prerequisite may produce a different
+		// output after convergence, so keeping its current live value would let a
+		// dependent incorrectly plan as unchanged and then skip re-resolution.
+		if change.Action == ActionUnchanged && !change.Identity.IsZero() {
+			knownOutputs[addr.String()] = change.Computed.Clone()
 		}
 		changes = append(changes, change)
 	}
@@ -112,7 +123,7 @@ func validateProviderResourceSets(ctx context.Context, desired []resource.Resour
 	return nil
 }
 
-func planResource(ctx context.Context, res resource.Resource, lookup Lookup, identities Identities) (Change, error) {
+func planResource(ctx context.Context, res resource.Resource, lookup Lookup, identities Identities, knownOutputs map[string]resource.Attributes) (Change, error) {
 	addr := res.Address
 	bound, err := attachIdentity(addr, &res, identities)
 	if err != nil {
@@ -170,7 +181,11 @@ func planResource(ctx context.Context, res resource.Resource, lookup Lookup, ide
 		return Change{}, fmt.Errorf("plan %s: %w", addr, err)
 	}
 
-	diffs := diffAttributes("", got, want)
+	compareWant := substituteKnownOutputs(want, knownOutputs)
+	diffs := diffAttributes("", got, compareWant)
+	if len(diffs) > 0 {
+		diffs = restoreOutputRefs(diffs, want)
+	}
 	action := ActionUnchanged
 	if len(diffs) > 0 {
 		action = ActionUpdate
@@ -271,4 +286,51 @@ func diffsFromDesired(attrs resource.Attributes) []AttributeDiff {
 		return nil
 	}
 	return diffAttributes("", nil, attrs)
+}
+
+func substituteKnownOutputs(attrs resource.Attributes, known map[string]resource.Attributes) resource.Attributes {
+	if len(attrs) == 0 {
+		return attrs
+	}
+	mapped, err := resource.MapRefs(attrs, func(_ string, ref resource.Ref) (any, error) {
+		if !ref.HasOutput() {
+			return ref, nil
+		}
+		outputs, ok := known[ref.Address.String()]
+		if !ok {
+			return ref, nil
+		}
+		v, ok := outputs[ref.Output]
+		if !ok {
+			return ref, nil
+		}
+		return resource.CloneValue(v), nil
+	})
+	if err != nil {
+		return attrs
+	}
+	out, ok := mapped.(resource.Attributes)
+	if !ok {
+		return attrs
+	}
+	return out
+}
+
+func restoreOutputRefs(diffs []AttributeDiff, want resource.Attributes) []AttributeDiff {
+	refs := make(map[string]resource.Ref)
+	resource.WalkRefValues(want, func(path string, ref resource.Ref) {
+		if ref.HasOutput() {
+			refs[path] = ref
+		}
+	})
+	if len(refs) == 0 {
+		return diffs
+	}
+	out := append([]AttributeDiff(nil), diffs...)
+	for i, d := range out {
+		if ref, ok := refs[d.Path]; ok {
+			out[i].After = ref
+		}
+	}
+	return out
 }

@@ -64,8 +64,14 @@ func valueNode(v any) (*yaml.Node, error) {
 	case string:
 		return scalarString(x), nil
 	case resource.Ref:
+		if x.Output == "" {
+			return mapping(
+				scalarString("$ref"), scalarString(x.String()),
+			), nil
+		}
 		return mapping(
 			scalarString("$ref"), scalarString(x.String()),
+			scalarString("output"), scalarString(x.Output),
 		), nil
 	case bool:
 		val := "false"

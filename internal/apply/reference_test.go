@@ -561,6 +561,10 @@ type capturingProvider struct {
 	updated []resource.Resource
 }
 
+func (p *capturingProvider) Outputs(resourceType string) []provider.OutputSpec {
+	return provider.OutputsOf(p.Provider, resourceType)
+}
+
 func (p *capturingProvider) Create(ctx context.Context, res resource.Resource) (resource.RemoteResource, error) {
 	p.mu.Lock()
 	p.created = append(p.created, cloneCaptured(res))

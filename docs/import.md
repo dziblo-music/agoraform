@@ -75,6 +75,9 @@ resources:
 
 Computed and read-only fields are omitted. Provider-native identity is not
 emitted as a manifest attribute. Secrets never appear in the output.
+Imported resources expose the same declared outputs as resources created by
+Agoraform after a normal provider read. Reconstructing a cross-provider
+output reference in imported YAML is a separate workflow.
 
 After you add the generated configuration, `agoraform plan` against the
 unchanged remote resource should report no changes. Plan resolves the object

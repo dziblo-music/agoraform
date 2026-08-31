@@ -58,6 +58,11 @@ func (id Identity) IsZero() bool {
 	return id.ID == ""
 }
 
+// CloneValue returns a deep copy of a YAML-like attribute value.
+func CloneValue(v any) any {
+	return cloneValue(v)
+}
+
 func cloneValue(v any) any {
 	switch x := v.(type) {
 	case map[string]any:

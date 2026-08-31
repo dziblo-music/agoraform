@@ -3,6 +3,7 @@ package manifest_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -252,6 +253,57 @@ func TestParseResourceReference(t *testing.T) {
 	if ref.String() != "fake.widget.homepage" {
 		t.Fatalf("parent = %s, want fake.widget.homepage", ref)
 	}
+	if ref.HasOutput() {
+		t.Fatal("address-only parent reference should not select an output")
+	}
+}
+
+func TestParseOutputReference(t *testing.T) {
+	t.Parallel()
+
+	src := []byte(`
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.homepage
+    attributes:
+      title: Homepage
+  - address: fake.widget.banner
+    attributes:
+      title: Banner
+      parent:
+        $ref: fake.widget.homepage
+      label:
+        $ref: fake.widget.homepage
+        output: token
+  - address: alt.note.banner
+    attributes:
+      text:
+        $ref: fake.widget.homepage
+        output: token
+`)
+	m, err := manifest.Parse(src, "output.yaml")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(m.Resources) != 3 {
+		t.Fatalf("resources = %d, want 3", len(m.Resources))
+	}
+
+	child := m.Resources[1]
+	parent, ok := resource.AsRef(child.Attributes["parent"])
+	if !ok || parent.HasOutput() || parent.String() != "fake.widget.homepage" {
+		t.Fatalf("parent = (%v, %v), want address-only homepage ref", parent, ok)
+	}
+	label, ok := resource.AsRef(child.Attributes["label"])
+	if !ok || label.Output != fake.OutputToken || label.String() != "fake.widget.homepage" {
+		t.Fatalf("label = (%v, %v), want homepage token output", label, ok)
+	}
+
+	note := m.Resources[2]
+	text, ok := resource.AsRef(note.Attributes["text"])
+	if !ok || text.Output != fake.OutputToken || text.Address.Provider != "fake" {
+		t.Fatalf("cross-provider text = (%v, %v)", text, ok)
+	}
 }
 
 func TestParseNestedReferences(t *testing.T) {
@@ -299,6 +351,85 @@ func TestCheckProvidersWithReference(t *testing.T) {
 	}
 	if err := manifest.CheckProviders(context.Background(), m, reg); err != nil {
 		t.Fatalf("referenced widgets: %v", err)
+	}
+}
+
+func TestCheckProvidersOutputReferences(t *testing.T) {
+	t.Parallel()
+
+	src := []byte(`
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.homepage
+    attributes:
+      title: Homepage
+  - address: alt.note.banner
+    attributes:
+      text:
+        $ref: fake.widget.homepage
+        output: token
+`)
+	m, err := manifest.Parse(src, "output.yaml")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	reg := provider.NewRegistry()
+	if err := reg.Register(fake.New()); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Register(fake.NewAlt()); err != nil {
+		t.Fatal(err)
+	}
+	if err := manifest.CheckProviders(context.Background(), m, reg); err != nil {
+		t.Fatalf("cross-provider output: %v", err)
+	}
+
+	cases := []struct {
+		name   string
+		output string
+		want   string
+	}{
+		{name: "unknown", output: "etag", want: "no declared output"},
+		{name: "sensitive", output: fake.OutputSecret, want: "sensitive"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			bad := []byte(fmt.Sprintf(`
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.homepage
+    attributes:
+      title: Homepage
+  - address: alt.note.banner
+    attributes:
+      text:
+        $ref: fake.widget.homepage
+        output: %s
+`, tc.output))
+			parsed, err := manifest.Parse(bad, tc.name+".yaml")
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			reg := provider.NewRegistry()
+			if err := reg.Register(fake.New()); err != nil {
+				t.Fatal(err)
+			}
+			if err := reg.Register(fake.NewAlt()); err != nil {
+				t.Fatal(err)
+			}
+			err = manifest.CheckProviders(context.Background(), parsed, reg)
+			if err == nil {
+				t.Fatal("CheckProviders succeeded, want output error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %q, want %q", err, tc.want)
+			}
+			if strings.Contains(err.Error(), "s3cret") {
+				t.Fatalf("error leaked a secret: %q", err)
+			}
+		})
 	}
 }
 
@@ -368,7 +499,7 @@ resources:
         $ref: fake.widget.other
         note: not-allowed
 `,
-			want: "must contain only $ref",
+			want: "may only contain $ref and optional output",
 		},
 		{
 			name: "invalid address",
@@ -381,6 +512,40 @@ resources:
         $ref: not-an-address
 `,
 			want: "provider.type.name",
+		},
+		{
+			name: "empty output",
+			src: `
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.homepage
+    attributes:
+      title: Homepage
+  - address: fake.widget.banner
+    attributes:
+      title: Banner
+      label:
+        $ref: fake.widget.homepage
+        output: "  "
+`,
+			want: "output must be a non-empty string",
+		},
+		{
+			name: "non-string output",
+			src: `
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.homepage
+    attributes:
+      title: Homepage
+  - address: fake.widget.banner
+    attributes:
+      title: Banner
+      label:
+        $ref: fake.widget.homepage
+        output: 1
+`,
+			want: "output must be a string",
 		},
 	}
 

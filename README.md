@@ -29,7 +29,7 @@ v0.3.0.
 | Matomo resources | `matomo.goal`, `matomo.variable`, `matomo.trigger`, `matomo.tag` |
 | Google Ads conversion | `googleads.conversion_action`, `googleads.customer_conversion_goal` |
 | Google Ads Search | `googleads.campaign_budget`, `googleads.campaign`, `googleads.campaign_conversion_goal`, `googleads.ad_group`, `googleads.keyword`, `googleads.responsive_search_ad`, `googleads.campaign_location`, `googleads.campaign_language` |
-| References | Logical `$ref` dependencies |
+| References | Logical `$ref` dependencies and optional named outputs |
 | Import | Supported Matomo resources plus supported Google Ads conversion measurement and Search campaign resources |
 | Matomo publication | Declarative through provider configuration, visible in `plan`, executed during `apply` |
 | State | local `agoraform.state.json` |
@@ -334,8 +334,8 @@ for Matomo verification and the application-side data-layer event contract.
 
 ## Resource references and dependency ordering
 
-Dependencies are expressed with a single-key `$ref` object containing a logical
-Agoraform address:
+Dependencies are expressed with a `$ref` object containing a logical
+Agoraform address. Address-only references remain a single-key map:
 
 ```yaml
 resources:
@@ -351,6 +351,15 @@ resources:
         $ref: matomo.trigger.trial_started
       eventCategory: trial
       eventAction: started
+```
+
+An optional `output` selector consumes one declared non-sensitive named
+output, including from another provider:
+
+```yaml
+conversionId:
+  $ref: googleads.conversion_action.trial_started
+  output: conversionId
 ```
 
 Agoraform validates references before remote mutation, rejects missing

@@ -225,11 +225,19 @@ func resolveDesired(res resource.Resource, runtime map[string]resource.Resolved)
 		if !ok || got.Identity.IsZero() {
 			return nil, fmt.Errorf("attribute %q: dependency %s has no provider-native identity", displayPath(path), ref.Address)
 		}
-		return resource.Resolved{
-			Address:  got.Address,
-			Identity: got.Identity,
-			Outputs:  got.Outputs.Clone(),
-		}, nil
+		if !ref.HasOutput() {
+			return resource.Resolved{
+				Address:  got.Address,
+				Identity: got.Identity,
+				Outputs:  got.Outputs.Clone(),
+			}, nil
+		}
+		if val, ok := got.Select(ref.Output); ok {
+			return val, nil
+		}
+		// Destroy uses identity, not output values. Keep the logical
+		// selector when the named output is unavailable.
+		return ref, nil
 	})
 	if err != nil {
 		return resource.Resource{}, err

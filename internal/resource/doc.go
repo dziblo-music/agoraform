@@ -6,7 +6,8 @@
 // (read-only) attributes that are not set in configuration.
 //
 // Ref is a first-class reference to another logical resource address. It is
-// configuration, not a provider-native identity. Apply may replace a Ref with
-// a Resolved value immediately before Create/Update so providers can translate
-// the bound identity into native API values.
+// configuration, not a provider-native identity. An optional Output selector
+// names one declared non-sensitive runtime value. Apply replaces an
+// address-only Ref with a Resolved binding immediately before Create/Update,
+// and replaces an output Ref with a clone of that named value.
 package resource

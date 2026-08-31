@@ -40,6 +40,11 @@ A missing unbound remote resource becomes a create. A bound identity missing
 remotely is a stale-state error rather than an implicit replacement. Provider
 normalizers may remove computed/default noise before diffing.
 
+Output references render as the logical `{ $ref, output }` expression. Plan
+never fabricates a remote output value. When a prerequisite already exists,
+plan uses the live output only to avoid perpetual diffs after apply; the
+printed plan still shows the logical selector rather than the opaque value.
+
 ## Provider actions
 
 Some desired states require provider-level convergence after resource CRUD.

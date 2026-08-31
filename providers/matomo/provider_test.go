@@ -233,3 +233,51 @@ func TestProviderClientRejectsMalformedURL(t *testing.T) {
 		t.Fatalf("secret leaked in %q", err)
 	}
 }
+
+func TestOutputsAreNotAutomaticallyDeclared(t *testing.T) {
+	t.Parallel()
+
+	p := matomo.NewFromEnv()
+	catalog, ok := any(p).(provider.OutputCatalog)
+	if !ok {
+		t.Fatal("matomo provider must implement OutputCatalog")
+	}
+	for _, typ := range p.ResourceTypes() {
+		if specs := catalog.Outputs(typ); len(specs) != 0 {
+			t.Fatalf("Outputs(%s) = %+v, want none; computed fields are not automatically selectable", typ, specs)
+		}
+	}
+
+	goal := resource.Resource{
+		Address: mustMatomoOutputAddress(t, "matomo.goal.trial_started"),
+		Attributes: resource.Attributes{
+			"name":           "Trial Started",
+			"matchAttribute": "event_action",
+			"pattern":        "trialStarted",
+		},
+	}
+	consumer := resource.Resource{
+		Address: mustMatomoOutputAddress(t, "matomo.tag.banner"),
+		Attributes: resource.Attributes{
+			"eventAction": resource.Ref{Address: goal.Address, Output: "idgoal"},
+		},
+	}
+	err := provider.ValidateOutputRefs([]resource.Resource{goal, consumer}, func(resource.Address) (provider.Reader, error) {
+		return p, nil
+	})
+	if err == nil {
+		t.Fatal("ValidateOutputRefs succeeded, want undeclared Matomo output")
+	}
+	if !strings.Contains(err.Error(), "no declared output") {
+		t.Fatalf("error = %q, want no declared output", err)
+	}
+}
+
+func mustMatomoOutputAddress(t *testing.T, s string) resource.Address {
+	t.Helper()
+	addr, err := resource.ParseAddress(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return addr
+}

@@ -119,8 +119,9 @@ func Run(ctx context.Context, desired []resource.Resource, lookup Lookup, st Per
 // among unrelated resources. Immediately before each mutation, explicit
 // resource.Ref values are replaced with resource.Resolved bindings from
 // earlier operations, or from the planned identity and computed outputs
-// for unchanged prerequisites. Providers translate those bindings into
-// native API values.
+// for unchanged prerequisites. A Ref with an output selector is replaced
+// with a clone of that named non-sensitive value. Providers translate
+// address-only bindings into native API values.
 //
 // It does not recompute diffs. For updates, it re-reads the identity-bound
 // live resource so Provider.Update receives the complete RemoteResource,
@@ -156,8 +157,16 @@ func Execute(ctx context.Context, p *plan.Plan, desired []resource.Resource, loo
 	if err := preflight(changes, byAddr, lookup); err != nil {
 		return Result{}, err
 	}
+	if lookup != nil {
+		if err := provider.ValidateOutputRefs(desired, func(addr resource.Address) (provider.Reader, error) {
+			return lookup(addr)
+		}); err != nil {
+			return Result{}, fmt.Errorf("apply: %w", err)
+		}
+	}
 
 	runtime := seedRuntime(changes)
+	specs := outputSpecs(desired, lookup)
 
 	var result Result
 	for _, change := range changes {
@@ -165,7 +174,7 @@ func Execute(ctx context.Context, p *plan.Plan, desired []resource.Resource, loo
 		case plan.ActionUnchanged:
 			continue
 		case plan.ActionCreate:
-			desiredRes, err := resolveDesired(byAddr[change.Address.String()], runtime)
+			desiredRes, err := resolveDesired(byAddr[change.Address.String()], runtime, specs)
 			if err != nil {
 				return result, applyError(change.Address, "create", err)
 			}
@@ -176,7 +185,7 @@ func Execute(ctx context.Context, p *plan.Plan, desired []resource.Resource, loo
 			remember(runtime, change.Address, live, resource.Identity{})
 			result.Created++
 		case plan.ActionUpdate:
-			desiredRes, err := resolveDesired(byAddr[change.Address.String()], runtime)
+			desiredRes, err := resolveDesired(byAddr[change.Address.String()], runtime, specs)
 			if err != nil {
 				return result, applyError(change.Address, "update", err)
 			}
@@ -265,17 +274,38 @@ func remember(runtime map[string]resource.Resolved, addr resource.Address, live 
 	}
 }
 
-func resolveDesired(res resource.Resource, runtime map[string]resource.Resolved) (resource.Resource, error) {
+func resolveDesired(res resource.Resource, runtime map[string]resource.Resolved, specs map[string][]provider.OutputSpec) (resource.Resource, error) {
 	mapped, err := resource.MapRefs(res.Attributes, func(path string, ref resource.Ref) (any, error) {
 		got, ok := runtime[ref.Address.String()]
 		if !ok || got.Identity.IsZero() {
 			return nil, fmt.Errorf("attribute %q: dependency %s has no provider-native identity", displayPath(path), ref.Address)
 		}
-		return resource.Resolved{
-			Address:  got.Address,
-			Identity: got.Identity,
-			Outputs:  got.Outputs.Clone(),
-		}, nil
+		if !ref.HasOutput() {
+			return resource.Resolved{
+				Address:  got.Address,
+				Identity: got.Identity,
+				Outputs:  got.Outputs.Clone(),
+			}, nil
+		}
+		spec, declared := provider.FindOutput(specs[ref.Address.String()], ref.Output)
+		if !declared {
+			return nil, fmt.Errorf("attribute %q: %s has no declared output %q", displayPath(path), ref.Address, ref.Output)
+		}
+		if spec.Sensitive {
+			return nil, fmt.Errorf("attribute %q: output %q on %s is sensitive and cannot be referenced", displayPath(path), ref.Output, ref.Address)
+		}
+		val, ok := got.Select(ref.Output)
+		if !ok {
+			return nil, fmt.Errorf("attribute %q: dependency %s has no output %q", displayPath(path), ref.Address, ref.Output)
+		}
+		if !provider.KindMatches(val, spec.Kind) {
+			gotKind, kindOK := provider.KindOf(val)
+			if !kindOK {
+				gotKind = "unsupported"
+			}
+			return nil, fmt.Errorf("attribute %q: output %q on %s has kind %s, want %s", displayPath(path), ref.Output, ref.Address, gotKind, spec.Kind)
+		}
+		return val, nil
 	})
 	if err != nil {
 		return resource.Resource{}, err
@@ -296,6 +326,21 @@ func displayPath(path string) string {
 		return "(attributes)"
 	}
 	return path
+}
+
+func outputSpecs(desired []resource.Resource, lookup Lookup) map[string][]provider.OutputSpec {
+	out := make(map[string][]provider.OutputSpec, len(desired))
+	if lookup == nil {
+		return out
+	}
+	for _, res := range desired {
+		p, err := lookup(res.Address)
+		if err != nil || p == nil {
+			continue
+		}
+		out[res.Address.String()] = provider.OutputsOf(p, res.Address.Type)
+	}
+	return out
 }
 
 func preflight(changes []plan.Change, byAddr map[string]resource.Resource, lookup Lookup) error {

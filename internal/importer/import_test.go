@@ -108,6 +108,50 @@ func TestRunYAMLEmitsLogicalReferenceNotIdentity(t *testing.T) {
 	}
 }
 
+func TestRunYAMLOutputReferenceIsLogicalAndAddressOnlyUnchanged(t *testing.T) {
+	t.Parallel()
+
+	p := fake.New()
+	parent := mustAddress(t, "fake.widget.homepage")
+	addr := mustAddress(t, "fake.widget.banner")
+	seedImported(t, p, addr, resource.Attributes{
+		fake.AttrTitle:  "Banner",
+		fake.AttrParent: resource.Ref{Address: parent},
+		fake.AttrLabel: resource.Ref{
+			Address: parent,
+			Output:  fake.OutputToken,
+		},
+	}, resource.Attributes{
+		fake.AttrSerial:   9,
+		fake.OutputToken:  "tok-homepage",
+		fake.OutputSecret: "s3cret-value",
+	})
+
+	st := mustStore(t)
+	got, err := importer.Run(context.Background(), addr, "widget-imported", lookupProvider(p), st)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	wantYAML := `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.banner
+    attributes:
+      label:
+        $ref: fake.widget.homepage
+        output: token
+      parent:
+        $ref: fake.widget.homepage
+      title: Banner
+`
+	if got.YAML != wantYAML {
+		t.Fatalf("YAML = %q, want %q", got.YAML, wantYAML)
+	}
+	if strings.Contains(got.YAML, "tok-homepage") || strings.Contains(got.YAML, "s3cret-value") || strings.Contains(got.YAML, "widget-imported") {
+		t.Fatalf("YAML leaked native or sensitive values:\n%s", got.YAML)
+	}
+}
+
 func TestRunYAMLIsDeterministic(t *testing.T) {
 	t.Parallel()
 

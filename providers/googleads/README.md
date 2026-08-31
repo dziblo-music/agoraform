@@ -92,6 +92,20 @@ the manifest. Computed fields also include `origin`, `ownerCustomer`, tag
 snippets, and, when present in those snippets, `conversionId` and
 `conversionLabel` for downstream website tags.
 
+Declared selectable outputs (non-sensitive strings) are `conversionId` and
+`conversionLabel`. Other computed fields, including resource names and tag
+snippets, are not automatically selectable. Reference them from another
+provider with:
+
+```yaml
+conversionId:
+  $ref: googleads.conversion_action.trial_started
+  output: conversionId
+conversionLabel:
+  $ref: googleads.conversion_action.trial_started
+  output: conversionLabel
+```
+
 Omitted optional fields are not forced onto the remote resource. Equivalent
 live values, including Google Ads enum aliases and default windows, do not
 produce a plan diff.

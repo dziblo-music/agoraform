@@ -32,6 +32,10 @@ const (
 	AttrClickThroughLookbackWindowDays = "clickThroughLookbackWindowDays"
 	AttrViewThroughLookbackWindowDays  = "viewThroughLookbackWindowDays"
 
+	// Declared non-sensitive outputs for cross-provider references.
+	OutputConversionID    = "conversionId"
+	OutputConversionLabel = "conversionLabel"
+
 	conversionActionTypeWebpage = "WEBPAGE"
 	defaultStatus               = "ENABLED"
 	countOne                    = "ONE"

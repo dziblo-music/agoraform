@@ -44,8 +44,11 @@ The default manifest is `agoraform.yaml`.
 ## Resource execution
 
 Creates and updates run sequentially in dependency order. `$ref` values are
-resolved immediately before mutation to runtime bindings containing the
-provider-native identity and computed outputs of prerequisites.
+resolved immediately before mutation. Address-only references become runtime
+bindings containing the provider-native identity and computed outputs of
+prerequisites. References with an `output` selector become a clone of that
+named non-sensitive value. Missing, sensitive, unknown, and wrong-kind
+outputs fail without executing the dependent or any later mutation.
 
 For updates, apply re-reads the exact identity-bound remote object immediately
 before mutation so providers receive the complete live record needed to

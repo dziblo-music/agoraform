@@ -802,6 +802,10 @@ type recordingProvider struct {
 	ops []string
 }
 
+func (p *recordingProvider) Outputs(resourceType string) []provider.OutputSpec {
+	return provider.OutputsOf(p.Provider, resourceType)
+}
+
 func (p *recordingProvider) Create(ctx context.Context, res resource.Resource) (resource.RemoteResource, error) {
 	p.mu.Lock()
 	p.ops = append(p.ops, "create:"+res.Address.String())
