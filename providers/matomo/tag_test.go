@@ -869,6 +869,7 @@ type apiTag struct {
 	Status        string
 	Version       string
 	IDSite        string
+	Parameters    map[string]any
 }
 
 type apiTagTrigger struct {
@@ -1113,6 +1114,16 @@ func (s *tagServer) writeTags(w http.ResponseWriter) {
 		if configName == "" {
 			configName = "Matomo Configuration"
 		}
+		params := tag.Parameters
+		if params == nil {
+			params = map[string]any{
+				"trackingType":  "event",
+				"eventCategory": tag.Category,
+				"eventAction":   tag.Action,
+				"eventName":     tag.EventName,
+				"matomoConfig":  map[string]any{"name": configName, "type": "MatomoConfiguration"},
+			}
+		}
 		item := map[string]any{
 			"idtag":              strconv.Itoa(id),
 			"idcontainerversion": tag.Version,
@@ -1124,13 +1135,7 @@ func (s *tagServer) writeTags(w http.ResponseWriter) {
 			"fireTriggerIds":     fire,
 			"blockTriggerIds":    block,
 			"fireLimit":          tag.FireLimit,
-			"parameters": map[string]any{
-				"trackingType":  "event",
-				"eventCategory": tag.Category,
-				"eventAction":   tag.Action,
-				"eventName":     tag.EventName,
-				"matomoConfig":  map[string]any{"name": configName, "type": "MatomoConfiguration"},
-			},
+			"parameters":         params,
 		}
 		out = append(out, item)
 	}
@@ -1171,6 +1176,7 @@ func (s *tagServer) addTag(w http.ResponseWriter, vals url.Values) {
 		Status:        "active",
 		Version:       s.version,
 		IDSite:        "3",
+		Parameters:    formTagParameters(vals),
 	}
 	_, _ = io.WriteString(w, strconv.Itoa(id))
 }
@@ -1191,6 +1197,20 @@ func (s *tagServer) updateTag(w http.ResponseWriter, vals url.Values) {
 		return
 	}
 	tag.Name = vals.Get("name")
+	if params := formTagParameters(vals); len(params) > 0 {
+		if tag.Parameters == nil {
+			tag.Parameters = map[string]any{}
+		}
+		for k, v := range params {
+			tag.Parameters[k] = v
+		}
+		if category, ok := params["eventCategory"].(string); ok {
+			tag.Category = category
+		}
+		if action, ok := params["eventAction"].(string); ok {
+			tag.Action = action
+		}
+	}
 	if category := vals.Get("parameters[eventCategory]"); category != "" {
 		tag.Category = category
 	}
@@ -1274,6 +1294,25 @@ func (s *tagServer) updateCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.updates
+}
+
+func formTagParameters(vals url.Values) map[string]any {
+	out := map[string]any{}
+	const prefix = "parameters["
+	for key, values := range vals {
+		if !strings.HasPrefix(key, prefix) || !strings.HasSuffix(key, "]") {
+			continue
+		}
+		name := strings.TrimSuffix(strings.TrimPrefix(key, prefix), "]")
+		if name == "" || strings.Contains(name, "[") {
+			continue
+		}
+		if len(values) == 0 {
+			continue
+		}
+		out[name] = values[0]
+	}
+	return out
 }
 
 func boundIdentityCatalog(t *testing.T, address, remoteID string) matomo.IdentityCatalog {

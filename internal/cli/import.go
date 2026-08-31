@@ -63,14 +63,19 @@ Exit codes:
 				return err
 			}
 
-			result, err := importer.Run(cmd.Context(), addr, args[1], func(a resource.Address) (provider.Provider, error) {
+			var catalog provider.OutputMatcher
+			lookup := func(a resource.Address) (provider.Provider, error) {
 				p, err := reg.LookupFor(a)
 				if err != nil {
 					return nil, err
 				}
 				attachImportIdentityCatalog(p, st)
+				attachImportOutputMatcher(p, catalog)
 				return p, nil
-			}, st)
+			}
+			catalog = importer.NewOutputCatalog(stateBindings{st}, lookup)
+
+			result, err := importer.Run(cmd.Context(), addr, args[1], lookup, st)
 			if err != nil {
 				return err
 			}
@@ -97,6 +102,34 @@ func attachImportIdentityCatalog(p provider.Provider, st *state.Store) {
 	if s, ok := p.(googleAdsCatalogSetter); ok {
 		s.SetIdentityCatalog(st)
 	}
+}
+
+func attachImportOutputMatcher(p provider.Provider, matcher provider.OutputMatcher) {
+	type setter interface {
+		SetOutputMatcher(provider.OutputMatcher)
+	}
+	if s, ok := p.(setter); ok {
+		s.SetOutputMatcher(matcher)
+	}
+}
+
+type stateBindings struct {
+	st *state.Store
+}
+
+func (b stateBindings) Bindings(providerName, resourceType string) ([]importer.RemoteBinding, error) {
+	if b.st == nil {
+		return nil, nil
+	}
+	got, err := b.st.Bindings(providerName, resourceType)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]importer.RemoteBinding, len(got))
+	for i, item := range got {
+		out[i] = importer.RemoteBinding{Address: item.Address, RemoteID: item.RemoteID}
+	}
+	return out, nil
 }
 
 func importManifestPath(fileFlag string) string {

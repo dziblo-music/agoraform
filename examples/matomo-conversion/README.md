@@ -91,6 +91,14 @@ Both names are case-sensitive and must match the manifest. Emit the event once
 per successful conversion. Use a stable, non-secret, non-email identifier for
 `userId`, and apply the privacy and consent rules appropriate to your site.
 
+This example manages a Matomo Analytics event tag. A Google Ads conversion tag
+is a separate `matomo.tag` type (`googleAdsConversion`) that can consume
+`conversionId` and `conversionLabel` from a managed
+`googleads.conversion_action`. Agoraform does not emit the application event
+in either case; the application still pushes `trialStarted` to the data layer.
+Google Tag (`gtag.js`) in the Matomo container remains unmanaged. See the
+[Matomo provider](../../providers/matomo/README.md).
+
 ## Apply and publish
 
 Run the full lifecycle from the directory containing the copied manifest:

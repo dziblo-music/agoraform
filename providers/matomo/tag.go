@@ -31,15 +31,41 @@ const (
 	// matomo.variable of type matomoConfiguration.
 	AttrMatomoConfiguration = "matomoConfiguration"
 
-	tagTypeMatomoAnalytics  = "matomoAnalytics"
-	matomoTypeMatomo        = "Matomo"
-	paramTrackingType       = "trackingType"
-	trackingTypeEvent       = "event"
-	paramMatomoConfig       = "matomoConfig"
-	defaultMatomoConfigName = "Matomo Configuration"
-	defaultFireLimit        = "unlimited"
-	defaultFireDelay        = "0"
-	defaultPriority         = "999"
+	// AttrConversionID is the Google Ads conversion ID for a
+	// googleAdsConversion tag. It may be a literal or an output reference.
+	AttrConversionID = "conversionId"
+	// AttrConversionLabel is the Google Ads conversion label for a
+	// googleAdsConversion tag. It may be a literal or an output reference.
+	AttrConversionLabel = "conversionLabel"
+	// AttrConversionValue is an optional conversion value for a
+	// googleAdsConversion tag.
+	AttrConversionValue = "conversionValue"
+	// AttrConversionCurrency is an optional ISO currency code for a
+	// googleAdsConversion tag.
+	AttrConversionCurrency = "conversionCurrency"
+	// AttrConversionTransactionID is an optional transaction/order id for
+	// a googleAdsConversion tag.
+	AttrConversionTransactionID = "conversionTransactionId"
+
+	tagTypeMatomoAnalytics           = "matomoAnalytics"
+	tagTypeGoogleAdsConversion       = "googleAdsConversion"
+	matomoTypeMatomo                 = "Matomo"
+	matomoTypeGoogleAdsConversion    = "GoogleAdsConversion"
+	paramTrackingType                = "trackingType"
+	trackingTypeEvent                = "event"
+	paramMatomoConfig                = "matomoConfig"
+	paramGoogleAdsConversionID       = "googleAdsConversionId"
+	paramGoogleAdsConversionLabel    = "googleAdsConversionLabel"
+	paramGoogleAdsConversionValue    = "googleAdsConversionValue"
+	paramGoogleAdsConversionCurrency = "googleAdsConversionCurrency"
+	paramGoogleAdsConversionTxnID    = "googleAdsConversionTransactionId"
+	defaultMatomoConfigName          = "Matomo Configuration"
+	defaultFireLimit                 = "unlimited"
+	defaultFireDelay                 = "0"
+	defaultPriority                  = "999"
+	computedTagParameters            = "parameters"
+	googleAdsOutputProvider          = "googleads"
+	googleAdsOutputConversionAction  = "conversion_action"
 
 	// MaxEventFieldLen is Matomo's maximum length for event category,
 	// action, name, and value parameters.
@@ -51,6 +77,23 @@ const (
 
 var (
 	supportedTagAttrs = map[string]struct{}{
+		AttrType:                    {},
+		AttrTrigger:                 {},
+		AttrEventCategory:           {},
+		AttrEventAction:             {},
+		AttrEventName:               {},
+		AttrEventValue:              {},
+		AttrName:                    {},
+		AttrContainer:               {},
+		AttrMatomoConfiguration:     {},
+		AttrConversionID:            {},
+		AttrConversionLabel:         {},
+		AttrConversionValue:         {},
+		AttrConversionCurrency:      {},
+		AttrConversionTransactionID: {},
+	}
+
+	matomoAnalyticsTagAttrs = map[string]struct{}{
 		AttrType:                {},
 		AttrTrigger:             {},
 		AttrEventCategory:       {},
@@ -62,41 +105,73 @@ var (
 		AttrMatomoConfiguration: {},
 	}
 
+	googleAdsConversionTagAttrs = map[string]struct{}{
+		AttrType:                    {},
+		AttrTrigger:                 {},
+		AttrConversionID:            {},
+		AttrConversionLabel:         {},
+		AttrConversionValue:         {},
+		AttrConversionCurrency:      {},
+		AttrConversionTransactionID: {},
+		AttrName:                    {},
+		AttrContainer:               {},
+	}
+
 	computedTagAttrs = map[string]struct{}{
-		"idtag":              {},
-		"idTag":              {},
-		"idcontainertag":     {},
-		"idcontainerversion": {},
-		"idcontainer":        {},
-		"idsite":             {},
-		"status":             {},
-		"typeMetadata":       {},
-		"parameters":         {},
-		"fireTriggerIds":     {},
-		"fire_trigger_ids":   {},
-		"blockTriggerIds":    {},
-		"block_trigger_ids":  {},
-		"fireLimit":          {},
-		"fire_limit":         {},
-		"fireDelay":          {},
-		"fire_delay":         {},
-		"priority":           {},
-		"startDate":          {},
-		"start_date":         {},
-		"endDate":            {},
-		"end_date":           {},
-		"description":        {},
-		"created_date":       {},
-		"updated_date":       {},
-		"matomoConfig":       {},
-		"trackingType":       {},
+		"idtag":                          {},
+		"idTag":                          {},
+		"idcontainertag":                 {},
+		"idcontainerversion":             {},
+		"idcontainer":                    {},
+		"idsite":                         {},
+		"status":                         {},
+		"typeMetadata":                   {},
+		"parameters":                     {},
+		"fireTriggerIds":                 {},
+		"fire_trigger_ids":               {},
+		"blockTriggerIds":                {},
+		"block_trigger_ids":              {},
+		"fireLimit":                      {},
+		"fire_limit":                     {},
+		"fireDelay":                      {},
+		"fire_delay":                     {},
+		"priority":                       {},
+		"startDate":                      {},
+		"start_date":                     {},
+		"endDate":                        {},
+		"end_date":                       {},
+		"description":                    {},
+		"created_date":                   {},
+		"updated_date":                   {},
+		"matomoConfig":                   {},
+		"trackingType":                   {},
+		paramGoogleAdsConversionID:       {},
+		paramGoogleAdsConversionLabel:    {},
+		paramGoogleAdsConversionValue:    {},
+		paramGoogleAdsConversionCurrency: {},
+		paramGoogleAdsConversionTxnID:    {},
 	}
 
 	supportedTagTypes = map[string]string{
-		tagTypeMatomoAnalytics: matomoTypeMatomo,
+		tagTypeMatomoAnalytics:     matomoTypeMatomo,
+		tagTypeGoogleAdsConversion: matomoTypeGoogleAdsConversion,
 	}
 
 	optionalTagEventAttrs = []string{AttrEventName, AttrEventValue}
+
+	optionalGoogleAdsConversionAttrs = []string{
+		AttrConversionValue,
+		AttrConversionCurrency,
+		AttrConversionTransactionID,
+	}
+
+	googleAdsConversionParamByAttr = map[string]string{
+		AttrConversionID:            paramGoogleAdsConversionID,
+		AttrConversionLabel:         paramGoogleAdsConversionLabel,
+		AttrConversionValue:         paramGoogleAdsConversionValue,
+		AttrConversionCurrency:      paramGoogleAdsConversionCurrency,
+		AttrConversionTransactionID: paramGoogleAdsConversionTxnID,
+	}
 )
 
 func (p *Provider) validateTag(res resource.Resource) error {
@@ -109,20 +184,6 @@ func (p *Provider) validateTag(res resource.Resource) error {
 		attrs = resource.Attributes{}
 	}
 
-	for key := range attrs {
-		if _, ok := supportedTagAttrs[key]; ok {
-			continue
-		}
-		if _, computed := computedTagAttrs[key]; computed {
-			return fmt.Errorf("resource %s: %s is computed and cannot be set in configuration", res.Address, key)
-		}
-		return fmt.Errorf("resource %s: unsupported attribute %q; matomo.tag supports %s, %s, %s, %s, optional %s, optional %s, optional %s, optional %s, and optional %s", res.Address, key, AttrType, AttrTrigger, AttrEventCategory, AttrEventAction, AttrEventName, AttrEventValue, AttrName, AttrContainer, AttrMatomoConfiguration)
-	}
-
-	if _, _, err := optionalContainerRef(res); err != nil {
-		return err
-	}
-
 	typ, err := requiredString(res, AttrType)
 	if err != nil {
 		return err
@@ -131,21 +192,47 @@ func (p *Provider) validateTag(res resource.Resource) error {
 		return fmt.Errorf("resource %s: attribute %q must be one of %s", res.Address, AttrType, joinSorted(keys(supportedTagTypes)))
 	}
 
+	allowed := tagAttrsForType(typ)
+	for key := range attrs {
+		if _, ok := allowed[key]; ok {
+			continue
+		}
+		if _, supported := supportedTagAttrs[key]; supported {
+			return fmt.Errorf("resource %s: attribute %q is not supported for type %q", res.Address, key, typ)
+		}
+		if _, computed := computedTagAttrs[key]; computed {
+			return fmt.Errorf("resource %s: %s is computed and cannot be set in configuration", res.Address, key)
+		}
+		return fmt.Errorf("resource %s: unsupported attribute %q", res.Address, key)
+	}
+
+	if _, _, err := optionalContainerRef(res); err != nil {
+		return err
+	}
+
 	if _, err := requiredTriggerRef(res); err != nil {
 		return err
 	}
-	if _, _, err := optionalMatomoConfigurationRef(res); err != nil {
-		return err
-	}
-	if err := requiredEventField(res, AttrEventCategory); err != nil {
-		return err
-	}
-	if err := requiredEventField(res, AttrEventAction); err != nil {
-		return err
-	}
-	for _, key := range optionalTagEventAttrs {
-		if err := optionalEventField(res, key); err != nil {
+
+	switch typ {
+	case tagTypeGoogleAdsConversion:
+		if err := validateGoogleAdsConversionTag(res); err != nil {
 			return err
+		}
+	default:
+		if _, _, err := optionalMatomoConfigurationRef(res); err != nil {
+			return err
+		}
+		if err := requiredEventField(res, AttrEventCategory); err != nil {
+			return err
+		}
+		if err := requiredEventField(res, AttrEventAction); err != nil {
+			return err
+		}
+		for _, key := range optionalTagEventAttrs {
+			if err := optionalEventField(res, key); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -167,7 +254,11 @@ func (p *Provider) validateTag(res resource.Resource) error {
 		if nameSet {
 			return fmt.Errorf("resource %s: attribute %q must be at most %d characters", res.Address, AttrName, MaxTagNameLen)
 		}
-		return fmt.Errorf("resource %s: tag display name must be at most %d characters; set %s or shorten %s", res.Address, MaxTagNameLen, AttrName, AttrEventAction)
+		hint := AttrEventAction
+		if typ == tagTypeGoogleAdsConversion {
+			hint = AttrName
+		}
+		return fmt.Errorf("resource %s: tag display name must be at most %d characters; set %s or shorten %s", res.Address, MaxTagNameLen, AttrName, hint)
 	}
 
 	return nil
@@ -277,7 +368,7 @@ func (p *Provider) updateTag(ctx context.Context, desired resource.Resource, act
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: %w", desired.Address, err)
 	}
-	preserved := tagPreserved(current)
+	preserved := tagPreserved(current, stringAttr(desired.Attributes, AttrType))
 	if err := tm.UpdateContainerTag(ctx, version, actual.Identity.ID, in, preserved); err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: %w", desired.Address, err)
 	}
@@ -345,6 +436,20 @@ func (p *Provider) comparableTag(attrs resource.Attributes, addr resource.Addres
 	if err != nil {
 		return nil, fmt.Errorf("attribute %q %w", AttrType, err)
 	}
+	if typ == tagTypeGoogleAdsConversion {
+		return p.comparableGoogleAdsConversionTag(attrs, addr)
+	}
+	return p.comparableMatomoAnalyticsTag(attrs, addr)
+}
+
+func (p *Provider) comparableMatomoAnalyticsTag(attrs resource.Attributes, addr resource.Address) (resource.Attributes, error) {
+	if attrs == nil {
+		attrs = resource.Attributes{}
+	}
+	typ, err := coerceString(attrs[AttrType])
+	if err != nil {
+		return nil, fmt.Errorf("attribute %q %w", AttrType, err)
+	}
 	name, err := coerceString(attrs[AttrName])
 	if err != nil {
 		return nil, fmt.Errorf("attribute %q %w", AttrName, err)
@@ -399,10 +504,13 @@ func (p *Provider) comparableTag(attrs resource.Attributes, addr resource.Addres
 func (p *Provider) remoteTag(addr resource.Address, tag client.Tag, desired resource.Attributes) (resource.RemoteResource, error) {
 	agoraType, ok := agoraTagType(tag.Type)
 	if !ok {
-		return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: remote tag %q has unsupported type %q; v0.2 supports %s", addr, tag.IDTag, tag.Type, joinSorted(keys(supportedTagTypes)))
+		return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: remote tag %q has unsupported type %q; supported types are %s", addr, tag.IDTag, tag.Type, joinSorted(keys(supportedTagTypes)))
+	}
+	if agoraType == tagTypeGoogleAdsConversion {
+		return p.remoteGoogleAdsConversionTag(addr, tag, desired)
 	}
 	if tracking := parameterString(tag.Parameters, paramTrackingType); tracking != "" && tracking != trackingTypeEvent {
-		return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: remote tag %q has unsupported trackingType %q; v0.2 supports %s", addr, tag.IDTag, tracking, trackingTypeEvent)
+		return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: remote tag %q has unsupported trackingType %q; matomoAnalytics supports %s", addr, tag.IDTag, tracking, trackingTypeEvent)
 	}
 
 	attrs := resource.Attributes{
@@ -432,28 +540,7 @@ func (p *Provider) remoteTag(addr resource.Address, tag client.Tag, desired reso
 		attrs[AttrMatomoConfiguration] = cfg
 	}
 
-	computed := resource.Attributes{}
-	setComputed(computed, "idtag", tag.IDTag)
-	setComputed(computed, "idcontainerversion", tag.IDContainerVersion)
-	setComputed(computed, "idsite", tag.IDSite)
-	setComputed(computed, "status", tag.Status)
-	setComputed(computed, "description", tag.Description)
-	setComputed(computed, "fire_limit", tag.FireLimit)
-	setComputed(computed, "fire_delay", tag.FireDelay)
-	setComputed(computed, "priority", tag.Priority)
-	setComputed(computed, "start_date", tag.StartDate)
-	setComputed(computed, "end_date", tag.EndDate)
-	if len(tag.FireTriggerIDs) > 0 {
-		computed["fire_trigger_ids"] = strings.Join(tag.FireTriggerIDs, ",")
-	}
-	if len(tag.BlockTriggerIDs) > 0 {
-		computed["block_trigger_ids"] = strings.Join(tag.BlockTriggerIDs, ",")
-	}
-	if cfg := parameterString(tag.Parameters, paramMatomoConfig); cfg != "" {
-		setComputed(computed, paramMatomoConfig, cfg)
-	} else if wrapped, ok := client.NormalizeMatomoConfig(tag.Parameters[paramMatomoConfig]).(string); ok {
-		setComputed(computed, paramMatomoConfig, wrapped)
-	}
+	computed := tagComputed(tag)
 
 	return resource.RemoteResource{
 		Address:    addr,
@@ -464,6 +551,9 @@ func (p *Provider) remoteTag(addr resource.Address, tag client.Tag, desired reso
 }
 
 func (p *Provider) tagInput(ctx context.Context, res resource.Resource, live *resource.RemoteResource) (client.TagInput, error) {
+	if stringAttr(res.Attributes, AttrType) == tagTypeGoogleAdsConversion {
+		return p.googleAdsConversionTagInput(ctx, res, live)
+	}
 	triggerID, err := p.resolvedTriggerID(res.Attributes[AttrTrigger])
 	if err != nil {
 		return client.TagInput{}, err
@@ -731,7 +821,36 @@ func (p *Provider) liveMatomoConfigurationAttr(raw string, desired any, original
 	return wrapped
 }
 
-func tagPreserved(live resource.RemoteResource) client.TagPreservedFields {
+func tagComputed(tag client.Tag) resource.Attributes {
+	computed := resource.Attributes{}
+	setComputed(computed, "idtag", tag.IDTag)
+	setComputed(computed, "idcontainerversion", tag.IDContainerVersion)
+	setComputed(computed, "idsite", tag.IDSite)
+	setComputed(computed, "status", tag.Status)
+	setComputed(computed, "description", tag.Description)
+	setComputed(computed, "fire_limit", tag.FireLimit)
+	setComputed(computed, "fire_delay", tag.FireDelay)
+	setComputed(computed, "priority", tag.Priority)
+	setComputed(computed, "start_date", tag.StartDate)
+	setComputed(computed, "end_date", tag.EndDate)
+	if len(tag.FireTriggerIDs) > 0 {
+		computed["fire_trigger_ids"] = strings.Join(tag.FireTriggerIDs, ",")
+	}
+	if len(tag.BlockTriggerIDs) > 0 {
+		computed["block_trigger_ids"] = strings.Join(tag.BlockTriggerIDs, ",")
+	}
+	if cfg := parameterString(tag.Parameters, paramMatomoConfig); cfg != "" {
+		setComputed(computed, paramMatomoConfig, cfg)
+	} else if wrapped, ok := client.NormalizeMatomoConfig(tag.Parameters[paramMatomoConfig]).(string); ok {
+		setComputed(computed, paramMatomoConfig, wrapped)
+	}
+	return computed
+}
+
+func tagPreserved(live resource.RemoteResource, typ string) client.TagPreservedFields {
+	if typ == tagTypeGoogleAdsConversion {
+		return googleAdsTagPreserved(live)
+	}
 	block := splitComputedIDs(computedString(live.Computed, "block_trigger_ids"))
 	params := map[string]any{}
 	if cfg := computedString(live.Computed, paramMatomoConfig); cfg != "" {
@@ -761,6 +880,15 @@ func defaultTagName(addr resource.Address, attrs resource.Attributes) string {
 		return action
 	}
 	return addr.Name
+}
+
+func tagAttrsForType(typ string) map[string]struct{} {
+	switch typ {
+	case tagTypeGoogleAdsConversion:
+		return googleAdsConversionTagAttrs
+	default:
+		return matomoAnalyticsTagAttrs
+	}
 }
 
 func matomoTagType(agoraType string) string {

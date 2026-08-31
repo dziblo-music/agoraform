@@ -76,8 +76,12 @@ resources:
 Computed and read-only fields are omitted. Provider-native identity is not
 emitted as a manifest attribute. Secrets never appear in the output.
 Imported resources expose the same declared outputs as resources created by
-Agoraform after a normal provider read. Reconstructing a cross-provider
-output reference in imported YAML is a separate workflow.
+Agoraform after a normal provider read. Import reconstructs `{ $ref, output }`
+when an already-bound resource uniquely matches a declared non-sensitive
+output. Matching uses bound identities already in local state; it is not a
+separate command. Ambiguous and absent matches emit the supported literal so
+the imported configuration can still produce a zero-change plan. Import never
+guesses a relationship.
 
 After you add the generated configuration, `agoraform plan` against the
 unchanged remote resource should report no changes. Plan resolves the object
@@ -342,6 +346,15 @@ resources are already bound in local state:
   `matomoConfiguration: { $ref: matomo.variable.NAME }`. If that variable
   is not bound, the attribute is omitted and implicit discovery remains in
   effect.
+- Google Ads conversion tags additionally reconstruct `conversionId` and
+  `conversionLabel` as `{ $ref, output }` when a bound
+  `googleads.conversion_action` uniquely matches the remote conversion id or
+  label through its declared non-sensitive outputs. Equivalent ids such as
+  `9988776655` and `AW-9988776655` are treated as the same conversion id.
+  Ambiguous and absent matches emit the supported literal values so the
+  imported configuration can still produce a zero-change plan. Import never
+  guesses a relationship. Cross-provider reconstruction uses bound identities
+  already in local state; it is not a separate workflow.
 
 Import order matters. Import (or apply) related triggers and variables
 before importing a tag:

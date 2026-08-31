@@ -4,7 +4,9 @@ The Matomo provider is Agoraform's first production provider. v0.1.0
 introduced analytics goals, v0.2.0 added Tag Manager variables, triggers,
 tags, and declarative container publication, and the current line adds
 `matomo.container` so a Tag Manager container can be declared and imported
-instead of requiring a pre-created container id.
+instead of requiring a pre-created container id. `matomo.tag` also supports
+Matomo's Google Ads conversion template so a managed Google Ads conversion
+action can supply conversion ID and label through `{ $ref, output }`.
 
 The Agoraform CLI remains provider-neutral. There is no Matomo-specific
 `publish` command.
@@ -188,7 +190,8 @@ variables. Updates preserve unmanaged description/conditions.
 
 ### `matomo.tag`
 
-v0.2.0 Matomo Analytics event tag:
+v0.2.0 Matomo Analytics event tag, and Google Ads conversion tags that fire
+from a managed Matomo trigger:
 
 ```yaml
 - address: matomo.tag.trial_started
@@ -202,6 +205,21 @@ v0.2.0 Matomo Analytics event tag:
     eventAction: trialStarted
     matomoConfiguration:
       $ref: matomo.variable.config
+
+- address: matomo.tag.google_ads_trial_started
+  attributes:
+    container:
+      $ref: matomo.container.main
+    type: googleAdsConversion
+    name: Google Ads trial started
+    trigger:
+      $ref: matomo.trigger.trial_started
+    conversionId:
+      $ref: googleads.conversion_action.trial_started
+      output: conversionId
+    conversionLabel:
+      $ref: googleads.conversion_action.trial_started
+      output: conversionLabel
 ```
 
 Matomo Analytics tags need a Matomo Configuration variable for the Matomo URL,
@@ -215,27 +233,74 @@ If several configuration variables exist and none is named
 `Matomo Configuration`, implicit discovery fails until you add an explicit
 `$ref` or keep a single configuration variable.
 
-Supported fields:
+Supported fields for `type: matomoAnalytics`:
 
 | Attribute | Required | Notes |
 | --- | --- | --- |
-| `type` | yes | v0.2 supports `matomoAnalytics`. |
+| `type` | yes | `matomoAnalytics` or `googleAdsConversion`. Immutable after create. |
 | `trigger` | yes | `$ref` to managed `matomo.trigger`. |
-| `eventCategory` | yes | Literal or supported variable `$ref`. |
-| `eventAction` | yes | Literal or supported variable `$ref`. |
+| `eventCategory` | yes for `matomoAnalytics` | Literal or supported variable `$ref`. |
+| `eventAction` | yes for `matomoAnalytics` | Literal or supported variable `$ref`. |
 | `eventName` | no | Literal or supported variable `$ref`. |
 | `eventValue` | no | Numeric literal/string or supported variable `$ref`. |
-| `name` | no | Defaults from `eventAction` when possible. |
+| `name` | no | Defaults from `eventAction` when possible, otherwise the address name. |
 | `container` | managed mode | `$ref` to the declared `matomo.container`. |
-| `matomoConfiguration` | no | `$ref` to a managed `matomo.variable` with `type: matomoConfiguration`. Omitted tags keep implicit/external discovery. |
+| `matomoConfiguration` | no | `$ref` to a managed `matomo.variable` with type `matomoConfiguration`. Omitted analytics tags keep implicit/external discovery. |
 
-Apply resolves logical references to provider-native identities at runtime.
-Updates preserve unmanaged Matomo tag fields.
+Supported fields for `type: googleAdsConversion`:
+
+| Attribute | Required | Notes |
+| --- | --- | --- |
+| `conversionId` | yes | Literal, Matomo variable `$ref`, or `{ $ref, output: conversionId }` from `googleads.conversion_action`. |
+| `conversionLabel` | yes | Literal, Matomo variable `$ref`, or `{ $ref, output: conversionLabel }` from `googleads.conversion_action`. |
+| `conversionValue` | no | Optional template value. Omitted values are not forced onto the remote tag. |
+| `conversionCurrency` | no | Optional currency code. Omitted values are not forced onto the remote tag. |
+| `conversionTransactionId` | no | Optional order/transaction id. Omitted values are not forced onto the remote tag. |
+
+Google Ads conversion tags do not use a Matomo Configuration variable.
+
+#### Google Ads conversion template (API contract)
+
+Verified against Matomo Tag Manager 5.2+ (`GoogleAdsConversionTag`) and a live
+container compiled from that template. UI labels are not the API contract.
+
+| Agoraform | Matomo `type` / parameter key | Required |
+| --- | --- | --- |
+| `type: googleAdsConversion` | `GoogleAdsConversion` | yes |
+| `conversionId` | `parameters.googleAdsConversionId` | yes |
+| `conversionLabel` | `parameters.googleAdsConversionLabel` | yes |
+| `conversionValue` | `parameters.googleAdsConversionValue` | no |
+| `conversionCurrency` | `parameters.googleAdsConversionCurrency` | no |
+| `conversionTransactionId` | `parameters.googleAdsConversionTransactionId` | no |
+
+The compiled template reads those keys, prefixes a conversion id with `AW-`
+when the stored value does not already include it, and calls
+`gtag('event', 'conversion', { send_to, value, currency, transaction_id })`.
+Empty optional parameters are treated as omitted so they do not create plan
+diffs. Equivalent conversion ids such as `9988776655` and `AW-9988776655`
+compare equal. Unmanaged template parameters and omitted optional fields are
+preserved on update.
+
+Agoraform configures the Matomo tag and can consume outputs from a managed
+Google Ads conversion action. It does not emit the application event. The
+application remains responsible for pushing the configured event to the Tag
+Manager data layer (for example `trialStarted`). Matomo Tag Manager fires the
+conversion tag; Google Ads owns the conversion action. The Google Ads
+conversion tag also depends on a Google Tag (`gtag.js`) in the same container;
+Agoraform does not manage that Google Tag resource.
+
+Apply resolves logical references and selected outputs to provider-native
+values at runtime. Updates preserve unmanaged Matomo tag fields.
 
 Import reconstructs logical trigger/variable `$ref`s when the related remote
 objects are already represented in local state. Import prerequisites first.
 When a `matomo.container` resource is already bound, child import also
-reconstructs `container: { $ref: ... }`.
+reconstructs `container: { $ref: ... }`. For a Google Ads conversion tag,
+import reconstructs `{ $ref, output }` only when a bound
+`googleads.conversion_action` uniquely matches the remote conversion id or
+label through its declared non-sensitive outputs. Ambiguous and absent
+matches emit the supported literal values so the imported configuration can
+still produce a zero-change plan. Import never guesses a relationship.
 
 ## Greenfield and existing-container workflows
 

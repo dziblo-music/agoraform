@@ -204,7 +204,8 @@ v0.2.0 supports Custom Event triggers:
 
 ### `matomo.tag`
 
-v0.2.0 supports Matomo Analytics event tags:
+v0.2.0 supports Matomo Analytics event tags. Google Ads conversion tags use
+the Matomo Tag Manager `GoogleAdsConversion` template:
 
 ```yaml
 - address: matomo.tag.trial_started
@@ -216,15 +217,30 @@ v0.2.0 supports Matomo Analytics event tags:
     eventAction: trialStarted
     matomoConfiguration:
       $ref: matomo.variable.config
+
+- address: matomo.tag.google_ads_trial_started
+  attributes:
+    type: googleAdsConversion
+    trigger:
+      $ref: matomo.trigger.trial_started
+    conversionId:
+      $ref: googleads.conversion_action.trial_started
+      output: conversionId
+    conversionLabel:
+      $ref: googleads.conversion_action.trial_started
+      output: conversionLabel
 ```
 
 Supported event fields may be literals or, where documented, references to
 managed variables. `matomoConfiguration` is an optional `$ref` to a managed
-`matomo.variable` of type `matomoConfiguration`. When omitted, Agoraform
-keeps the existing behavior of locating a single pre-existing Matomo
-Configuration variable in the container. See the
+`matomo.variable` of type `matomoConfiguration` and applies to Matomo
+Analytics tags. Google Ads conversion tags consume `conversionId` and
+`conversionLabel` as literals or as selected outputs from a managed
+`googleads.conversion_action`. Agoraform does not emit the application event;
+the application still pushes the configured data-layer event. See the
 [Matomo provider reference](../providers/matomo/README.md)
-for the complete resource-specific schema and preservation behavior.
+for the complete resource-specific schema, template parameter mapping, and
+preservation behavior.
 
 ## Google Ads resources
 

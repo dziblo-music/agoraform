@@ -56,17 +56,20 @@ func (p *Provider) reconstructTagImportRefs(ctx context.Context, res resource.Re
 	}
 
 	live.Attributes = attrs
+	if stringAttr(attrs, AttrType) == tagTypeGoogleAdsConversion {
+		return p.reconstructGoogleAdsConversionImport(ctx, res, live)
+	}
 	return live, nil
 }
 
 func (p *Provider) importTriggerRef(addr resource.Address, fireIDs []string) (resource.Ref, error) {
 	switch len(fireIDs) {
 	case 0:
-		return resource.Ref{}, fmt.Errorf("matomo: import %s: remote tag has no fire trigger; v0.2 matomo.tag requires exactly one fire trigger", addr)
+		return resource.Ref{}, fmt.Errorf("matomo: import %s: remote tag has no fire trigger; matomo.tag requires exactly one fire trigger", addr)
 	case 1:
 		// continue
 	default:
-		return resource.Ref{}, fmt.Errorf("matomo: import %s: remote tag fires on %d triggers (%s); v0.2 supports exactly one fire trigger represented as a logical $ref", addr, len(fireIDs), strings.Join(fireIDs, ", "))
+		return resource.Ref{}, fmt.Errorf("matomo: import %s: remote tag fires on %d triggers (%s); matomo.tag supports exactly one fire trigger represented as a logical $ref", addr, len(fireIDs), strings.Join(fireIDs, ", "))
 	}
 
 	triggerID := fireIDs[0]
