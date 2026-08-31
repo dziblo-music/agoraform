@@ -167,6 +167,11 @@ removes the former and treats the latter as already-absent convergence.
 Closing a Google Ads customer, tearing down billing, and pruning identities
 that are not in the manifest remain out of scope.
 
+See the [Matomo + Google Ads lifecycle example](../examples/matomo-googleads/README.md)
+for exact destroy ordering, `destroy` versus `remove` versus
+`provider-owned` output, and the non-zero exit caused by a preserved
+customer conversion goal.
+
 ## Out of scope
 
 - Automatic destruction merely because a resource was removed from the

@@ -16,7 +16,9 @@ See the [complete Search campaign example](../../examples/googleads-search/READM
 for a reusable paused SaaS paid-acquisition workflow, import, and Google Ads
 verification before enabling spend. See the
 [conversion-measurement example](../../examples/googleads-conversion/README.md)
-for the conversion-only `Trial Started` / `SIGNUP` workflow.
+for the conversion-only `Trial Started` / `SIGNUP` workflow. See the
+[Matomo + Google Ads lifecycle example](../../examples/matomo-googleads/README.md)
+for a managed Matomo container that consumes conversion-action outputs.
 
 ## Runtime configuration
 

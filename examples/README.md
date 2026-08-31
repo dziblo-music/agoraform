@@ -3,6 +3,11 @@
 Example manifests live here. They are validated automatically by the Go test
 suite and contain no credentials or private deployment values.
 
+- [matomo-googleads](matomo-googleads/README.md) — primary v0.5.0 lifecycle
+  example: managed Matomo Tag Manager container, Matomo Configuration and
+  Data Layer variables, `trialStarted` trigger, Google Ads website
+  conversion action, cross-provider Google Ads conversion tag, publication,
+  import/adoption, and destroy, plus an external-container variant.
 - [googleads-search](googleads-search/README.md) — primary v0.4.0
   quickstart: paused SaaS Search campaign from conversion measurement
   through budget, campaign, conversion-goal biddability, targeting,
@@ -21,6 +26,53 @@ suite and contain no credentials or private deployment values.
 
 Managed identities belong in `agoraform.state.json` beside the working
 manifest, not in resource attributes. See [docs/state.md](../docs/state.md).
+
+## v0.5.0 quickstart
+
+`validate`, `plan`, `apply`, `import`, and `destroy` contact Matomo and
+Google Ads. Omit `MATOMO_CONTAINER_ID` for the primary managed-container
+manifest. Set the required runtime configuration first. Load secret values
+from your normal secret manager; for an interactive Bash session, `read -s`
+avoids placing them in shell command history:
+
+```bash
+export MATOMO_URL=https://matomo.example.com
+export MATOMO_SITE_ID=1
+export GOOGLE_ADS_CLIENT_ID=replace-with-your-oauth-client-id
+export GOOGLE_ADS_CUSTOMER_ID=1234567890
+
+read -rsp "Matomo API token: " MATOMO_TOKEN_AUTH; echo
+export MATOMO_TOKEN_AUTH
+read -rsp "Google Ads developer token: " GOOGLE_ADS_DEVELOPER_TOKEN; echo
+export GOOGLE_ADS_DEVELOPER_TOKEN
+read -rsp "Google Ads OAuth client secret: " GOOGLE_ADS_CLIENT_SECRET; echo
+export GOOGLE_ADS_CLIENT_SECRET
+read -rsp "Google Ads refresh token: " GOOGLE_ADS_REFRESH_TOKEN; echo
+export GOOGLE_ADS_REFRESH_TOKEN
+
+cp examples/matomo-googleads/agoraform.yaml agoraform.yaml
+
+agoraform validate
+agoraform plan
+agoraform apply
+agoraform plan
+```
+
+Do not substitute literal secret values into those prompt commands. On
+automated systems, inject the secrets from your secret manager.
+
+Review the first plan before applying. Agoraform creates the Matomo
+container, configuration variable, data-layer variable, trigger, Google Ads
+conversion action, and Matomo Google Ads conversion tag. The customer
+conversion goal is created by Google Ads and adopted or updated so
+`SIGNUP` / `WEBSITE` is biddable. The example publishes to `live` only when
+the converged draft differs from that environment. The final `plan` should
+report `No changes.` when configuration and remote state are unchanged.
+
+See [matomo-googleads/README.md](matomo-googleads/README.md) for the
+application-side event contract, exact apply and destroy ordering, the
+external-container variant, import guidance, and verification in Matomo and
+Google Ads.
 
 ## v0.4.0 quickstart
 

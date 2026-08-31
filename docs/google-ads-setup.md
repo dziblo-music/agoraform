@@ -232,3 +232,5 @@ For a complete v0.4.0 Search campaign example, see
 [`examples/googleads-search/`](../examples/googleads-search/README.md).
 For the conversion-measurement-only v0.3.0 example, see
 [`examples/googleads-conversion/`](../examples/googleads-conversion/README.md).
+For a v0.5.0 Matomo + Google Ads lifecycle example, see
+[`examples/matomo-googleads/`](../examples/matomo-googleads/README.md).

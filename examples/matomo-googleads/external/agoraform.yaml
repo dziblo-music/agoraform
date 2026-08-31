@@ -1,0 +1,61 @@
+# External-container variant of the v0.5.0 Matomo + Google Ads example.
+# Select an existing container with MATOMO_CONTAINER_ID. Agoraform never
+# deletes that container. Credentials stay outside this manifest.
+
+apiVersion: agoraform.io/v1alpha1
+providers:
+  matomo:
+    publish: true
+    environment: live
+  googleads: {}
+resources:
+  - address: matomo.variable.config
+    attributes:
+      type: matomoConfiguration
+      name: Matomo Configuration
+      matomoUrl: https://matomo.example.com
+      siteId: 1
+      enableLinkTracking: true
+
+  - address: matomo.variable.trial_id
+    attributes:
+      type: dataLayer
+      key: trialId
+      name: Trial ID
+
+  - address: matomo.trigger.trial_started
+    attributes:
+      type: customEvent
+      event: trialStarted
+      name: Trial started
+
+  - address: googleads.conversion_action.trial_started
+    attributes:
+      name: Trial Started
+      category: SIGNUP
+      value: 0
+      count: ONE
+      primaryForGoal: true
+
+  - address: googleads.customer_conversion_goal.signup
+    attributes:
+      category: SIGNUP
+      origin: WEBSITE
+      biddable: true
+      conversionAction:
+        $ref: googleads.conversion_action.trial_started
+
+  - address: matomo.tag.google_ads_trial_started
+    attributes:
+      type: googleAdsConversion
+      name: Google Ads trial started
+      trigger:
+        $ref: matomo.trigger.trial_started
+      conversionId:
+        $ref: googleads.conversion_action.trial_started
+        output: conversionId
+      conversionLabel:
+        $ref: googleads.conversion_action.trial_started
+        output: conversionLabel
+      conversionTransactionId:
+        $ref: matomo.variable.trial_id

@@ -26,7 +26,8 @@ them.
 To create the container from Agoraform instead of selecting one with
 `MATOMO_CONTAINER_ID`, declare a `matomo.container` resource and add
 `container: { $ref: matomo.container.main }` to each child. See the
-[Matomo provider reference](../../providers/matomo/README.md).
+[v0.5 Matomo + Google Ads lifecycle example](../matomo-googleads/README.md)
+and the [Matomo provider reference](../../providers/matomo/README.md).
 
 The conversion example uses an existing container selected by
 `MATOMO_CONTAINER_ID`. Matomo Analytics tags need a Matomo Configuration

@@ -129,7 +129,9 @@ keywords, Responsive Search Ads, and campaign location and language
 targeting. See the [Google Ads setup guide](docs/google-ads-setup.md),
 [provider reference](providers/googleads/README.md),
 [v0.4 Search campaign example](examples/googleads-search/README.md), and
-[v0.3 conversion example](examples/googleads-conversion/README.md).
+[v0.3 conversion example](examples/googleads-conversion/README.md). The
+[v0.5 Matomo + Google Ads lifecycle example](examples/matomo-googleads/README.md)
+joins both providers across greenfield apply, import, and destroy.
 
 Non-secret publication desired state belongs in the Matomo provider manifest:
 
@@ -142,6 +144,67 @@ providers:
 
 `publish` defaults to `false`; `environment` defaults to `live` when
 publication is enabled.
+
+## v0.5 Matomo + Google Ads lifecycle
+
+The primary v0.5 example manages a website `trialStarted` conversion across
+Matomo Tag Manager and Google Ads:
+
+- an Agoraform-managed Matomo container, Matomo Configuration variable,
+  Data Layer variable, and custom-event trigger;
+- a Google Ads website `SIGNUP` conversion action and account-default
+  `SIGNUP` / `WEBSITE` goal biddability;
+- a Matomo Google Ads conversion tag that consumes `conversionId` and
+  `conversionLabel` from the managed conversion action through
+  `{ $ref, output }`;
+- declarative publication to `live`;
+- import of an equivalent existing setup and destroy in reverse
+  dependency order.
+
+Omit `MATOMO_CONTAINER_ID` for the managed-container manifest. Set Matomo
+and Google Ads runtime configuration, then copy the included example. Load
+secret values from your normal secret manager; for an interactive Bash
+session, `read -s` avoids placing typed secrets in shell command history:
+
+```bash
+export MATOMO_URL=https://matomo.example.com
+export MATOMO_SITE_ID=1
+export GOOGLE_ADS_CLIENT_ID=replace-with-your-oauth-client-id
+export GOOGLE_ADS_CUSTOMER_ID=1234567890
+
+read -rsp "Matomo API token: " MATOMO_TOKEN_AUTH; echo
+export MATOMO_TOKEN_AUTH
+read -rsp "Google Ads developer token: " GOOGLE_ADS_DEVELOPER_TOKEN; echo
+export GOOGLE_ADS_DEVELOPER_TOKEN
+read -rsp "Google Ads OAuth client secret: " GOOGLE_ADS_CLIENT_SECRET; echo
+export GOOGLE_ADS_CLIENT_SECRET
+read -rsp "Google Ads refresh token: " GOOGLE_ADS_REFRESH_TOKEN; echo
+export GOOGLE_ADS_REFRESH_TOKEN
+
+cp examples/matomo-googleads/agoraform.yaml agoraform.yaml
+```
+
+Do not substitute literal secret values into those prompt commands. On
+automated systems, inject the secrets from your secret manager.
+
+Run:
+
+```bash
+agoraform validate
+agoraform plan
+agoraform apply
+agoraform plan
+```
+
+Review the first plan before applying. Apply creates the Google Ads
+conversion action before the Matomo conversion tag. The customer conversion
+goal is created by Google Ads; Agoraform adopts or updates it. The final
+plan should report `No changes.` when desired configuration, local state,
+and remote state are unchanged.
+
+See [the Matomo + Google Ads lifecycle example](examples/matomo-googleads/README.md)
+for the application-side event contract, exact apply and destroy ordering,
+the external-container variant, import, and verification.
 
 ## v0.4 Google Ads Search campaign
 
@@ -571,6 +634,7 @@ agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
 - [v0.2 Matomo conversion example](examples/matomo-conversion/README.md)
 - [v0.3 Google Ads conversion example](examples/googleads-conversion/README.md)
 - [v0.4 Google Ads Search campaign example](examples/googleads-search/README.md)
+- [v0.5 Matomo + Google Ads lifecycle example](examples/matomo-googleads/README.md)
 - [Release process](docs/release.md)
 - [Changelog](CHANGELOG.md)
 

@@ -20,6 +20,7 @@ guides lives here.
 - [v0.2 Matomo conversion example](../examples/matomo-conversion/README.md)
 - [v0.3 Google Ads conversion example](../examples/googleads-conversion/README.md)
 - [v0.4 Google Ads Search campaign example](../examples/googleads-search/README.md)
+- [v0.5 Matomo + Google Ads lifecycle example](../examples/matomo-googleads/README.md)
 
 The 0.1.0 product release manages `matomo.goal` only. v0.2.0 also manages
 Tag Manager `matomo.variable`, `matomo.trigger`, and `matomo.tag`, plus
@@ -41,6 +42,9 @@ conversion goals remain provider-owned. See the
 [Google Ads setup guide](google-ads-setup.md),
 [Google Ads Search campaign example](../examples/googleads-search/README.md),
 and [Google Ads conversion example](../examples/googleads-conversion/README.md).
+The [v0.5 Matomo + Google Ads lifecycle example](../examples/matomo-googleads/README.md)
+demonstrates managed-container greenfield bootstrap, cross-provider
+conversion-tag references, import, and destroy.
 
 Provider credentials and connection settings can be stored locally in an
 optional [`.agoraform.env`](local-configuration.md) file instead of being

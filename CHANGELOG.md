@@ -12,6 +12,16 @@ prints the SemVer identifier without the prefix (`0.4.0`).
 
 ### Added
 
+- A complete secret-free v0.5.0 Matomo + Google Ads lifecycle example under
+  `examples/matomo-googleads/`, automatically validated by the test suite.
+  The primary manifest manages a Tag Manager container, Matomo Configuration
+  and Data Layer variables, a `trialStarted` trigger, a Google Ads website
+  conversion action, and a Matomo Google Ads conversion tag that consumes
+  `conversionId` and `conversionLabel` through `{ $ref, output }`. The
+  documentation covers greenfield apply, import/adoption, no-op
+  reconciliation, destroy ordering including provider-owned Google Ads
+  remnants, and a compact external-container variant using
+  `MATOMO_CONTAINER_ID`.
 - Cross-provider import matching: `agoraform import` builds a read-only
   catalog of declared non-sensitive outputs from already-bound state
   resources. Providers can request a unique match by provider, resource type,

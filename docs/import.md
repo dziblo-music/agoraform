@@ -294,9 +294,12 @@ Unsupported origins, such as app or Google-hosted goals, fail with guidance
 instead of reconstructing a website conversion-goal manifest.
 
 See the [Google Ads Search campaign example](../examples/googleads-search/README.md)
-for a complete paused Search campaign apply and adoption workflow, and the
+for a complete paused Search campaign apply and adoption workflow, the
 [Google Ads conversion example](../examples/googleads-conversion/README.md)
-for conversion-measurement-only import.
+for conversion-measurement-only import, and the
+[Matomo + Google Ads lifecycle example](../examples/matomo-googleads/README.md)
+for a managed-container workflow that reconstructs conversion-tag
+`{ $ref, output }` selectors.
 
 ## Matomo containers
 

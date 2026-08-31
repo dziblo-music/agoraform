@@ -74,8 +74,10 @@ operations. `agoraform destroy` removes supported Google Ads resources with
 native `remove` operations; conversion goals are provider-owned.
 
 See [googleads/README.md](googleads/README.md), the
-[Search campaign example](../examples/googleads-search/README.md), and the
-[conversion-measurement example](../examples/googleads-conversion/README.md).
+[Search campaign example](../examples/googleads-search/README.md), the
+[conversion-measurement example](../examples/googleads-conversion/README.md),
+and the
+[Matomo + Google Ads lifecycle example](../examples/matomo-googleads/README.md).
 
 ## Test provider
 

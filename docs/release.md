@@ -304,8 +304,11 @@ goreleaser release --snapshot --clean
 
 The snapshot uses the same `.goreleaser.yaml` platform/archive matrix without
 publishing a GitHub release. The example test suite automatically parses and
-validates `examples/googleads-conversion/agoraform.yaml` and
-`examples/googleads-search/agoraform.yaml` against the provider
+validates shipped example manifests, including
+`examples/googleads-conversion/agoraform.yaml`,
+`examples/googleads-search/agoraform.yaml`,
+`examples/matomo-googleads/agoraform.yaml`, and
+`examples/matomo-googleads/external/agoraform.yaml`, against the provider
 schema. These checks catch cross-platform build, example-schema, and archive
 configuration failures before an immutable tag is created.
 
