@@ -34,8 +34,19 @@ const (
 	// dependencies where one resource depends on two others.
 	AttrAlso = "also"
 
+	// AttrLabel is an optional string that may be a literal or an output
+	// reference to another resource.
+	AttrLabel = "label"
+
 	// AttrSerial is a computed (read-only) widget serial number.
 	AttrSerial = "serial"
+
+	// OutputToken is a computed non-sensitive string output.
+	OutputToken = "token"
+
+	// OutputSecret is a declared sensitive output that configuration
+	// must not select.
+	OutputSecret = "secret"
 )
 
 // Provider is an in-memory test provider.
@@ -54,8 +65,9 @@ type Provider struct {
 }
 
 var (
-	_ provider.Provider  = (*Provider)(nil)
-	_ provider.Destroyer = (*Provider)(nil)
+	_ provider.Provider      = (*Provider)(nil)
+	_ provider.Destroyer     = (*Provider)(nil)
+	_ provider.OutputCatalog = (*Provider)(nil)
 )
 
 // New returns an empty fake provider.
@@ -71,6 +83,18 @@ func (p *Provider) Name() string { return Name }
 
 // ResourceTypes implements provider.Provider.
 func (p *Provider) ResourceTypes() []string { return []string{TypeWidget} }
+
+// Outputs implements provider.OutputCatalog.
+func (p *Provider) Outputs(resourceType string) []provider.OutputSpec {
+	if resourceType != TypeWidget {
+		return nil
+	}
+	return []provider.OutputSpec{
+		{Name: AttrSerial, Kind: provider.OutputKindNumber},
+		{Name: OutputToken, Kind: provider.OutputKindString},
+		{Name: OutputSecret, Kind: provider.OutputKindString, Sensitive: true},
+	}
+}
 
 // Seed stores a live resource without going through Create. Tests use this
 // to set up remote state.
@@ -183,9 +207,14 @@ func (p *Provider) Validate(_ context.Context, res resource.Resource) error {
 			return err
 		}
 	}
+	if label, exists := res.Attributes[AttrLabel]; exists {
+		if err := validateLabel(res.Address, label); err != nil {
+			return err
+		}
+	}
 	for key := range res.Attributes {
 		switch key {
-		case AttrTitle, AttrColor, AttrParent, AttrAlso:
+		case AttrTitle, AttrColor, AttrParent, AttrAlso, AttrLabel:
 		default:
 			return fmt.Errorf("resource %s: unknown attribute %q", res.Address, key)
 		}
@@ -232,12 +261,14 @@ func (p *Provider) Create(ctx context.Context, res resource.Resource) (resource.
 
 	p.nextID++
 	p.nextSerial++
+	id := fmt.Sprintf("widget-%d", p.nextID)
 	remote := resource.RemoteResource{
 		Address:    res.Address,
-		Identity:   resource.Identity{ID: fmt.Sprintf("widget-%d", p.nextID)},
+		Identity:   resource.Identity{ID: id},
 		Attributes: logicalAttributes(res.Attributes),
 		Computed: resource.Attributes{
-			AttrSerial: p.nextSerial,
+			AttrSerial:  p.nextSerial,
+			OutputToken: "tok-" + res.Address.Name,
 		},
 	}
 	p.storeLocked(remote)
@@ -276,6 +307,9 @@ func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual
 		existing.Computed = resource.Attributes{}
 	}
 	existing.Computed[AttrSerial] = p.nextSerial
+	if _, ok := existing.Computed[OutputToken]; !ok {
+		existing.Computed[OutputToken] = "tok-" + desired.Address.Name
+	}
 	p.storeLocked(existing)
 	live := cloneRemote(existing)
 	live.Address = desired.Address
@@ -313,6 +347,19 @@ func (p *Provider) storeLocked(remote resource.RemoteResource) {
 	if !remote.Identity.IsZero() {
 		p.byID[remote.Identity.ID] = key
 	}
+}
+
+func validateLabel(addr resource.Address, v any) error {
+	if _, ok := v.(string); ok {
+		return nil
+	}
+	if ref, ok := resource.AsRef(v); ok {
+		if !ref.HasOutput() {
+			return fmt.Errorf("resource %s: attribute %q must be a string or an output reference", addr, AttrLabel)
+		}
+		return nil
+	}
+	return fmt.Errorf("resource %s: attribute %q must be a string or an output reference", addr, AttrLabel)
 }
 
 func validateParent(addr resource.Address, parent any) error {

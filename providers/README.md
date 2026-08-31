@@ -14,6 +14,7 @@ Providers implement `internal/provider.Provider`:
 - `Read` for current remote state (`provider.ErrNotFound` if absent)
 - `Create` / `Update` for apply-time mutations
 - Optional `Destroyer` for destroy-time native teardown
+- Optional `OutputCatalog` for declared named outputs (name, kind, sensitivity)
 - `Import` for binding an existing remote identity to a logical address
 
 `agoraform plan` uses `provider.Reader` only (`Name`, `ResourceTypes`,

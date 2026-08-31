@@ -46,6 +46,7 @@ var (
 	_ provider.Normalizer         = (*Provider)(nil)
 	_ provider.ImportIDNormalizer = (*Provider)(nil)
 	_ provider.Destroyer          = (*Provider)(nil)
+	_ provider.OutputCatalog      = (*Provider)(nil)
 )
 
 // New returns a Google Ads provider using cfg.
@@ -80,6 +81,19 @@ func (p *Provider) Name() string { return Name }
 // ResourceTypes implements provider.Provider.
 func (p *Provider) ResourceTypes() []string {
 	return []string{TypeConversionAction, TypeCustomerConversionGoal, TypeCampaignBudget, TypeCampaign, TypeCampaignConversionGoal, TypeAdGroup, TypeKeyword, TypeResponsiveSearchAd, TypeCampaignLocation, TypeCampaignLanguage}
+}
+
+// Outputs implements provider.OutputCatalog.
+func (p *Provider) Outputs(resourceType string) []provider.OutputSpec {
+	switch resourceType {
+	case TypeConversionAction:
+		return []provider.OutputSpec{
+			{Name: OutputConversionID, Kind: provider.OutputKindString},
+			{Name: OutputConversionLabel, Kind: provider.OutputKindString},
+		}
+	default:
+		return nil
+	}
 }
 
 // Client returns the reusable Google Ads HTTP client, creating it on first use.

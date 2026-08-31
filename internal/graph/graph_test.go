@@ -257,6 +257,50 @@ func TestNilGraphAccessors(t *testing.T) {
 	}
 }
 
+func TestBuildCrossProviderOutputReference(t *testing.T) {
+	t.Parallel()
+
+	parent := widget(t, "homepage", nil)
+	child := resource.Resource{
+		Address: mustAddress(t, "alt.note.banner"),
+		Attributes: resource.Attributes{
+			"text": resource.Ref{Address: parent.Address, Output: "token"},
+		},
+	}
+
+	g := mustBuild(t, []resource.Resource{child, parent})
+	assertOrder(t, g, []string{"fake.widget.homepage", "alt.note.banner"})
+	deps := g.Dependencies(child.Address)
+	if len(deps) != 1 || deps[0] != parent.Address {
+		t.Fatalf("Dependencies(banner) = %v, want [%s]", deps, parent.Address)
+	}
+}
+
+func TestBuildCrossProviderOutputCycle(t *testing.T) {
+	t.Parallel()
+
+	widgetRes := widget(t, "alpha", resource.Attributes{
+		"parent": resource.Ref{Address: mustAddress(t, "alt.note.beta")},
+	})
+	note := resource.Resource{
+		Address: mustAddress(t, "alt.note.beta"),
+		Attributes: resource.Attributes{
+			"text": resource.Ref{Address: widgetRes.Address, Output: "token"},
+		},
+	}
+
+	_, err := graph.Build([]resource.Resource{widgetRes, note})
+	if err == nil {
+		t.Fatal("Build succeeded, want cycle")
+	}
+	if !strings.Contains(err.Error(), "cyclic dependency") {
+		t.Fatalf("error = %q, want cyclic dependency", err)
+	}
+	if !strings.Contains(err.Error(), "fake.widget.alpha") || !strings.Contains(err.Error(), "alt.note.beta") {
+		t.Fatalf("error = %q, want both addresses", err)
+	}
+}
+
 func widget(t *testing.T, name string, attrs resource.Attributes) resource.Resource {
 	t.Helper()
 	if attrs == nil {

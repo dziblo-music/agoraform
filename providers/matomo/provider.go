@@ -51,6 +51,7 @@ var (
 	_ provider.Finalizer            = (*Provider)(nil)
 	_ provider.ResourceSetValidator = (*Provider)(nil)
 	_ provider.Destroyer            = (*Provider)(nil)
+	_ provider.OutputCatalog        = (*Provider)(nil)
 )
 
 // New returns a Matomo provider using cfg.
@@ -100,6 +101,11 @@ func (p *Provider) Name() string { return Name }
 func (p *Provider) ResourceTypes() []string {
 	return []string{TypeGoal, TypeContainer, TypeVariable, TypeTrigger, TypeTag}
 }
+
+// Outputs implements provider.OutputCatalog. Computed Matomo identifiers
+// are not selectable outputs; arbitrary remote fields are not automatically
+// exposed to configuration.
+func (p *Provider) Outputs(string) []provider.OutputSpec { return nil }
 
 // Client returns the reusable Matomo HTTP client, creating it on first use.
 func (p *Provider) Client() (*client.Client, error) {

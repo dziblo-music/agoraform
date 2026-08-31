@@ -110,6 +110,70 @@ resources:
 	}
 }
 
+func TestValidateOutputReference(t *testing.T) {
+	t.Parallel()
+
+	const src = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.homepage
+    attributes:
+      title: Homepage banner
+  - address: alt.note.banner
+    attributes:
+      text:
+        $ref: fake.widget.homepage
+        output: token
+`
+	reg := provider.NewRegistry()
+	if err := reg.Register(fake.New()); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Register(fake.NewAlt()); err != nil {
+		t.Fatal(err)
+	}
+	path := writeManifest(t, "agoraform.yaml", src)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitOK, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "2 resources") {
+		t.Fatalf("stdout = %q, want 2 resources", stdout.String())
+	}
+}
+
+func TestValidateSensitiveOutput(t *testing.T) {
+	t.Parallel()
+
+	const src = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.homepage
+    attributes:
+      title: Homepage banner
+  - address: alt.note.banner
+    attributes:
+      text:
+        $ref: fake.widget.homepage
+        output: secret
+`
+	reg := provider.NewRegistry()
+	if err := reg.Register(fake.New()); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Register(fake.NewAlt()); err != nil {
+		t.Fatal(err)
+	}
+	path := writeManifest(t, "agoraform.yaml", src)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "sensitive") {
+		t.Fatalf("stderr = %q, want sensitive", stderr.String())
+	}
+}
+
 func TestValidateV01ManifestWithoutReferences(t *testing.T) {
 	t.Parallel()
 

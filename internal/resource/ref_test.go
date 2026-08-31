@@ -87,6 +87,34 @@ func TestWalkRefsIgnoresNilCallbackAndEmpty(t *testing.T) {
 	})
 }
 
+func TestWalkRefValuesIncludesOutputSelector(t *testing.T) {
+	t.Parallel()
+
+	var got []Ref
+	WalkRefValues(Attributes{
+		"parent": Ref{Address: mustTestAddress(t, "fake.widget.homepage")},
+		"label":  Ref{Address: mustTestAddress(t, "fake.widget.homepage"), Output: "token"},
+	}, func(_ string, ref Ref) {
+		got = append(got, ref)
+	})
+	if len(got) != 2 {
+		t.Fatalf("refs = %d, want 2", len(got))
+	}
+	foundOutput := false
+	foundAddressOnly := false
+	for _, ref := range got {
+		if ref.Output == "token" {
+			foundOutput = true
+		}
+		if !ref.HasOutput() {
+			foundAddressOnly = true
+		}
+	}
+	if !foundOutput || !foundAddressOnly {
+		t.Fatalf("WalkRefValues = %+v, want address-only and token output", got)
+	}
+}
+
 func TestRefStringAndZero(t *testing.T) {
 	t.Parallel()
 
@@ -99,6 +127,14 @@ func TestRefStringAndZero(t *testing.T) {
 	}
 	if ref.String() != "fake.widget.homepage" {
 		t.Fatalf("String() = %q", ref.String())
+	}
+
+	withOutput := Ref{Address: mustTestAddress(t, "fake.widget.homepage"), Output: "token"}
+	if !withOutput.HasOutput() {
+		t.Fatal("output selector should be reported")
+	}
+	if withOutput.String() != "fake.widget.homepage" {
+		t.Fatalf("String() with output = %q, want logical address only", withOutput.String())
 	}
 }
 
@@ -126,6 +162,35 @@ func TestAsResolved(t *testing.T) {
 	}
 	if _, ok := AsResolved("widget-1"); ok {
 		t.Fatal("plain identity string should not be AsResolved")
+	}
+}
+
+func TestResolvedSelectClonesOutput(t *testing.T) {
+	t.Parallel()
+
+	addr := mustTestAddress(t, "fake.widget.homepage")
+	resolved := Resolved{
+		Address:  addr,
+		Identity: Identity{ID: "widget-1"},
+		Outputs: Attributes{
+			"token": "tok-homepage",
+			"meta":  map[string]any{"k": "v"},
+		},
+	}
+	got, ok := resolved.Select("token")
+	if !ok || got != "tok-homepage" {
+		t.Fatalf("Select(token) = (%v, %v)", got, ok)
+	}
+	nested, ok := resolved.Select("meta")
+	if !ok {
+		t.Fatal("Select(meta) missing")
+	}
+	nested.(map[string]any)["k"] = "changed"
+	if resolved.Outputs["meta"].(map[string]any)["k"] != "v" {
+		t.Fatal("Select mutated original output map")
+	}
+	if _, ok := resolved.Select("missing"); ok {
+		t.Fatal("Select(missing) should fail")
 	}
 }
 

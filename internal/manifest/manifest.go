@@ -3,6 +3,7 @@ package manifest
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/dziblo-music/agoraform/internal/graph"
 	"github.com/dziblo-music/agoraform/internal/resource"
@@ -163,8 +164,8 @@ func normalizeValue(v any) (any, error) {
 	switch x := v.(type) {
 	case map[string]any:
 		if rawRef, ok := x["$ref"]; ok {
-			if len(x) != 1 {
-				return nil, fmt.Errorf("resource reference must contain only $ref")
+			if err := validateRefKeys(x); err != nil {
+				return nil, err
 			}
 			s, ok := rawRef.(string)
 			if !ok {
@@ -174,7 +175,19 @@ func normalizeValue(v any) (any, error) {
 			if err != nil {
 				return nil, fmt.Errorf("resource reference $ref: %w", err)
 			}
-			return resource.Ref{Address: addr}, nil
+			ref := resource.Ref{Address: addr}
+			if rawOut, exists := x["output"]; exists {
+				out, ok := rawOut.(string)
+				if !ok {
+					return nil, fmt.Errorf("resource reference output must be a string")
+				}
+				out = strings.TrimSpace(out)
+				if out == "" {
+					return nil, fmt.Errorf("resource reference output must be a non-empty string")
+				}
+				ref.Output = out
+			}
+			return ref, nil
 		}
 
 		out := make(map[string]any, len(x))
@@ -209,4 +222,15 @@ func normalizeValue(v any) (any, error) {
 	default:
 		return v, nil
 	}
+}
+
+func validateRefKeys(x map[string]any) error {
+	for k := range x {
+		switch k {
+		case "$ref", "output":
+		default:
+			return fmt.Errorf("resource reference may only contain $ref and optional output")
+		}
+	}
+	return nil
 }

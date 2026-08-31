@@ -70,7 +70,8 @@ digits, or underscores. Duplicate addresses are rejected.
 
 ## Resource references
 
-Provider-neutral dependencies use a single-key `$ref` object:
+Provider-neutral dependencies use a `$ref` object containing a logical
+Agoraform address. Address-only references stay a single-key map:
 
 ```yaml
 resources:
@@ -92,12 +93,27 @@ The `$ref` value is always a logical Agoraform address, never a provider-native
 ID. Ordinary strings remain provider-owned values even if they happen to look
 like an address.
 
+An optional `output` selector consumes one declared non-sensitive named
+output from the referenced resource, including across providers:
+
+```yaml
+conversionId:
+  $ref: googleads.conversion_action.trial_started
+  output: conversionId
+```
+
+A reference without `output` still resolves to the full runtime binding
+(provider-native identity plus computed outputs). A reference with `output`
+resolves to that one value. Unknown, sensitive, unavailable, and wrong-kind
+outputs fail before the dependent mutation. Arbitrary computed fields are not
+automatically selectable.
+
 Agoraform validates references and builds a directed dependency graph. Missing
 references, self-references, and cycles fail before remote mutations.
+Cross-provider output references create the same kind of dependency edge.
 
-At apply time, logical references are resolved to provider-native identities
-and computed outputs in dependency order. Those provider-native values are not
-written back into the manifest.
+At apply time, logical references are resolved in dependency order. Those
+provider-native values are not written back into the manifest.
 
 ## Resource attributes
 

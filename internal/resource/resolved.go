@@ -30,3 +30,15 @@ func AsResolved(v any) (Resolved, bool) {
 	}
 	return resolved, true
 }
+
+// Select returns a clone of the named output when present.
+func (r Resolved) Select(name string) (any, bool) {
+	if name == "" || r.Outputs == nil {
+		return nil, false
+	}
+	v, ok := r.Outputs[name]
+	if !ok {
+		return nil, false
+	}
+	return cloneValue(v), true
+}

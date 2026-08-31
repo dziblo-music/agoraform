@@ -11,13 +11,23 @@ import (
 // provider-native identity. Runtime provider/resource execution is responsible
 // for resolving any native identity needed from a Ref; manifests must not
 // embed those identities.
+//
+// Output, when set, selects one declared non-sensitive named output from the
+// referenced resource instead of the full runtime Resolved binding.
 type Ref struct {
 	Address Address
+	Output  string
 }
 
 // String returns the canonical logical address of the referenced resource.
+// It never includes the optional output selector.
 func (r Ref) String() string {
 	return r.Address.String()
+}
+
+// HasOutput reports whether the reference selects a named output.
+func (r Ref) HasOutput() bool {
+	return r.Output != ""
 }
 
 // IsZero reports whether the reference has no address.
@@ -43,6 +53,18 @@ func AsRef(v any) (Ref, bool) {
 // "triggers[0]". Map keys are visited in sorted order so walks are
 // deterministic. fn must not retain path after it returns.
 func WalkRefs(v any, fn func(path string, addr Address)) {
+	if fn == nil {
+		return
+	}
+	WalkRefValues(v, func(path string, ref Ref) {
+		fn(path, ref.Address)
+	})
+}
+
+// WalkRefValues visits every resource reference in v, including any output
+// selector. Map keys are visited in sorted order. fn must not retain path
+// after it returns.
+func WalkRefValues(v any, fn func(path string, ref Ref)) {
 	if fn == nil {
 		return
 	}
@@ -111,12 +133,12 @@ func mapRefMapValues(m map[string]any, prefix string, fn func(path string, ref R
 	return out, nil
 }
 
-func walkRefs(v any, path string, fn func(path string, addr Address)) {
+func walkRefs(v any, path string, fn func(path string, ref Ref)) {
 	if v == nil {
 		return
 	}
 	if ref, ok := AsRef(v); ok {
-		fn(path, ref.Address)
+		fn(path, ref)
 		return
 	}
 	switch x := v.(type) {
@@ -131,7 +153,7 @@ func walkRefs(v any, path string, fn func(path string, addr Address)) {
 	}
 }
 
-func walkRefMap(m map[string]any, prefix string, fn func(path string, addr Address)) {
+func walkRefMap(m map[string]any, prefix string, fn func(path string, ref Ref)) {
 	if len(m) == 0 {
 		return
 	}

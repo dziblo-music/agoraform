@@ -41,6 +41,9 @@ func TestFakeProviderLifecycle(t *testing.T) {
 	if _, ok := created.Computed[fake.AttrSerial]; !ok {
 		t.Fatal("Create missing computed serial")
 	}
+	if created.Computed[fake.OutputToken] != "tok-homepage" {
+		t.Fatalf("Create token = %v, want tok-homepage", created.Computed[fake.OutputToken])
+	}
 	if _, ok := created.Attributes[fake.AttrSerial]; ok {
 		t.Fatal("computed serial must not appear in configurable attributes")
 	}
@@ -227,6 +230,53 @@ func TestFakeProviderStoresResolvedParentAsLogicalRef(t *testing.T) {
 	}
 	if _, ok := resource.AsResolved(created.Attributes[fake.AttrParent]); ok {
 		t.Fatal("live attributes leaked Resolved identity")
+	}
+}
+
+func TestFakeOutputsCatalog(t *testing.T) {
+	t.Parallel()
+
+	p := fake.New()
+	specs := p.Outputs(fake.TypeWidget)
+	if len(specs) != 3 {
+		t.Fatalf("Outputs = %+v, want serial, token, secret", specs)
+	}
+	secret, ok := provider.FindOutput(specs, fake.OutputSecret)
+	if !ok || !secret.Sensitive {
+		t.Fatalf("secret spec = (%v, %v), want sensitive", secret, ok)
+	}
+	if p.Outputs("goal") != nil {
+		t.Fatal("unknown type should declare no outputs")
+	}
+}
+
+func TestFakeAcceptsLabelOutputReference(t *testing.T) {
+	t.Parallel()
+
+	p := fake.New()
+	res := resource.Resource{
+		Address: mustAddress(t, "fake.widget.banner"),
+		Attributes: resource.Attributes{
+			fake.AttrTitle: "Banner",
+			fake.AttrLabel: resource.Ref{
+				Address: mustAddress(t, "fake.widget.homepage"),
+				Output:  fake.OutputToken,
+			},
+		},
+	}
+	if err := p.Validate(context.Background(), res); err != nil {
+		t.Fatalf("Validate output label: %v", err)
+	}
+
+	addrOnly := resource.Resource{
+		Address: res.Address,
+		Attributes: resource.Attributes{
+			fake.AttrTitle: "Banner",
+			fake.AttrLabel: resource.Ref{Address: mustAddress(t, "fake.widget.homepage")},
+		},
+	}
+	if err := p.Validate(context.Background(), addrOnly); err == nil {
+		t.Fatal("address-only label should be rejected")
 	}
 }
 

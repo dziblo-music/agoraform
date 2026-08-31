@@ -174,7 +174,7 @@ func valuesEqual(a, b any) bool {
 
 	if ra, ok := resource.AsRef(a); ok {
 		if rb, ok := resource.AsRef(b); ok {
-			return ra.Address == rb.Address
+			return ra.Address == rb.Address && ra.Output == rb.Output
 		}
 	}
 
@@ -271,7 +271,7 @@ func formatValue(v any) string {
 	case string:
 		return strconv.Quote(x)
 	case resource.Ref:
-		return strconv.Quote(x.String())
+		return formatRef(x)
 	case bool:
 		return strconv.FormatBool(x)
 	default:
@@ -283,6 +283,14 @@ func formatValue(v any) string {
 		}
 		return fmt.Sprint(x)
 	}
+}
+
+func formatRef(ref resource.Ref) string {
+	addr := strconv.Quote(ref.String())
+	if !ref.HasOutput() {
+		return addr
+	}
+	return "{$ref: " + addr + ", output: " + strconv.Quote(ref.Output) + "}"
 }
 
 func formatMap(m map[string]any) string {

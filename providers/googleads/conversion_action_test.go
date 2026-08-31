@@ -38,6 +38,57 @@ func TestValidateConversionActionValid(t *testing.T) {
 	}
 }
 
+func TestConversionActionOutputs(t *testing.T) {
+	t.Parallel()
+
+	p, _ := testConversionActionProvider(t, nil)
+	specs := p.Outputs(googleads.TypeConversionAction)
+	if len(specs) != 2 {
+		t.Fatalf("Outputs = %+v, want conversionId and conversionLabel", specs)
+	}
+	id, ok := provider.FindOutput(specs, googleads.OutputConversionID)
+	if !ok || id.Sensitive || id.Kind != provider.OutputKindString {
+		t.Fatalf("conversionId spec = (%v, %v)", id, ok)
+	}
+	label, ok := provider.FindOutput(specs, googleads.OutputConversionLabel)
+	if !ok || label.Sensitive || label.Kind != provider.OutputKindString {
+		t.Fatalf("conversionLabel spec = (%v, %v)", label, ok)
+	}
+	if _, ok := provider.FindOutput(specs, "tagSnippets"); ok {
+		t.Fatal("tagSnippets must not be a selectable output")
+	}
+	if _, ok := provider.FindOutput(specs, "id"); ok {
+		t.Fatal("provider-native id must not be a selectable output")
+	}
+	if specs := p.Outputs(googleads.TypeCampaign); len(specs) != 0 {
+		t.Fatalf("campaign outputs = %+v, want none in this issue", specs)
+	}
+
+	action := conversionActionResource(t, "trial_started", resource.Attributes{
+		googleads.AttrName:     "Trial Started",
+		googleads.AttrCategory: "SIGNUP",
+	})
+	consumer := resource.Resource{
+		Address: mustParseOutputAddr(t, "alt.note.banner"),
+		Attributes: resource.Attributes{
+			"text": resource.Ref{Address: action.Address, Output: googleads.OutputConversionID},
+		},
+	}
+	if err := provider.ValidateOutputRefs([]resource.Resource{action, consumer}, func(resource.Address) (provider.Reader, error) {
+		return p, nil
+	}); err != nil {
+		t.Fatalf("declared conversionId should be selectable: %v", err)
+	}
+
+	consumer.Attributes["text"] = resource.Ref{Address: action.Address, Output: "tagSnippets"}
+	err := provider.ValidateOutputRefs([]resource.Resource{action, consumer}, func(resource.Address) (provider.Reader, error) {
+		return p, nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "no declared output") {
+		t.Fatalf("tagSnippets should be rejected: %v", err)
+	}
+}
+
 func TestValidateConversionActionErrors(t *testing.T) {
 	t.Parallel()
 
@@ -917,6 +968,15 @@ func conversionActionResource(t *testing.T, name string, attrs resource.Attribut
 func mustConversionActionAddress(t *testing.T, name string) resource.Address {
 	t.Helper()
 	addr, err := resource.ParseAddress("googleads.conversion_action." + name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return addr
+}
+
+func mustParseOutputAddr(t *testing.T, s string) resource.Address {
+	t.Helper()
+	addr, err := resource.ParseAddress(s)
 	if err != nil {
 		t.Fatal(err)
 	}

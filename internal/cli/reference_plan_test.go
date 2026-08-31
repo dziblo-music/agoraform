@@ -54,6 +54,42 @@ resources:
 	}
 }
 
+func TestPlanOutputReference(t *testing.T) {
+	t.Parallel()
+
+	const src = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.homepage
+    attributes:
+      title: Homepage banner
+  - address: alt.note.banner
+    attributes:
+      text:
+        $ref: fake.widget.homepage
+        output: token
+`
+	reg := provider.NewRegistry()
+	if err := reg.Register(fake.New()); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Register(fake.NewAlt()); err != nil {
+		t.Fatal(err)
+	}
+	path := writeManifest(t, "agoraform.yaml", src)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"plan", "-f", path}, reg)
+	if code != cli.ExitChanges {
+		t.Fatalf("exit code = %d, want %d; stderr=%q stdout=%q", code, cli.ExitChanges, stderr.String(), stdout.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `{$ref: "fake.widget.homepage", output: "token"}`) {
+		t.Fatalf("plan missing logical output reference:\n%s", out)
+	}
+	if strings.Contains(out, "tok-") || strings.Contains(out, "widget-") || strings.Contains(out, "note-") {
+		t.Fatalf("plan leaked native values:\n%s", out)
+	}
+}
+
 func TestPlanRejectsCycle(t *testing.T) {
 	t.Parallel()
 
