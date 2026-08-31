@@ -313,12 +313,13 @@ func (p *Provider) reconstructGoogleAdsConversionImport(ctx context.Context, res
 			}
 		}
 	}
-	reconstructed := map[string]bool{}
+	pairedOutputMatchAttempted := false
 	if id, ok := attrs[AttrConversionID].(string); ok {
 		label, labelOK := attrs[AttrConversionLabel].(string)
 		_, idTemplate := parseMatomoVariableTemplate(id)
 		_, labelTemplate := parseMatomoVariableTemplate(label)
 		if labelOK && id != "" && label != "" && !idTemplate && !labelTemplate {
+			pairedOutputMatchAttempted = true
 			ref, matched, err := p.matchGoogleAdsConversionOutputs(ctx, stripGoogleAdsConversionPrefix(id), label)
 			if err != nil {
 				return resource.RemoteResource{}, fmt.Errorf("matomo: import %s: %w", res.Address, err)
@@ -326,15 +327,10 @@ func (p *Provider) reconstructGoogleAdsConversionImport(ctx context.Context, res
 			if matched {
 				attrs[AttrConversionID] = resource.Ref{Address: ref.Address, Output: AttrConversionID}
 				attrs[AttrConversionLabel] = resource.Ref{Address: ref.Address, Output: AttrConversionLabel}
-				reconstructed[AttrConversionID] = true
-				reconstructed[AttrConversionLabel] = true
 			}
 		}
 	}
 	for _, key := range append([]string{AttrConversionID, AttrConversionLabel}, optionalGoogleAdsConversionAttrs...) {
-		if reconstructed[key] {
-			continue
-		}
 		raw, ok := attrs[key].(string)
 		if !ok || raw == "" {
 			continue
@@ -348,6 +344,9 @@ func (p *Provider) reconstructGoogleAdsConversionImport(ctx context.Context, res
 			if found {
 				attrs[key] = ref
 			}
+			continue
+		}
+		if pairedOutputMatchAttempted && (key == AttrConversionID || key == AttrConversionLabel) {
 			continue
 		}
 		if key != AttrConversionID && key != AttrConversionLabel {
