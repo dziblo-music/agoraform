@@ -81,7 +81,11 @@ func BuildWithState(ctx context.Context, desired []resource.Resource, lookup Loo
 		if err != nil {
 			return nil, err
 		}
-		if !change.Identity.IsZero() {
+		// Only outputs from unchanged prerequisites are safe to substitute while
+		// planning dependents. An updating prerequisite may produce a different
+		// output after convergence, so keeping its current live value would let a
+		// dependent incorrectly plan as unchanged and then skip re-resolution.
+		if change.Action == ActionUnchanged && !change.Identity.IsZero() {
 			knownOutputs[addr.String()] = change.Computed.Clone()
 		}
 		changes = append(changes, change)
