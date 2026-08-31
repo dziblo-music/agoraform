@@ -12,7 +12,9 @@
 // (googleads.responsive_search_ad), campaign location criteria
 // (googleads.campaign_location), and campaign language criteria
 // (googleads.campaign_language). Other Google Ads resources remain
-// follow-up work.
+// follow-up work. Destroy uses Google Ads mutate remove operations for
+// supported types and reports customer/campaign conversion goals as
+// provider-owned.
 //
 // Generic core and reconciliation packages must not import this package or
 // depend on Google Ads API types. The CLI composition root may import it in

@@ -86,7 +86,9 @@ than assuming a destructive operation completed safely.
 
 Destroy uses the apply dependency graph in reverse: dependents are removed
 before prerequisites. For Matomo Tag Manager that means tags, then
-variables/triggers, then a managed container.
+variables/triggers, then a managed container. For Google Ads Search that
+means ads and keywords, then campaign criteria, then the ad group, then the
+campaign, then the budget.
 
 ## Already absent and failures
 
@@ -137,9 +139,33 @@ intermediate container version; it deletes children and then the container.
 
 ## Google Ads
 
-Google Ads destroy/removal is not implemented yet. Those resources are
-reported as unsupported, remain in state, and do not block supported Matomo
-teardown.
+Google Ads does not hard-delete serving objects. Removable types are planned
+as provider-native `remove` operations on the Google Ads REST mutate
+endpoint. Those operations set remote `status` to `REMOVED`. Destroy never
+sends `status: ENABLED` or otherwise activates serving or spend.
+
+Customer and campaign conversion goals are created by Google Ads. Destroy
+reports them as provider-owned non-mutations: they stay in state, receive no
+remove request, and do not block teardown of supported resources. The command
+still exits non-zero while those bindings remain.
+
+| Type | Capability | Mutate | Terminal remote state | Already terminal | Serving/spend precondition |
+| --- | --- | --- | --- | --- | --- |
+| `googleads.conversion_action` | remove | `conversionActions:mutate` `remove` | `status=REMOVED` | `REMOVED` or not found | mutate `remove` only; never update status to a serving value |
+| `googleads.customer_conversion_goal` | provider-owned | none | object remains | not applicable | Google Ads has no delete; reconcile `biddable` with apply |
+| `googleads.campaign_budget` | remove | `campaignBudgets:mutate` `remove` | `status=REMOVED` | `REMOVED` or not found | refuse while `referenceCount > 0`; destroy campaigns first |
+| `googleads.campaign` | remove | `campaigns:mutate` `remove` | `status=REMOVED` | `REMOVED` or not found | mutate `remove` only; paused is not terminal |
+| `googleads.campaign_conversion_goal` | provider-owned | none | object remains | not applicable | Google Ads has no delete; reconcile `biddable` with apply |
+| `googleads.ad_group` | remove | `adGroups:mutate` `remove` | `status=REMOVED` | `REMOVED` or not found | mutate `remove` only |
+| `googleads.keyword` | remove | `adGroupCriteria:mutate` `remove` | `status=REMOVED` | `REMOVED` or not found | `remove` works for negative keywords; never update status to `ENABLED` |
+| `googleads.responsive_search_ad` | remove | `adGroupAds:mutate` `remove` | `status=REMOVED` | `REMOVED` or not found | remove the ad-group-ad relationship only |
+| `googleads.campaign_location` | remove | `campaignCriteria:mutate` `remove` | `status=REMOVED` | `REMOVED` or not found | mutate `remove` only |
+| `googleads.campaign_language` | remove | `campaignCriteria:mutate` `remove` | `status=REMOVED` | `REMOVED` or not found | mutate `remove` only |
+
+Paused, hidden, and enabled resources are distinct from `REMOVED`. Destroy
+removes the former and treats the latter as already-absent convergence.
+Closing a Google Ads customer, tearing down billing, and pruning identities
+that are not in the manifest remain out of scope.
 
 ## Out of scope
 
@@ -149,3 +175,4 @@ teardown.
 - Deleting externally managed containers
 - Rollback to prior container versions
 - Application snippet removal
+- Closing Google Ads customer accounts or billing/payment teardown

@@ -133,6 +133,14 @@ it.
 The final plan must report `No changes.` when the manifest and remote
 configuration are unchanged.
 
+## Destroy
+
+`agoraform destroy --auto-approve` removes the conversion action with Google
+Ads mutate `remove` (`status=REMOVED`). The customer conversion goal is
+provider-owned: it stays in state, is not deleted, and causes a non-zero
+exit after the conversion action is removed. Apply remains the way to
+reconcile `biddable`. See [Destroy](../../docs/destroy.md).
+
 ## Verify in Google Ads
 
 In the Google Ads customer from `GOOGLE_ADS_CUSTOMER_ID`:
