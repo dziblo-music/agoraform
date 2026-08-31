@@ -377,10 +377,28 @@ func (p *Provider) matchGoogleAdsConversionOutputs(ctx context.Context, conversi
 	if err != nil {
 		return resource.Ref{}, false, err
 	}
-	if result != provider.OutputMatchUnique {
+	switch result {
+	case provider.OutputMatchUnique:
+		return ref, true, nil
+	case provider.OutputMatchAmbiguous:
 		return resource.Ref{}, false, nil
 	}
-	return ref, true, nil
+
+	idRef, idMatched, err := p.matchGoogleAdsConversionOutput(ctx, AttrConversionID, conversionID)
+	if err != nil {
+		return resource.Ref{}, false, err
+	}
+	if !idMatched {
+		return resource.Ref{}, false, nil
+	}
+	labelRef, labelMatched, err := p.matchGoogleAdsConversionOutput(ctx, AttrConversionLabel, conversionLabel)
+	if err != nil {
+		return resource.Ref{}, false, err
+	}
+	if !labelMatched || idRef.Address != labelRef.Address {
+		return resource.Ref{}, false, nil
+	}
+	return resource.Ref{Address: idRef.Address, Output: AttrConversionID}, true, nil
 }
 
 func (p *Provider) matchGoogleAdsConversionOutput(ctx context.Context, attr, value string) (resource.Ref, bool, error) {
