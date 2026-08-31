@@ -240,7 +240,9 @@ Analytics tags. Google Ads conversion tags consume `conversionId` and
 the application still pushes the configured data-layer event. See the
 [Matomo provider reference](../providers/matomo/README.md)
 for the complete resource-specific schema, template parameter mapping, and
-preservation behavior.
+preservation behavior. The
+[v0.5 Matomo + Google Ads lifecycle example](../examples/matomo-googleads/README.md)
+is a complete managed-container workflow that consumes those outputs.
 
 ## Google Ads resources
 

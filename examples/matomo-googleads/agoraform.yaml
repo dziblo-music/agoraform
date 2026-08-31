@@ -1,0 +1,75 @@
+# Matomo + Google Ads website conversion example for Agoraform v0.5.0.
+# Credentials, customer IDs, and provider-native identities stay outside
+# this manifest. Application event emission and Google Tag (gtag.js) are
+# not managed here.
+
+apiVersion: agoraform.io/v1alpha1
+providers:
+  matomo:
+    publish: true
+    environment: live
+  googleads: {}
+resources:
+  - address: matomo.container.main
+    attributes:
+      name: Main Website
+      context: web
+
+  - address: matomo.variable.config
+    attributes:
+      container:
+        $ref: matomo.container.main
+      type: matomoConfiguration
+      name: Matomo Configuration
+      matomoUrl: https://matomo.example.com
+      siteId: 1
+      enableLinkTracking: true
+
+  - address: matomo.variable.user_id
+    attributes:
+      container:
+        $ref: matomo.container.main
+      type: dataLayer
+      key: userId
+      name: Trial user ID
+
+  - address: matomo.trigger.trial_started
+    attributes:
+      container:
+        $ref: matomo.container.main
+      type: customEvent
+      event: trialStarted
+      name: Trial started
+
+  - address: googleads.conversion_action.trial_started
+    attributes:
+      name: Trial Started
+      category: SIGNUP
+      value: 0
+      count: ONE
+      primaryForGoal: true
+
+  - address: googleads.customer_conversion_goal.signup
+    attributes:
+      category: SIGNUP
+      origin: WEBSITE
+      biddable: true
+      conversionAction:
+        $ref: googleads.conversion_action.trial_started
+
+  - address: matomo.tag.google_ads_trial_started
+    attributes:
+      container:
+        $ref: matomo.container.main
+      type: googleAdsConversion
+      name: Google Ads trial started
+      trigger:
+        $ref: matomo.trigger.trial_started
+      conversionId:
+        $ref: googleads.conversion_action.trial_started
+        output: conversionId
+      conversionLabel:
+        $ref: googleads.conversion_action.trial_started
+        output: conversionLabel
+      conversionTransactionId:
+        $ref: matomo.variable.user_id

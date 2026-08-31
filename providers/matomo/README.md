@@ -314,8 +314,11 @@ then child resources, then publication if `publish: true`.
 **Existing container.** Either import the container (`agoraform import
 matomo.container.main CONTAINER_ID`) and switch children to `container: $ref`,
 or keep `MATOMO_CONTAINER_ID` and omit the container resource and child
-`container` attributes. The conversion-tracking example uses the external
-`MATOMO_CONTAINER_ID` path.
+`container` attributes. The [v0.2 conversion-tracking example](../../examples/matomo-conversion/README.md)
+uses the external `MATOMO_CONTAINER_ID` path. The
+[v0.5 Matomo + Google Ads lifecycle example](../../examples/matomo-googleads/README.md)
+uses a managed container as its primary manifest and includes the compact
+external-container variant.
 
 Do not mix the two modes in one manifest.
 
