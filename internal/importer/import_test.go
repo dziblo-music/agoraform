@@ -3,6 +3,8 @@ package importer_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -149,6 +151,80 @@ resources:
 	}
 	if strings.Contains(got.YAML, "tok-homepage") || strings.Contains(got.YAML, "s3cret-value") || strings.Contains(got.YAML, "widget-imported") {
 		t.Fatalf("YAML leaked native or sensitive values:\n%s", got.YAML)
+	}
+}
+
+func TestRunReconstructsCrossProviderOutputRef(t *testing.T) {
+	t.Parallel()
+
+	widgets := fake.New()
+	notes := fake.NewAlt()
+	parent := mustAddress(t, "fake.widget.homepage")
+	note := mustAddress(t, "alt.note.banner")
+	seedImported(t, widgets, parent, resource.Attributes{fake.AttrTitle: "Homepage"}, resource.Attributes{
+		fake.AttrSerial:   4,
+		fake.OutputToken:  "tok-homepage",
+		fake.OutputSecret: "s3cret-value",
+	})
+	if err := notes.Seed(resource.RemoteResource{
+		Address:    note,
+		Identity:   resource.Identity{ID: "note-1"},
+		Attributes: resource.Attributes{fake.AttrText: "tok-homepage"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	st := mustStore(t)
+	if err := st.Bind(parent, resource.Identity{ID: "widget-imported"}); err != nil {
+		t.Fatal(err)
+	}
+
+	var catalog provider.OutputMatcher
+	lookup := func(addr resource.Address) (provider.Provider, error) {
+		switch addr.Provider {
+		case fake.Name:
+			return widgets, nil
+		case fake.AltName:
+			notes.SetOutputMatcher(catalog)
+			return notes, nil
+		default:
+			return nil, fmt.Errorf("unknown provider %q", addr.Provider)
+		}
+	}
+	catalog = importer.NewOutputCatalog(storeOutputBindings{st}, lookup)
+
+	got, err := importer.Run(context.Background(), note, "note-1", lookup, st)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	wantYAML := `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: alt.note.banner
+    attributes:
+      text:
+        $ref: fake.widget.homepage
+        output: token
+`
+	if got.YAML != wantYAML {
+		t.Fatalf("YAML = %q, want %q", got.YAML, wantYAML)
+	}
+	if strings.Contains(got.YAML, "tok-homepage") || strings.Contains(got.YAML, "s3cret-value") {
+		t.Fatalf("YAML leaked output values:\n%s", got.YAML)
+	}
+
+	stateBytes, err := os.ReadFile(st.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(stateBytes), "tok-homepage") || strings.Contains(string(stateBytes), "s3cret-value") {
+		t.Fatalf("state persisted catalog outputs:\n%s", stateBytes)
+	}
+
+	_, widgetCreates, widgetUpdates, _ := widgets.Calls()
+	_, noteCreates, noteUpdates, _ := notes.Calls()
+	if widgetCreates != 0 || widgetUpdates != 0 || noteCreates != 0 || noteUpdates != 0 {
+		t.Fatalf("import mutated providers: widget creates=%d updates=%d note creates=%d updates=%d", widgetCreates, widgetUpdates, noteCreates, noteUpdates)
 	}
 }
 
@@ -551,6 +627,25 @@ func lookupProvider(p provider.Provider) importer.Lookup {
 	return func(resource.Address) (provider.Provider, error) {
 		return p, nil
 	}
+}
+
+type storeOutputBindings struct {
+	st *state.Store
+}
+
+func (b storeOutputBindings) Bindings(providerName, resourceType string) ([]importer.RemoteBinding, error) {
+	if b.st == nil {
+		return nil, nil
+	}
+	got, err := b.st.Bindings(providerName, resourceType)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]importer.RemoteBinding, len(got))
+	for i, item := range got {
+		out[i] = importer.RemoteBinding{Address: item.Address, RemoteID: item.RemoteID}
+	}
+	return out, nil
 }
 
 func mustStore(t *testing.T) *state.Store {

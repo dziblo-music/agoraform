@@ -99,6 +99,43 @@ func TestKindOfAndKindMatches(t *testing.T) {
 	}
 }
 
+func TestOutputMatchQueryConstraintsAndSelectedOutput(t *testing.T) {
+	t.Parallel()
+
+	single := provider.OutputMatchQuery{Output: " conversionId ", Value: "9988776655"}
+	got := single.Constraints()
+	if len(got) != 1 || got["conversionId"] != "9988776655" {
+		t.Fatalf("single Constraints = %#v", got)
+	}
+	if single.SelectedOutput() != "conversionId" {
+		t.Fatalf("SelectedOutput = %q", single.SelectedOutput())
+	}
+
+	multi := provider.OutputMatchQuery{
+		Output: "conversionId",
+		Equals: map[string]string{
+			"conversionId":     "9988776655",
+			" conversionLabel": "AbC-D",
+			"":                 "ignored",
+		},
+	}
+	got = multi.Constraints()
+	if len(got) != 2 || got["conversionId"] != "9988776655" || got["conversionLabel"] != "AbC-D" {
+		t.Fatalf("multi Constraints = %#v", got)
+	}
+	if _, ok := got[""]; ok {
+		t.Fatal("empty constraint name should be omitted")
+	}
+	if multi.SelectedOutput() != "conversionId" {
+		t.Fatalf("multi SelectedOutput = %q", multi.SelectedOutput())
+	}
+
+	inferred := provider.OutputMatchQuery{Equals: map[string]string{"token": "tok"}}
+	if inferred.SelectedOutput() != "token" {
+		t.Fatalf("inferred SelectedOutput = %q", inferred.SelectedOutput())
+	}
+}
+
 func TestFindOutput(t *testing.T) {
 	t.Parallel()
 

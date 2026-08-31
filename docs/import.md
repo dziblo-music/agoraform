@@ -77,11 +77,14 @@ Computed and read-only fields are omitted. Provider-native identity is not
 emitted as a manifest attribute. Secrets never appear in the output.
 Imported resources expose the same declared outputs as resources created by
 Agoraform after a normal provider read. Import reconstructs `{ $ref, output }`
-when an already-bound resource uniquely matches a declared non-sensitive
-output. Matching uses bound identities already in local state; it is not a
+when an already-bound resource uniquely matches declared non-sensitive
+outputs. Core builds an ephemeral catalog from local state and identity-bound
+reads; providers request a match by provider, resource type, and one or more
+named output values without importing another provider. Matching is not a
 separate command. Ambiguous and absent matches emit the supported literal so
 the imported configuration can still produce a zero-change plan. Import never
-guesses a relationship.
+guesses a relationship. Sensitive and undeclared computed fields are not
+available to matching or diagnostics.
 
 After you add the generated configuration, `agoraform plan` against the
 unchanged remote resource should report no changes. Plan resolves the object

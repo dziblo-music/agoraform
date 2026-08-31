@@ -83,6 +83,82 @@ func TestImportSuccessThenPlanUnchanged(t *testing.T) {
 	}
 }
 
+func TestImportReconstructsCrossProviderOutputRefThenPlanUnchanged(t *testing.T) {
+	t.Parallel()
+
+	widgets := fake.New()
+	notes := fake.NewAlt()
+	parent := mustCLIAddress(t, "fake.widget.homepage")
+	note := mustCLIAddress(t, "alt.note.banner")
+	if err := widgets.Seed(resource.RemoteResource{
+		Address:    parent,
+		Identity:   resource.Identity{ID: "widget-1"},
+		Attributes: resource.Attributes{fake.AttrTitle: "Homepage banner"},
+		Computed:   resource.Attributes{fake.AttrSerial: 4, fake.OutputToken: "tok-homepage", fake.OutputSecret: "s3cret"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := notes.Seed(resource.RemoteResource{
+		Address:    note,
+		Identity:   resource.Identity{ID: "note-1"},
+		Attributes: resource.Attributes{fake.AttrText: "tok-homepage"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	reg := provider.NewRegistry()
+	if err := reg.Register(widgets); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Register(notes); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "agoraform.yaml")
+
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, parent.String(), "widget-1"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("widget import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	widgetYAML := extractYAML(stdout.String())
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, note.String(), "note-1"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("note import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	noteOut := stdout.String()
+	if !strings.Contains(noteOut, "$ref: fake.widget.homepage") || !strings.Contains(noteOut, "output: token") {
+		t.Fatalf("note import missing reconstructed output ref:\n%s", noteOut)
+	}
+	if strings.Contains(noteOut, "tok-homepage") || strings.Contains(noteOut, "s3cret") {
+		t.Fatalf("note import leaked output values:\n%s", noteOut)
+	}
+	noteYAML := extractYAML(noteOut)
+
+	combined := combineManifestResources(t, widgetYAML, noteYAML)
+	if err := os.WriteFile(manifestPath, []byte(combined), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"plan", "-f", manifestPath}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("plan after output-ref import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "No changes.") {
+		t.Fatalf("plan after output-ref import = %q", stdout.String())
+	}
+
+	_, widgetCreates, widgetUpdates, _ := widgets.Calls()
+	_, noteCreates, noteUpdates, _ := notes.Calls()
+	if widgetCreates != 0 || widgetUpdates != 0 || noteCreates != 0 || noteUpdates != 0 {
+		t.Fatalf("import/plan mutated providers: widget creates=%d updates=%d note creates=%d updates=%d", widgetCreates, widgetUpdates, noteCreates, noteUpdates)
+	}
+}
+
 func TestImportStaleIdentityIsNotCreate(t *testing.T) {
 	t.Parallel()
 

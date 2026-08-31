@@ -39,12 +39,56 @@ type OutputCatalog interface {
 }
 
 // OutputMatchQuery asks for a unique already-bound resource whose declared
-// non-sensitive output equals Value.
+// non-sensitive outputs equal the requested values.
+//
+// Output names the selected output on a unique match Ref. When Equals is
+// empty, Output and Value form a single-field query. When Equals is set, every
+// named value must match the same resource (AND). Providers must not guess
+// when the result is none or ambiguous.
 type OutputMatchQuery struct {
 	Provider     string
 	ResourceType string
 	Output       string
 	Value        string
+	Equals       map[string]string
+}
+
+// Constraints returns the named output values that must all match.
+// Empty names are omitted. The returned map is a copy.
+func (q OutputMatchQuery) Constraints() map[string]string {
+	out := make(map[string]string)
+	if len(q.Equals) > 0 {
+		for name, value := range q.Equals {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			out[name] = value
+		}
+		return out
+	}
+	name := strings.TrimSpace(q.Output)
+	if name == "" {
+		return out
+	}
+	out[name] = q.Value
+	return out
+}
+
+// SelectedOutput returns the output name placed on a unique match Ref.
+// When Output is empty and Constraints has exactly one name, that name is used.
+func (q OutputMatchQuery) SelectedOutput() string {
+	if name := strings.TrimSpace(q.Output); name != "" {
+		return name
+	}
+	constraints := q.Constraints()
+	if len(constraints) != 1 {
+		return ""
+	}
+	for name := range constraints {
+		return name
+	}
+	return ""
 }
 
 // OutputMatch is the deterministic result of an output relationship lookup.
@@ -61,10 +105,11 @@ const (
 
 // OutputMatcher looks up already-bound resources by declared safe outputs.
 //
-// Implementations must not mutate remote systems. Zero and multiple matches
-// are distinct from errors; callers must not guess in those cases.
+// Implementations must not mutate remote systems. A unique match returns a
+// logical Ref selecting query.SelectedOutput. Zero and multiple matches are
+// distinct from errors; callers must not guess in those cases.
 type OutputMatcher interface {
-	Match(ctx context.Context, query OutputMatchQuery) (resource.Address, OutputMatch, error)
+	Match(ctx context.Context, query OutputMatchQuery) (resource.Ref, OutputMatch, error)
 }
 
 // OutputsOf returns the declared outputs for resourceType, or nil when
