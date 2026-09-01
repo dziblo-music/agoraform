@@ -5,10 +5,32 @@ All notable changes to Agoraform are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and Agoraform versions follow [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
-Git tags are `v` plus the SemVer identifier (`v0.4.0`). `agoraform --version`
-prints the SemVer identifier without the prefix (`0.4.0`).
+Git tags are `v` plus the SemVer identifier (`v0.5.0`). `agoraform --version`
+prints the SemVer identifier without the prefix (`0.5.0`).
 
 ## [Unreleased]
+
+## [0.5.0] - 2026-09-01
+
+Agoraform 0.5.0 is a provider-completeness and lifecycle release. It does
+not add a new provider. It closes remaining Matomo bootstrap and teardown
+gaps, completes Google Ads destroy/remove semantics for the existing
+resource set, adds the provider-neutral `agoraform destroy` command, and
+proves cross-provider outputs so a Google Ads conversion action can feed a
+Matomo Google Ads conversion tag.
+
+The supported lifecycle for resources present in the manifest and bound in
+state is:
+
+```text
+validate -> plan -> apply -> plan -> import/adopt -> destroy
+```
+
+`agoraform destroy` is explicit. Removing a resource from the manifest does
+not destroy or prune it. State-only identities are preserved. Destroy may
+finish supported teardown while leaving provider-owned Google Ads conversion
+goals in state; that run reports the remnants and returns non-zero instead
+of claiming full teardown.
 
 ### Added
 
@@ -53,6 +75,60 @@ prints the SemVer identifier without the prefix (`0.4.0`).
 
 - Tag Manager operations and publication select the container from the resource binding or `MATOMO_CONTAINER_ID` without mutating provider-global configuration. Publication is addressed as the managed `matomo.container` resource, or as `matomo.container.external` when an existing container is selected by environment. Mixing a managed container with `MATOMO_CONTAINER_ID` is rejected before mutation.
 - Existing `MATOMO_CONTAINER_ID` workflows remain supported when no `matomo.container` resource is declared. Child resources omit the `container` attribute in that mode.
+
+### Supported in 0.5.0
+
+| Area | Scope |
+| --- | --- |
+| Commands | `validate`, `plan`, `apply`, `import`, `destroy` |
+| Providers | Matomo, Google Ads (`googleads`); no new providers |
+| Matomo | `matomo.goal`, `matomo.container`, Data Layer and Matomo Configuration `matomo.variable`, `matomo.trigger`, Matomo Analytics and Google Ads conversion `matomo.tag` |
+| Google Ads conversion | `googleads.conversion_action`, `googleads.customer_conversion_goal` |
+| Google Ads Search | `googleads.campaign_budget`, `googleads.campaign`, `googleads.campaign_conversion_goal`, `googleads.ad_group`, `googleads.keyword`, `googleads.responsive_search_ad`, `googleads.campaign_location`, `googleads.campaign_language` |
+| References | Address-only `$ref` plus optional named `{ $ref, output }` selectors |
+| Import | Supported Matomo and Google Ads resources; unique bound-output reconstruction; no mutation |
+| Matomo publication | Declarative through provider configuration, visible in `plan`, executed during `apply` and `destroy` |
+| Destroy | Explicit command; reverse dependency order; no automatic prune of resources removed from the manifest |
+| State | Local `agoraform.state.json` beside the manifest; schema unchanged |
+| Mutations | Create, update, and explicit destroy/remove |
+
+### Limitations
+
+- v0.5.0 does not add Meta Ads or any other new provider.
+- Matomo website/site provisioning is not implemented.
+- Google Ads billing, payment, and customer-account lifecycle are not implemented.
+- Application event delivery, gtag.js, Google Tag, consent handling, and conversion-event emission remain outside Agoraform.
+- Cross-provider transactional rollback is not implemented.
+- There is no drift command and no deletion reconciliation for resources removed from configuration.
+- Google Ads campaign support remains Search only. Performance Max, Display, Video, Shopping, App, Dynamic Search Ads, and other campaign families are not implemented.
+- Agoraform does not generate creative, upload image or video assets, enable spend automatically, or apply Google Ads optimization recommendations.
+- Offline, call, app, and conversion-event upload workflows are not implemented; `googleads.conversion_action` remains limited to supported website (`WEBPAGE`) actions.
+- Customer and campaign conversion goals are created by Google Ads. Destroy reports them as provider-owned, leaves them in state, and returns non-zero after supported teardown.
+- Immutable identity fields such as keyword text/match type/negative, location, language, and ad-group parent fail planning instead of destroying and recreating the remote object. `apply` still does not delete remote resources.
+- Google Ads authentication uses developer-token + single-user OAuth refresh-token credentials. Service-account, multi-user, and interactive OAuth flows are not implemented.
+- Remote state, workspaces, locking, and encryption are not implemented.
+- v0.5.0 allows at most one managed Matomo Tag Manager container per manifest.
+- Pre-1.0: breaking CLI or manifest changes may appear in later `0.x` releases and will be documented.
+
+### Upgrade notes
+
+0.5.0 does not remove or rename the v0.2.0 Matomo command/resource surface,
+the v0.3.0 Google Ads conversion-measurement surface, or the v0.4.0 Search
+campaign surface. Existing v0.2–v0.4 manifests and `agoraform.state.json`
+files continue to work. The local state schema is unchanged.
+
+`MATOMO_CONTAINER_ID` workflows remain supported when no `matomo.container`
+resource is declared. Managed-container mode, Matomo Configuration
+variables, Google Ads conversion tags, `{ $ref, output }`, and
+`agoraform destroy` are opt-in. Mixing a managed container with
+`MATOMO_CONTAINER_ID` is rejected before mutation.
+
+`agoraform destroy` tears down resources that are both present in the
+manifest and bound in state. It does not prune identities that remain only
+in state after a resource is deleted from configuration.
+
+See the [v0.5.0 Matomo + Google Ads lifecycle example](examples/matomo-googleads/README.md),
+[destroy guide](docs/destroy.md), and [release guide](docs/release.md).
 
 ## [0.4.0] - 2026-08-28
 
@@ -276,7 +352,8 @@ First public release.
 
 See the [README](README.md#install) and [docs/release.md](docs/release.md).
 
-[Unreleased]: https://github.com/dziblo-music/agoraform/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/dziblo-music/agoraform/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/dziblo-music/agoraform/releases/tag/v0.5.0
 [0.4.0]: https://github.com/dziblo-music/agoraform/releases/tag/v0.4.0
 [0.3.0]: https://github.com/dziblo-music/agoraform/releases/tag/v0.3.0
 [0.2.0]: https://github.com/dziblo-music/agoraform/releases/tag/v0.2.0

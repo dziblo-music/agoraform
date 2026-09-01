@@ -192,3 +192,13 @@ Compare the printed attributes with this example, adjust the manifest if
 needed, then run `agoraform plan`. An equivalent imported configuration
 against unchanged Google Ads state should report `No changes.` See
 [Import](../../docs/import.md) for the complete adoption workflow.
+
+## Destroy
+
+`agoraform destroy` removes the conversion action with Google Ads mutate
+`remove` (`status=REMOVED`). The customer conversion goal is provider-owned:
+it is listed, not mutated, remains in state, and causes a non-zero destroy
+result after supported teardown.
+
+Removing a resource from this manifest does not destroy it. See
+[Destroy](../../docs/destroy.md).

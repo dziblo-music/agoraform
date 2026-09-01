@@ -1,12 +1,12 @@
 # Google Ads setup
 
-Agoraform v0.4.0 uses the Google Ads API through OAuth 2.0 **single-user
+Agoraform uses the Google Ads API through OAuth 2.0 **single-user
 authentication**. Before using the `googleads` provider, configure Google Ads
 API access and provide the required runtime values through `.agoraform.env` or
 the process environment.
 
 Google also supports service-account and multi-user OAuth workflows. Agoraform
-v0.4.0 does not implement those authentication modes; supply a client ID,
+does not implement those authentication modes; supply a client ID,
 client secret, and previously issued refresh token for one authorized Google
 user.
 
@@ -223,7 +223,7 @@ An unchanged post-apply plan should report `No changes.`
 When testing against a production Google Ads account, review conversion-action,
 conversion-goal, budget, campaign, and serving-state settings carefully before
 `apply`: goal biddability, primary conversion settings, and campaign status
-can affect optimization and spend. The v0.4.0 release checklist requires
+can affect optimization and spend. The v0.5.0 release checklist requires
 mutation verification against a non-production Google Ads account before
 publishing the release. New Search campaigns, ad groups, positive keywords,
 and Responsive Search Ads default to `PAUSED`.
@@ -232,5 +232,5 @@ For a complete v0.4.0 Search campaign example, see
 [`examples/googleads-search/`](../examples/googleads-search/README.md).
 For the conversion-measurement-only v0.3.0 example, see
 [`examples/googleads-conversion/`](../examples/googleads-conversion/README.md).
-For a v0.5.0 Matomo + Google Ads lifecycle example, see
-[`examples/matomo-googleads/`](../examples/matomo-googleads/README.md).
+For the v0.5.0 Matomo + Google Ads lifecycle example, including destroy,
+see [`examples/matomo-googleads/`](../examples/matomo-googleads/README.md).

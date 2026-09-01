@@ -2,7 +2,7 @@
 
 The Matomo provider is Agoraform's first production provider. v0.1.0
 introduced analytics goals, v0.2.0 added Tag Manager variables, triggers,
-tags, and declarative container publication, and the current line adds
+tags, and declarative container publication, and v0.5.0 adds
 `matomo.container` so a Tag Manager container can be declared and imported
 instead of requiring a pre-created container id. `matomo.tag` also supports
 Matomo's Google Ads conversion template so a managed Google Ads conversion
