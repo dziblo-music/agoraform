@@ -4,6 +4,11 @@
 manifest graph, local identity state, and deterministic execution model as
 `plan` and `apply`.
 
+Destroy is a separate command. `plan` and `apply` never delete remote
+resources, and removing a resource from the manifest does not destroy or
+prune it. Only resources present in both the manifest and local state are
+eligible for teardown.
+
 ```text
 manifest + local state
         │
@@ -171,6 +176,14 @@ See the [Matomo + Google Ads lifecycle example](../examples/matomo-googleads/REA
 for exact destroy ordering, `destroy` versus `remove` versus
 `provider-owned` output, and the non-zero exit caused by a preserved
 customer conversion goal.
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Success, including a declined confirmation with no mutations |
+| `1` | Destroy failed, or supported teardown completed with unsupported or provider-owned remnants still in state |
+| `3` | Invalid invocation |
 
 ## Out of scope
 

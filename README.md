@@ -9,36 +9,40 @@ reconciling those changes through provider APIs.
 The provider-neutral workflow is:
 
 ```text
-validate -> plan -> apply -> plan
+validate -> plan -> apply -> plan -> import/adopt -> destroy
 ```
 
 `import` adopts supported existing remote objects without mutating them.
-`destroy` tears down managed resources in reverse dependency order after an
-explicit confirmation (or `--auto-approve`).
+`destroy` tears down managed resources that are present in the manifest and
+bound in state, in reverse dependency order, after an explicit confirmation
+(or `--auto-approve`). Removing a resource from the manifest does not
+destroy or prune it.
 
-## v0.4.0
+## v0.5.0
 
-Agoraform 0.4.0 adds complete Google Ads Search campaign management while
-retaining Matomo from v0.2.0 and Google Ads conversion measurement from
-v0.3.0.
+Agoraform 0.5.0 is a provider-completeness and lifecycle release. It does
+not add a new provider. It closes remaining Matomo bootstrap and teardown
+gaps, completes Google Ads destroy/remove semantics, and proves
+cross-provider conversion tracking across Matomo and Google Ads.
 
-| Area | v0.4.0 |
+| Area | v0.5.0 |
 | --- | --- |
-| Commands | `validate`, `plan`, `apply`, `import` |
-| Providers | Matomo, Google Ads (`googleads`) |
-| Matomo resources | `matomo.goal`, `matomo.variable`, `matomo.trigger`, `matomo.tag` |
+| Commands | `validate`, `plan`, `apply`, `import`, `destroy` |
+| Providers | Matomo, Google Ads (`googleads`); no new providers |
+| Matomo resources | `matomo.goal`, `matomo.container`, Data Layer and Matomo Configuration `matomo.variable`, `matomo.trigger`, Matomo Analytics and Google Ads conversion `matomo.tag` |
 | Google Ads conversion | `googleads.conversion_action`, `googleads.customer_conversion_goal` |
 | Google Ads Search | `googleads.campaign_budget`, `googleads.campaign`, `googleads.campaign_conversion_goal`, `googleads.ad_group`, `googleads.keyword`, `googleads.responsive_search_ad`, `googleads.campaign_location`, `googleads.campaign_language` |
-| References | Logical `$ref` dependencies and optional named outputs |
-| Import | Supported Matomo resources plus supported Google Ads conversion measurement and Search campaign resources |
-| Matomo publication | Declarative through provider configuration, visible in `plan`, executed during `apply` |
+| References | Logical `$ref` dependencies and optional named `{ $ref, output }` selectors |
+| Import | Supported Matomo and Google Ads resources; unique bound-output reconstruction; no mutation |
+| Destroy | Explicit teardown; reverse dependency order; no automatic prune of resources removed from the manifest |
+| Matomo publication | Declarative through provider configuration, visible in `plan`, executed during `apply` and `destroy` |
 | State | local `agoraform.state.json` |
-| Mutations | create and update; new Search serving objects default to `PAUSED` |
+| Mutations | create, update, and explicit destroy/remove; new Search serving objects default to `PAUSED` |
 
-v0.3.0 added website conversion actions and customer conversion-goal
-biddability. v0.2.0 introduced the dependency-aware Matomo Tag Manager
-workflow. v0.1.0 was the first public release and managed `matomo.goal`
-only.
+v0.4.0 added complete Google Ads Search campaign management. v0.3.0 added
+website conversion actions and customer conversion-goal biddability.
+v0.2.0 introduced the dependency-aware Matomo Tag Manager workflow.
+v0.1.0 was the first public release and managed `matomo.goal` only.
 
 ## Install
 
@@ -47,7 +51,7 @@ built with Go 1.26.7 and `CGO_ENABLED=0`.
 
 ### GitHub Releases
 
-1. Download the `v0.4.0` archive for your OS and architecture from GitHub
+1. Download the `v0.5.0` archive for your OS and architecture from GitHub
    Releases.
 2. Download `checksums.txt` from the same release and verify the archive.
 3. Extract `agoraform` (`agoraform.exe` on Windows) and place it on `PATH`.
@@ -57,30 +61,30 @@ built with Go 1.26.7 and `CGO_ENABLED=0`.
 agoraform --version
 ```
 
-A v0.4.0 binary prints `0.4.0`. Git tags use the Go convention with a `v`
+A v0.5.0 binary prints `0.5.0`. Git tags use the Go convention with a `v`
 prefix. Untagged local builds print `0.0.0-dev`.
 
 Release archives:
 
 | File | Platform |
 | --- | --- |
-| `agoraform_0.4.0_linux_amd64.tar.gz` | Linux amd64 |
-| `agoraform_0.4.0_linux_arm64.tar.gz` | Linux arm64 |
-| `agoraform_0.4.0_darwin_amd64.tar.gz` | macOS amd64 |
-| `agoraform_0.4.0_darwin_arm64.tar.gz` | macOS arm64 |
-| `agoraform_0.4.0_windows_amd64.zip` | Windows amd64 |
+| `agoraform_0.5.0_linux_amd64.tar.gz` | Linux amd64 |
+| `agoraform_0.5.0_linux_arm64.tar.gz` | Linux arm64 |
+| `agoraform_0.5.0_darwin_amd64.tar.gz` | macOS amd64 |
+| `agoraform_0.5.0_darwin_arm64.tar.gz` | macOS arm64 |
+| `agoraform_0.5.0_windows_amd64.zip` | Windows amd64 |
 
 The archives also contain the README, changelog, license files, the v0.1 goal
 example, the complete v0.2 Matomo conversion example, the complete v0.3
-Google Ads conversion example, and the complete v0.4 Google Ads Search
-campaign example.
+Google Ads conversion example, the complete v0.4 Google Ads Search campaign
+example, and the complete v0.5 Matomo + Google Ads lifecycle example.
 
 ### go install
 
 Requires Go 1.26.7 or newer:
 
 ```bash
-go install github.com/dziblo-music/agoraform/cmd/agoraform@v0.4.0
+go install github.com/dziblo-music/agoraform/cmd/agoraform@v0.5.0
 ```
 
 ### Build current source
@@ -280,7 +284,7 @@ change `status` in the manifest:
 - enabling spend is a reviewed `status` update, not an automatic side
   effect of apply.
 
-Agoraform never deletes remote Google Ads objects. Immutable identity
+Agoraform `apply` never deletes remote Google Ads objects. Immutable identity
 fields fail planning instead of hiding a destroy-and-recreate:
 
 - keyword `text`, `matchType`, `negative`, and parent ad group;
@@ -565,6 +569,7 @@ agoraform validate [-f path/to/manifest.yaml]
 agoraform plan [-f path/to/manifest.yaml]
 agoraform apply [-f path/to/manifest.yaml]
 agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
+agoraform destroy [-f path/to/manifest.yaml]
 ```
 
 | Command | Purpose |
@@ -573,19 +578,20 @@ agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
 | `plan` | Read remote state and show all resource/provider actions; never mutate |
 | `apply` | Execute the reviewed resource changes and configured provider finalization |
 | `import` | Bind an existing remote identity and print configurable YAML; no remote mutation |
+| `destroy` | Tear down managed resources present in the manifest and bound in state; requires confirmation or `--auto-approve` |
 
 ### Exit codes
 
 | Code | Meaning |
 | --- | --- |
 | `0` | Success; for `plan`, no changes |
-| `1` | Runtime/validation/provider failure |
+| `1` | Runtime/validation/provider failure; `destroy` also exits `1` when provider-owned or unsupported remnants remain after supported teardown |
 | `2` | `plan` succeeded and changes are present |
 | `3` | Invalid CLI usage |
 
 ## Current development limitations
 
-- v0.4.0 supports Matomo plus Google Ads website conversion measurement and
+- v0.5.0 supports Matomo plus Google Ads website conversion measurement and
   the complete Search campaign graph. Meta Ads is not implemented.
 - Google Ads campaign support is Search only. Performance Max, Display,
   Video, Shopping, App, Dynamic Search Ads, and other campaign families
@@ -611,11 +617,14 @@ agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
 - Rollback, scheduled publication, approval workflows, generalized deployment
   pipelines, and multi-container deployment orchestration are not implemented.
 - Remote state, workspaces, locking, and encryption are not implemented.
-- `apply` does not delete remote resources. Use `agoraform destroy` to tear
-  down managed resources. Immutable Google Ads identity fields fail planning
-  rather than planning a replacement delete. Google Ads destroy uses native
-  `remove` operations; customer and campaign conversion goals are
-  provider-owned and remain in state.
+- `apply` does not delete remote resources. Removing a resource from the
+  manifest does not destroy or prune it. Use `agoraform destroy` to tear
+  down managed resources that remain in both the manifest and local state.
+  Immutable Google Ads identity fields fail planning rather than planning a
+  replacement delete. Google Ads destroy uses native `remove` operations;
+  customer and campaign conversion goals are provider-owned, remain in
+  state, and cause a non-zero destroy result after supported teardown.
+- There is no drift command.
 - Pre-1.0 releases may intentionally introduce documented breaking changes.
 
 ## Documentation

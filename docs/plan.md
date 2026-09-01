@@ -85,8 +85,11 @@ A plan containing only a provider action still exits with code `2` because
 | update | configurable attributes differ |
 | unchanged | desired and comparable remote state match |
 
-Destructive deletion is not implemented yet. Unmanaged remote objects are
-ignored.
+`plan` and `apply` never destroy resources. Removing a resource from the
+manifest does not plan a deletion; identities that exist only in local state
+are preserved. Use `agoraform destroy` to tear down managed resources that
+are present in both the manifest and local state. Unmanaged remote objects
+are ignored.
 
 ## Google Ads safety and replacement
 

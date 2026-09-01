@@ -218,7 +218,8 @@ destroy left 1 resource in state because destroy is unsupported: googleads.custo
 ```
 
 Closing the Google Ads customer and removing the website snippet are out of
-scope. See [Destroy](../../docs/destroy.md).
+scope. Removing a resource from this manifest does not destroy or prune it.
+See [Destroy](../../docs/destroy.md).
 
 ## Verify
 
