@@ -26,6 +26,10 @@ GOOGLE_ADS_CLIENT_SECRET=replace-with-client-secret
 GOOGLE_ADS_REFRESH_TOKEN=replace-with-refresh-token
 GOOGLE_ADS_CUSTOMER_ID=1234567890
 GOOGLE_ADS_LOGIN_CUSTOMER_ID=0987654321
+
+# Meta Ads
+META_ACCESS_TOKEN=replace-with-access-token
+META_AD_ACCOUNT_ID=act_123456789012345
 ```
 
 Blank lines and lines beginning with `#` are ignored. Single- and double-quoted values are supported:
@@ -72,6 +76,12 @@ Treat the file like any other local secrets file:
 - do not copy credentials into `agoraform.yaml`.
 
 Agoraform does not intentionally write loaded values to the manifest, plan output, logs, or local state.
+
+For Meta automation, prefer a system-user access token with access to the
+selected ad account and the `ads_management` permission. The account ID may
+be numeric or use Meta's `act_` prefix. See the
+[Meta provider reference](../providers/meta/README.md) for connection
+validation and API-version policy.
 
 ## Project layout
 

@@ -10,6 +10,18 @@ prints the SemVer identifier without the prefix (`0.5.0`).
 
 ## [Unreleased]
 
+### Added
+
+- Registered the `meta` provider foundation for v0.6.0 with runtime-only
+  `META_ACCESS_TOKEN` and normalized `META_AD_ACCOUNT_ID` configuration,
+  read-only validation of `ads_management` and ad-account access, and no
+  Meta-specific CLI path.
+- Added a reusable Meta Graph and Marketing API client pinned to v26.0 with
+  authenticated GET/POST/DELETE requests, context-aware timeouts, cursor
+  pagination, bounded JSON decoding, API code/subcode and request/trace ID
+  mapping, transient classification without automatic mutation retries, and
+  secret-safe diagnostics.
+
 ## [0.5.0] - 2026-09-01
 
 Agoraform 0.5.0 is a provider-completeness and lifecycle release. It does
