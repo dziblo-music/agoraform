@@ -44,6 +44,11 @@ website conversion actions and customer conversion-goal biddability.
 v0.2.0 introduced the dependency-aware Matomo Tag Manager workflow.
 v0.1.0 was the first public release and managed `matomo.goal` only.
 
+Current source after v0.5.0 also contains the v0.6.0 `meta` provider
+foundation. It adds runtime authentication, read-only connection validation,
+and a client pinned to Meta Graph and Marketing API v26.0. Meta resource types
+are added by the remaining focused v0.6.0 work.
+
 ## Install
 
 Official release artifacts require no runtime besides the binary. They are
@@ -136,6 +141,18 @@ targeting. See the [Google Ads setup guide](docs/google-ads-setup.md),
 [v0.3 conversion example](examples/googleads-conversion/README.md). The
 [v0.5 Matomo + Google Ads lifecycle example](examples/matomo-googleads/README.md)
 joins both providers across greenfield apply, import, and destroy.
+
+The Meta provider foundation uses runtime-only configuration:
+
+```text
+META_ACCESS_TOKEN    Meta access token; prefer a system-user token for automation
+META_AD_ACCOUNT_ID   numeric or act_<numeric> ad account ID
+```
+
+Declare `meta: {}` in the providers block. Validation checks the granted
+`ads_management` permission and ad-account access with non-mutating requests.
+All requests are pinned to Graph and Marketing API v26.0. See the
+[Meta provider reference](providers/meta/README.md).
 
 Non-secret publication desired state belongs in the Matomo provider manifest:
 
@@ -640,6 +657,7 @@ agoraform destroy [-f path/to/manifest.yaml]
 - [Local state](docs/state.md)
 - [Matomo provider](providers/matomo/README.md)
 - [Google Ads provider](providers/googleads/README.md)
+- [Meta Ads provider](providers/meta/README.md)
 - [v0.2 Matomo conversion example](examples/matomo-conversion/README.md)
 - [v0.3 Google Ads conversion example](examples/googleads-conversion/README.md)
 - [v0.4 Google Ads Search campaign example](examples/googleads-search/README.md)

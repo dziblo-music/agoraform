@@ -79,6 +79,15 @@ See [googleads/README.md](googleads/README.md), the
 and the
 [Matomo + Google Ads lifecycle example](../examples/matomo-googleads/README.md).
 
+## Meta Ads
+
+[`meta/`](meta/) registers as `meta` and loads `META_ACCESS_TOKEN` and
+`META_AD_ACCOUNT_ID` from runtime configuration. The v0.6.0 foundation pins
+Graph and Marketing API v26.0, provides authenticated/versioned request and
+pagination plumbing, and performs read-only permission and ad-account
+validation. Focused v0.6.0 issues add the provider's resource types. See the
+[Meta provider reference](meta/README.md).
+
 ## Test provider
 
 `internal/provider/fake` is an in-memory `widget` provider used by unit tests.
