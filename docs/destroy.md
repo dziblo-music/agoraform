@@ -167,6 +167,13 @@ still exits non-zero while those bindings remain.
 | `googleads.campaign_location` | remove | `campaignCriteria:mutate` `remove` | `status=REMOVED` | `REMOVED` or not found | mutate `remove` only |
 | `googleads.campaign_language` | remove | `campaignCriteria:mutate` `remove` | `status=REMOVED` | `REMOVED` or not found | mutate `remove` only |
 
+### Meta Ads
+
+| Type | Capability | API | Terminal remote state | Already terminal | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `meta.pixel` | provider-owned | none | object remains | not applicable | Events Manager owns the Pixel/Dataset; Agoraform never deletes it |
+| `meta.custom_conversion` | remove | `DELETE /{id}` | `is_archived=true` or not found | archived or not found | Agoraform does not assume a hard delete |
+
 Paused, hidden, and enabled resources are distinct from `REMOVED`. Destroy
 removes the former and treats the latter as already-absent convergence.
 Closing a Google Ads customer, tearing down billing, and pruning identities

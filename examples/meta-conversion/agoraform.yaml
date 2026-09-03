@@ -1,0 +1,24 @@
+# Meta website conversion-measurement example for Agoraform v0.6.0.
+# Credentials, ad account IDs, and provider-native identities stay outside
+# this manifest. Browser Pixel code and Conversions API events are not
+# managed here.
+
+apiVersion: agoraform.io/v1alpha1
+providers:
+  meta: {}
+resources:
+  - address: meta.pixel.website
+    attributes:
+      name: Website
+
+  - address: meta.custom_conversion.trial_started
+    attributes:
+      name: Trial Started
+      eventType: START_TRIAL
+      pixel:
+        $ref: meta.pixel.website
+      rule:
+        and:
+          - event:
+              eq: StartTrial
+      defaultValue: 0

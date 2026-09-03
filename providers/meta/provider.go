@@ -15,20 +15,27 @@ import (
 
 const Name = "meta"
 
-// Provider is the Agoraform Meta Ads provider foundation. Resource types are
-// added by the focused v0.6.0 resource issues; this foundation owns shared
-// runtime configuration, connection validation, and API plumbing.
+// Provider is the Agoraform Meta Ads provider.
 type Provider struct {
 	cfg    Config
 	once   sync.Once
 	client *client.Client
 	err    error
+
+	mu         sync.Mutex
+	known      map[string]remoteBinding
+	identities IdentityCatalog
 }
 
 var (
-	_ provider.Provider          = (*Provider)(nil)
-	_ provider.ConnectionChecker = (*Provider)(nil)
-	_ provider.Configurator      = (*Provider)(nil)
+	_ provider.Provider               = (*Provider)(nil)
+	_ provider.ConnectionChecker      = (*Provider)(nil)
+	_ provider.Configurator           = (*Provider)(nil)
+	_ provider.Normalizer             = (*Provider)(nil)
+	_ provider.ImportIDNormalizer     = (*Provider)(nil)
+	_ provider.Destroyer              = (*Provider)(nil)
+	_ provider.OutputCatalog          = (*Provider)(nil)
+	_ provider.MissingResourcePlanner = (*Provider)(nil)
 )
 
 // New returns a Meta provider without contacting the API.
@@ -45,7 +52,29 @@ func NewWithHTTPClient(cfg Config, httpClient *http.Client) *Provider {
 
 func (p *Provider) Name() string { return Name }
 
-func (p *Provider) ResourceTypes() []string { return nil }
+func (p *Provider) ResourceTypes() []string {
+	return []string{TypePixel, TypeCustomConversion}
+}
+
+// Outputs implements provider.OutputCatalog.
+func (p *Provider) Outputs(resourceType string) []provider.OutputSpec {
+	switch resourceType {
+	case TypePixel:
+		return []provider.OutputSpec{{Name: OutputPixelID, Kind: provider.OutputKindString}}
+	case TypeCustomConversion:
+		return []provider.OutputSpec{{Name: OutputCustomConversionID, Kind: provider.OutputKindString}}
+	default:
+		return nil
+	}
+}
+
+// PlanMissingResource implements provider.MissingResourcePlanner.
+func (p *Provider) PlanMissingResource(res resource.Resource) (provider.MissingResourceMode, error) {
+	if res.Address.Provider == Name && res.Address.Type == TypePixel {
+		return provider.MissingResourceAdopt, nil
+	}
+	return provider.MissingResourceCreate, nil
+}
 
 // Client returns the shared Meta client, constructing it on first use.
 func (p *Provider) Client() (*client.Client, error) {
@@ -96,23 +125,96 @@ func (p *Provider) Validate(_ context.Context, res resource.Resource) error {
 	if res.Address.Provider != Name {
 		return fmt.Errorf("resource %s: unsupported provider %q", res.Address, res.Address.Provider)
 	}
-	return fmt.Errorf("resource %s: unknown type %q for provider %q", res.Address, res.Address.Type, Name)
+	if !provider.Supports(p, res.Address.Type) {
+		return fmt.Errorf("resource %s: unknown type %q for provider %q", res.Address, res.Address.Type, Name)
+	}
+	switch res.Address.Type {
+	case TypePixel:
+		return p.validatePixel(res)
+	case TypeCustomConversion:
+		return p.validateCustomConversion(res)
+	default:
+		return fmt.Errorf("resource %s: unknown type %q for provider %q", res.Address, res.Address.Type, Name)
+	}
 }
 
-func (p *Provider) Read(context.Context, resource.Resource) (resource.RemoteResource, error) {
-	return resource.RemoteResource{}, fmt.Errorf("meta: read is not implemented for this resource type")
+func (p *Provider) Read(ctx context.Context, res resource.Resource) (resource.RemoteResource, error) {
+	switch res.Address.Type {
+	case TypePixel:
+		return p.readPixel(ctx, res)
+	case TypeCustomConversion:
+		return p.readCustomConversion(ctx, res)
+	default:
+		return resource.RemoteResource{}, fmt.Errorf("meta: read is not implemented for this resource type")
+	}
 }
 
-func (p *Provider) Create(context.Context, resource.Resource) (resource.RemoteResource, error) {
-	return resource.RemoteResource{}, fmt.Errorf("meta: create is not implemented for this resource type")
+func (p *Provider) Create(ctx context.Context, res resource.Resource) (resource.RemoteResource, error) {
+	switch res.Address.Type {
+	case TypePixel:
+		return p.createPixel(ctx, res)
+	case TypeCustomConversion:
+		return p.createCustomConversion(ctx, res)
+	default:
+		return resource.RemoteResource{}, fmt.Errorf("meta: create is not implemented for this resource type")
+	}
 }
 
-func (p *Provider) Update(context.Context, resource.Resource, resource.RemoteResource) (resource.RemoteResource, error) {
-	return resource.RemoteResource{}, fmt.Errorf("meta: update is not implemented for this resource type")
+func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual resource.RemoteResource) (resource.RemoteResource, error) {
+	switch desired.Address.Type {
+	case TypePixel:
+		return p.updatePixel(ctx, desired, actual)
+	case TypeCustomConversion:
+		return p.updateCustomConversion(ctx, desired, actual)
+	default:
+		return resource.RemoteResource{}, fmt.Errorf("meta: update is not implemented for this resource type")
+	}
 }
 
-func (p *Provider) Import(context.Context, resource.Address, string) (resource.RemoteResource, error) {
-	return resource.RemoteResource{}, fmt.Errorf("meta: import is not implemented for this resource type")
+func (p *Provider) Import(ctx context.Context, addr resource.Address, id string) (resource.RemoteResource, error) {
+	switch addr.Type {
+	case TypePixel:
+		return p.importPixel(ctx, addr, id)
+	case TypeCustomConversion:
+		return p.importCustomConversion(ctx, addr, id)
+	default:
+		return resource.RemoteResource{}, fmt.Errorf("meta: import is not implemented for this resource type")
+	}
+}
+
+// NormalizeImportID implements provider.ImportIDNormalizer.
+func (p *Provider) NormalizeImportID(addr resource.Address, raw string) (string, error) {
+	switch addr.Type {
+	case TypePixel:
+		return p.canonicalPixelImportID(addr, raw)
+	case TypeCustomConversion:
+		return p.canonicalCustomConversionImportID(addr, raw)
+	default:
+		return strings.TrimSpace(raw), nil
+	}
+}
+
+// NormalizeComparable implements provider.Normalizer.
+func (p *Provider) NormalizeComparable(desired resource.Resource, live *resource.RemoteResource) (resource.Attributes, resource.Attributes, error) {
+	switch desired.Address.Type {
+	case TypePixel:
+		return p.normalizePixelComparable(desired, live)
+	case TypeCustomConversion:
+		return p.normalizeCustomConversionComparable(desired, live)
+	default:
+		return desired.Attributes.Clone(), nil, nil
+	}
+}
+
+func (p *Provider) requireConfig() error {
+	return missingConfigError(p.cfg)
+}
+
+func (p *Provider) requireAdAccount() error {
+	if strings.TrimSpace(p.cfg.AdAccountID) == "" {
+		return fmt.Errorf("meta: %s is required", EnvAdAccountID)
+	}
+	return nil
 }
 
 func missingConfigError(cfg Config) error {

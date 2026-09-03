@@ -13,6 +13,7 @@ import (
 	"github.com/dziblo-music/agoraform/internal/resource"
 	"github.com/dziblo-music/agoraform/providers/googleads"
 	"github.com/dziblo-music/agoraform/providers/matomo"
+	"github.com/dziblo-music/agoraform/providers/meta"
 )
 
 func TestManifestsRemainValid(t *testing.T) {
@@ -26,6 +27,7 @@ func TestManifestsRemainValid(t *testing.T) {
 		"matomo-conversion/agoraform.yaml":         false,
 		"matomo-googleads/agoraform.yaml":          false,
 		"matomo-googleads/external/agoraform.yaml": false,
+		"meta-conversion/agoraform.yaml":           false,
 	}
 	for _, path := range paths {
 		slash := filepath.ToSlash(path)
@@ -125,6 +127,9 @@ func exampleProviders(m *manifest.Manifest) map[string]provider.Provider {
 		matomo.Name: matomo.New(cfg),
 		googleads.Name: googleads.New(googleads.Config{
 			CustomerID: "1234567890",
+		}),
+		meta.Name: meta.New(meta.Config{
+			AdAccountID: "act_123456789012345",
 		}),
 	}
 }

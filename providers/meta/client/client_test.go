@@ -156,6 +156,16 @@ func TestAuthenticationAndPermissionClassification(t *testing.T) {
 	}
 }
 
+func TestIsNotFound(t *testing.T) {
+	t.Parallel()
+	if !(&client.Error{StatusCode: 404}).IsNotFound() || !(&client.Error{Code: 803}).IsNotFound() {
+		t.Fatal("404 and API code 803 must be absence")
+	}
+	if (&client.Error{StatusCode: 400, Code: 100}).IsNotFound() {
+		t.Fatal("generic invalid parameter must not be treated as absence")
+	}
+}
+
 func TestMalformedResponse(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

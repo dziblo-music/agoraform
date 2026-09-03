@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -94,6 +95,24 @@ func (e *Error) IsPermission() bool {
 // itself never automatically retries mutations.
 func (e *Error) IsTransient() bool {
 	return e != nil && e.Transient
+}
+
+// IsNotFound reports that the requested Graph object is absent. Generic
+// invalid-parameter failures are not treated as absence.
+func (e *Error) IsNotFound() bool {
+	if e == nil {
+		return false
+	}
+	if e.StatusCode == http.StatusNotFound {
+		return true
+	}
+	return e.Code == 803
+}
+
+// IsNotFound reports whether err is a Meta object-absence failure.
+func IsNotFound(err error) bool {
+	var api *Error
+	return errors.As(err, &api) && api.IsNotFound()
 }
 
 type errorEnvelope struct {
