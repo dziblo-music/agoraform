@@ -14,6 +14,7 @@ func TestDestroyLifecycleCoversRegisteredTypes(t *testing.T) {
 	want := map[string]provider.DestroyCapability{
 		meta.TypePixel:            provider.DestroyProviderOwned,
 		meta.TypeCustomConversion: provider.DestroyRemove,
+		meta.TypeCampaign:         provider.DestroyRemove,
 	}
 	for _, typ := range p.ResourceTypes() {
 		cap, ok := want[typ]
