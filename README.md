@@ -45,9 +45,11 @@ v0.2.0 introduced the dependency-aware Matomo Tag Manager workflow.
 v0.1.0 was the first public release and managed `matomo.goal` only.
 
 Current source after v0.5.0 also contains the v0.6.0 `meta` provider
-foundation. It adds runtime authentication, read-only connection validation,
-and a client pinned to Meta Graph and Marketing API v26.0. Meta resource types
-are added by the remaining focused v0.6.0 work.
+foundation plus website conversion-measurement resources. The provider pins
+Graph and Marketing API v26.0. `meta.pixel` is an import/adopt binding for an
+existing website Pixel/Dataset. `meta.custom_conversion` manages website
+Custom Conversions against that event source. Campaign, ad-set, creative, and
+ad types remain later v0.6.0 work.
 
 ## Install
 
@@ -662,6 +664,7 @@ agoraform destroy [-f path/to/manifest.yaml]
 - [v0.3 Google Ads conversion example](examples/googleads-conversion/README.md)
 - [v0.4 Google Ads Search campaign example](examples/googleads-search/README.md)
 - [v0.5 Matomo + Google Ads lifecycle example](examples/matomo-googleads/README.md)
+- [v0.6 Meta conversion example](examples/meta-conversion/README.md)
 - [Release process](docs/release.md)
 - [Changelog](CHANGELOG.md)
 

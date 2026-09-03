@@ -12,6 +12,17 @@ prints the SemVer identifier without the prefix (`0.5.0`).
 
 ### Added
 
+- Meta website conversion measurement for v0.6.0: `meta.pixel` binds an
+  existing Pixel/Dataset event source through import or unique-name adopt
+  (Agoraform does not create or delete Pixels), and `meta.custom_conversion`
+  creates, reads, updates, imports, and archives website Custom Conversions
+  against a logical `$ref` to that pixel. Pixel `pixelId` and custom
+  conversion `customConversionId` are declared non-secret outputs. Import
+  reconstructs the pixel relationship only when a bound `meta.pixel` is
+  unique. Rule, pixel, and `eventType` are immutable after create. Destroy
+  calls Marketing API `DELETE` and treats `is_archived` or absence as the
+  terminal state. Browser Pixel/`fbq` and Conversions API delivery stay
+  outside Agoraform.
 - Registered the `meta` provider foundation for v0.6.0 with runtime-only
   `META_ACCESS_TOKEN` and normalized `META_AD_ACCOUNT_ID` configuration,
   read-only validation of `ads_management` and ad-account access, and no

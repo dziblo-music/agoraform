@@ -376,6 +376,31 @@ If the fire trigger is not bound, or the remote tag uses an unsupported
 multi-trigger shape, import fails with actionable guidance instead of
 emitting Matomo-native ids as configuration.
 
+## Meta Pixel/Dataset event sources
+
+Import a website Pixel/Dataset by its numeric id. Agoraform stores that id
+in local state as `remoteId`. Do not copy it into YAML. Agoraform does not
+create pixels; import or unique-name adopt binds an existing Events Manager
+object.
+
+```bash
+agoraform import meta.pixel.website 111222333444555
+```
+
+## Meta Custom Conversions
+
+Import a website Custom Conversion by its numeric id after the referenced
+Pixel/Dataset is already bound:
+
+```bash
+agoraform import meta.custom_conversion.trial_started 998877665544332
+```
+
+Import reconstructs `pixel: { $ref: meta.pixel.NAME }` only when that event
+source id uniquely matches a bound `meta.pixel`. Missing and ambiguous
+matches fail instead of guessing or writing the remote pixel id into YAML.
+App, offline, and other non-pixel event sources are rejected.
+
 ## Exit codes
 
 | Code | Meaning |

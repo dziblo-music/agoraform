@@ -83,10 +83,11 @@ and the
 
 [`meta/`](meta/) registers as `meta` and loads `META_ACCESS_TOKEN` and
 `META_AD_ACCOUNT_ID` from runtime configuration. The v0.6.0 foundation pins
-Graph and Marketing API v26.0, provides authenticated/versioned request and
-pagination plumbing, and performs read-only permission and ad-account
-validation. Focused v0.6.0 issues add the provider's resource types. See the
-[Meta provider reference](meta/README.md).
+Graph and Marketing API v26.0. The provider currently manages website
+`meta.pixel` event-source bindings (import/adopt only) and website
+`meta.custom_conversion` resources. See the
+[Meta provider reference](meta/README.md) and the
+[conversion-measurement example](../examples/meta-conversion/README.md).
 
 ## Test provider
 
