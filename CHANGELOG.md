@@ -12,6 +12,14 @@ prints the SemVer identifier without the prefix (`0.5.0`).
 
 ### Added
 
+- First-class `meta.campaign` lifecycle for v0.6.0 with current ODAX
+  objectives, required special-ad-category declarations, `AUCTION` buying,
+  optional campaign-level daily or lifetime budgets in account-currency minor
+  units, optional campaign bid strategy, explicit ad-set budget sharing, and a
+  declared `campaignId` output.
+  New campaigns default to `PAUSED`; import preserves configured status;
+  objective, buying-type, and budget-ownership changes fail planning; and
+  destroy uses Marketing API `DELETE` with idempotent terminal-state handling.
 - Meta website conversion measurement for v0.6.0: `meta.pixel` binds an
   existing Pixel/Dataset event source through import or unique-name adopt
   (Agoraform does not create or delete Pixels), and `meta.custom_conversion`

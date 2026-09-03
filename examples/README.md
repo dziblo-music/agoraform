@@ -3,6 +3,11 @@
 Example manifests live here. They are validated automatically by the Go test
 suite and contain no credentials or private deployment values.
 
+- [meta-campaign](meta-campaign/README.md) — v0.6.0 paused-by-default ODAX
+  campaign with a deterministic campaign-level lifetime budget.
+- [meta-conversion](meta-conversion/README.md) — v0.6.0 website Pixel/Dataset
+  binding and Custom Conversion configuration.
+
 - [matomo-googleads](matomo-googleads/README.md) — primary v0.5.0 lifecycle
   example: managed Matomo Tag Manager container, Matomo Configuration and
   Data Layer variables, `trialStarted` trigger, Google Ads website

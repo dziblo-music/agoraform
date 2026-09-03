@@ -28,6 +28,7 @@ func TestManifestsRemainValid(t *testing.T) {
 		"matomo-googleads/agoraform.yaml":          false,
 		"matomo-googleads/external/agoraform.yaml": false,
 		"meta-conversion/agoraform.yaml":           false,
+		"meta-campaign/agoraform.yaml":             false,
 	}
 	for _, path := range paths {
 		slash := filepath.ToSlash(path)

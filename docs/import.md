@@ -401,6 +401,20 @@ source id uniquely matches a bound `meta.pixel`. Missing and ambiguous
 matches fail instead of guessing or writing the remote pixel id into YAML.
 App, offline, and other non-pixel event sources are rejected.
 
+## Meta Campaigns
+
+Import a campaign by its numeric id:
+
+```bash
+agoraform import meta.campaign.acquisition 777888999000111
+```
+
+Import is read-only and emits the campaign's configured `ACTIVE` or `PAUSED`
+status. It does not pause an active campaign. Budget values are emitted in the
+ad account currency's API-native smallest unit. `RESERVED`, terminal, legacy-
+objective, or otherwise unsupported campaigns fail import rather than losing
+configuration.
+
 ## Exit codes
 
 | Code | Meaning |

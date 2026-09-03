@@ -1,0 +1,15 @@
+apiVersion: agoraform.io/v1alpha1
+
+providers:
+  meta: {}
+
+resources:
+  - address: meta.campaign.acquisition
+    attributes:
+      name: Website Acquisition
+      objective: OUTCOME_SALES
+      status: PAUSED
+      specialAdCategories: []
+      buyingType: AUCTION
+      lifetimeBudget: 50000
+      bidStrategy: LOWEST_COST_WITHOUT_CAP

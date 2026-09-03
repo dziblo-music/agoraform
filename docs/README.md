@@ -20,6 +20,7 @@ guides lives here.
 - [Meta Ads provider](../providers/meta/README.md)
 - [v0.2 Matomo conversion example](../examples/matomo-conversion/README.md)
 - [v0.6 Meta conversion example](../examples/meta-conversion/README.md)
+- [v0.6 Meta campaign example](../examples/meta-campaign/README.md)
 - [v0.3 Google Ads conversion example](../examples/googleads-conversion/README.md)
 - [v0.4 Google Ads Search campaign example](../examples/googleads-search/README.md)
 - [v0.5 Matomo + Google Ads lifecycle example](../examples/matomo-googleads/README.md)
@@ -48,6 +49,10 @@ and [Google Ads conversion example](../examples/googleads-conversion/README.md).
 The [v0.5 Matomo + Google Ads lifecycle example](../examples/matomo-googleads/README.md)
 demonstrates managed-container greenfield bootstrap, cross-provider
 conversion-tag references, import, and destroy.
+
+Current v0.6.0 source adds the Meta provider, website Pixel/Dataset and Custom
+Conversion configuration, and paused-by-default ODAX `meta.campaign`
+management. See the [Meta provider reference](../providers/meta/README.md).
 
 Provider credentials and connection settings can be stored locally in an
 optional [`.agoraform.env`](local-configuration.md) file instead of being

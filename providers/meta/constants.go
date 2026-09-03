@@ -30,6 +30,9 @@ const (
 	// AttrBidStrategy is the campaign-level Meta bid strategy used with a
 	// campaign-level budget.
 	AttrBidStrategy = "bidStrategy"
+	// AttrAdSetBudgetSharing declares whether an ad-set-budget campaign allows
+	// budget sharing between its ad sets.
+	AttrAdSetBudgetSharing = "adSetBudgetSharingEnabled"
 
 	// TypeCustomConversion is used in addresses such as
 	// meta.custom_conversion.trial_started.
