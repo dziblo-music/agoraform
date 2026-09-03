@@ -45,11 +45,13 @@ v0.2.0 introduced the dependency-aware Matomo Tag Manager workflow.
 v0.1.0 was the first public release and managed `matomo.goal` only.
 
 Current source after v0.5.0 also contains the v0.6.0 `meta` provider
-foundation plus website conversion-measurement resources. The provider pins
+foundation, website conversion-measurement resources, and `meta.campaign`.
+The provider pins
 Graph and Marketing API v26.0. `meta.pixel` is an import/adopt binding for an
 existing website Pixel/Dataset. `meta.custom_conversion` manages website
-Custom Conversions against that event source. Campaign, ad-set, creative, and
-ad types remain later v0.6.0 work.
+Custom Conversions against that event source. `meta.campaign` manages safe,
+paused-by-default ODAX campaigns and optional campaign-level budgets. Ad-set,
+creative, and ad types remain later v0.6.0 work.
 
 ## Install
 

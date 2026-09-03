@@ -173,6 +173,7 @@ still exits non-zero while those bindings remain.
 | --- | --- | --- | --- | --- | --- |
 | `meta.pixel` | provider-owned | none | object remains | not applicable | Events Manager owns the Pixel/Dataset; Agoraform never deletes it |
 | `meta.custom_conversion` | remove | `DELETE /{id}` | `is_archived=true` or not found | archived or not found | Agoraform does not assume a hard delete |
+| `meta.campaign` | remove | `DELETE /{id}` | `status=DELETED`, `ARCHIVED`, or not found | terminal status or not found | `PAUSED` is not terminal; delete never enables serving |
 
 Paused, hidden, and enabled resources are distinct from `REMOVED`. Destroy
 removes the former and treats the latter as already-absent convergence.

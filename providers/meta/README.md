@@ -2,8 +2,63 @@
 
 The `meta` provider is the Meta Marketing API provider for Agoraform v0.6.0.
 It is registered with the same provider-neutral lifecycle used by the existing
-providers. Website conversion measurement is implemented here. Campaign,
-ad-set, creative, ad, and targeting types remain later v0.6.0 issues.
+providers. Website conversion measurement and campaign management are
+implemented here. Ad-set, creative, ad, and targeting types remain later
+v0.6.0 issues.
+
+## `meta.campaign`
+
+Declare an Outcome-Driven Ad Experiences (ODAX) campaign:
+
+```yaml
+- address: meta.campaign.acquisition
+  attributes:
+    name: Website Acquisition
+    objective: OUTCOME_SALES
+    status: PAUSED
+    specialAdCategories: []
+    buyingType: AUCTION
+    lifetimeBudget: 50000
+    bidStrategy: LOWEST_COST_WITHOUT_CAP
+```
+
+`objective` accepts the six current outcome values:
+`OUTCOME_APP_PROMOTION`, `OUTCOME_AWARENESS`, `OUTCOME_ENGAGEMENT`,
+`OUTCOME_LEADS`, `OUTCOME_SALES`, and `OUTCOME_TRAFFIC`. Legacy objective
+names are rejected. `specialAdCategories` is required; use an empty list when
+none apply. Supported categories are `CREDIT`, `EMPLOYMENT`,
+`FINANCIAL_PRODUCTS_SERVICES`, `HOUSING`, `ISSUES_ELECTIONS_POLITICS`, and
+`ONLINE_GAMBLING_AND_GAMING`. `NONE` is accepted as a single value and
+canonicalized to an empty list.
+
+`status` defaults to `PAUSED`. `ACTIVE` must be declared explicitly and its
+before/after value is shown by `plan`. Import preserves the remote `ACTIVE` or
+`PAUSED` configured status; it never pauses an existing campaign.
+
+`buyingType` defaults to `AUCTION`. `RESERVED` requires a materially different
+schema and is not supported. `dailyBudget` and `lifetimeBudget` are mutually
+exclusive positive integers in the ad account currency's smallest unit (for
+example, `5000` means USD 50.00 and means JPY 5,000). Using the API-native
+smallest unit avoids rounding and makes campaign and future ad-set budget
+normalization deterministic. A campaign without either field uses ad-set
+budget ownership. `bidStrategy` is optional and is valid only with a
+campaign-level budget.
+
+For campaigns whose budgets live on ad sets, `adSetBudgetSharingEnabled`
+defaults to `false` and is sent explicitly as required by current Graph API
+versions. It may be set to `true` only when neither campaign-level budget field
+is present; the parameter is omitted for campaign-budget campaigns.
+
+Agoraform updates `name`, `status`, the existing budget value,
+`specialAdCategories`, and a declared `bidStrategy`. Objective, buying type,
+and campaign budget ownership/type cannot change in place; `plan` fails with
+guidance instead of hiding a replacement or an unsafe migration. A configured
+bid strategy cannot be cleared through the current schema.
+
+Import uses the numeric campaign id and emits canonical YAML. The declared
+output is `campaignId`. Destroy calls `DELETE /{campaign_id}` and treats
+`DELETED`, `ARCHIVED`, or absence as terminal, including idempotent repeated
+destroy runs.
 
 ## Website conversion measurement
 

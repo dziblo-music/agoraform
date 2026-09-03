@@ -16,10 +16,11 @@ import (
 )
 
 const (
-	testToken     = "EAAB-secret-conversion-token"
-	testAccountID = "123456789012345"
-	testPixelID   = "111222333444555"
-	testConvID    = "998877665544332"
+	testToken      = "EAAB-secret-conversion-token"
+	testAccountID  = "123456789012345"
+	testPixelID    = "111222333444555"
+	testConvID     = "998877665544332"
+	testCampaignID = "777888999000111"
 )
 
 type graphObject map[string]any
@@ -31,6 +32,7 @@ type graphServer struct {
 	pixels        map[string]graphObject
 	accountPixels map[string]bool
 	convs         map[string]graphObject
+	campaigns     map[string]graphObject
 	posts         int
 	deletes       int
 	requests      []string
@@ -43,7 +45,23 @@ func newGraphServer(t *testing.T) *graphServer {
 		pixels:        map[string]graphObject{},
 		accountPixels: map[string]bool{},
 		convs:         map[string]graphObject{},
+		campaigns:     map[string]graphObject{},
 	}
+}
+
+func (s *graphServer) seedCampaign(id string, fields graphObject) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	item := graphObject{
+		"id": id, "account_id": testAccountID, "status": "PAUSED",
+		"configured_status": "PAUSED", "effective_status": "PAUSED",
+		"buying_type": "AUCTION", "special_ad_categories": []string{},
+		"is_adset_budget_sharing_enabled": false,
+	}
+	for k, v := range fields {
+		item[k] = v
+	}
+	s.campaigns[id] = item
 }
 
 func (s *graphServer) seedPixel(id, name string) {
@@ -95,6 +113,10 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	switch {
+	case r.Method == http.MethodGet && path == "me/permissions":
+		s.writeList(w, []graphObject{{"permission": "ads_management", "status": "granted"}})
+	case r.Method == http.MethodGet && path == "act_"+testAccountID:
+		writeJSON(w, graphObject{"id": testAccountID, "account_status": 1})
 	case r.Method == http.MethodGet && path == "act_"+testAccountID+"/adspixels":
 		s.writeList(w, s.accountPixelValues())
 	case r.Method == http.MethodGet && path == "act_"+testAccountID+"/customconversions":
@@ -121,6 +143,43 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		s.convs[id] = item
 		_, _ = io.WriteString(w, `{"id":"`+id+`"}`)
+	case r.Method == http.MethodPost && path == "act_"+testAccountID+"/campaigns":
+		s.posts++
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		var categories []string
+		if err := json.Unmarshal([]byte(r.Form.Get("special_ad_categories")), &categories); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		item := graphObject{
+			"id": testCampaignID, "account_id": testAccountID, "name": r.Form.Get("name"),
+			"objective": r.Form.Get("objective"), "status": r.Form.Get("status"),
+			"configured_status": r.Form.Get("status"), "effective_status": r.Form.Get("status"),
+			"buying_type": r.Form.Get("buying_type"), "special_ad_categories": categories,
+		}
+		if value := r.Form.Get("daily_budget"); value != "" {
+			item["daily_budget"] = value
+		}
+		if value := r.Form.Get("lifetime_budget"); value != "" {
+			item["lifetime_budget"] = value
+		}
+		if value := r.Form.Get("bid_strategy"); value != "" {
+			item["bid_strategy"] = value
+		}
+		_, sharingSet := r.Form["is_adset_budget_sharing_enabled"]
+		hasCampaignBudget := r.Form.Get("daily_budget") != "" || r.Form.Get("lifetime_budget") != ""
+		if sharingSet == hasCampaignBudget {
+			http.Error(w, "is_adset_budget_sharing_enabled must be explicit only for ad-set budgets", http.StatusBadRequest)
+			return
+		}
+		if sharingSet {
+			item["is_adset_budget_sharing_enabled"] = r.Form.Get("is_adset_budget_sharing_enabled") == "true"
+		}
+		s.campaigns[testCampaignID] = item
+		_, _ = io.WriteString(w, `{"id":"`+testCampaignID+`"}`)
 	case r.Method == http.MethodGet && s.pixels[path] != nil:
 		if strings.Contains(r.URL.Query().Get("fields"), "code") {
 			s.t.Errorf("pixel read requested secret-bearing code field")
@@ -128,6 +187,8 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, s.pixels[path])
 	case r.Method == http.MethodGet && s.convs[path] != nil:
 		writeJSON(w, s.convs[path])
+	case r.Method == http.MethodGet && s.campaigns[path] != nil:
+		writeJSON(w, s.campaigns[path])
 	case r.Method == http.MethodPost && s.convs[path] != nil:
 		s.posts++
 		if err := r.ParseForm(); err != nil {
@@ -143,11 +204,48 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		s.convs[path] = item
 		_, _ = io.WriteString(w, `{"success":true}`)
+	case r.Method == http.MethodPost && s.campaigns[path] != nil:
+		s.posts++
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		item := s.campaigns[path]
+		for formKey, itemKey := range map[string]string{"name": "name", "status": "status", "daily_budget": "daily_budget", "lifetime_budget": "lifetime_budget", "bid_strategy": "bid_strategy"} {
+			if value := r.Form.Get(formKey); value != "" {
+				item[itemKey] = value
+				if formKey == "status" {
+					item["configured_status"] = value
+					item["effective_status"] = value
+				}
+			}
+		}
+		if value := r.Form.Get("special_ad_categories"); value != "" {
+			var categories []string
+			if err := json.Unmarshal([]byte(value), &categories); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			item["special_ad_categories"] = categories
+		}
+		if values, ok := r.Form["is_adset_budget_sharing_enabled"]; ok && len(values) > 0 {
+			item["is_adset_budget_sharing_enabled"] = values[0] == "true"
+		}
+		s.campaigns[path] = item
+		_, _ = io.WriteString(w, `{"success":true}`)
 	case r.Method == http.MethodDelete && s.convs[path] != nil:
 		s.deletes++
 		item := s.convs[path]
 		item["is_archived"] = true
 		s.convs[path] = item
+		_, _ = io.WriteString(w, `{"success":true}`)
+	case r.Method == http.MethodDelete && s.campaigns[path] != nil:
+		s.deletes++
+		item := s.campaigns[path]
+		item["status"] = "DELETED"
+		item["configured_status"] = "DELETED"
+		item["effective_status"] = "DELETED"
+		s.campaigns[path] = item
 		_, _ = io.WriteString(w, `{"success":true}`)
 	default:
 		w.WriteHeader(http.StatusNotFound)
@@ -213,6 +311,27 @@ func conversionAddress(t *testing.T, name string) resource.Address {
 		t.Fatal(err)
 	}
 	return addr
+}
+
+func campaignAddress(t *testing.T, name string) resource.Address {
+	t.Helper()
+	addr, err := resource.ParseAddress("meta.campaign." + name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return addr
+}
+
+func campaignResource(t *testing.T, name string, attrs resource.Attributes) resource.Resource {
+	t.Helper()
+	return resource.Resource{Address: campaignAddress(t, name), Attributes: attrs}
+}
+
+func standardCampaignAttrs() resource.Attributes {
+	return resource.Attributes{
+		meta.AttrName: "Acquisition", meta.AttrObjective: "OUTCOME_SALES",
+		meta.AttrSpecialAdCategories: []any{},
+	}
 }
 
 func pixelResource(t *testing.T, name string) resource.Resource {
