@@ -142,39 +142,12 @@ func (p *Provider) readCustomConversion(ctx context.Context, res resource.Resour
 		return live, nil
 	}
 
-	name, err := requiredString(res, AttrName)
-	if err != nil {
-		return resource.RemoteResource{}, err
-	}
-	matches, err := p.listCustomConversions(ctx)
-	if err != nil {
-		return resource.RemoteResource{}, fmt.Errorf("meta: read %s: %w", res.Address, err)
-	}
-	var unique []customConversion
-	for _, item := range matches {
-		if item.IsArchived {
-			continue
-		}
-		if strings.TrimSpace(item.Name) == name {
-			unique = append(unique, item)
-		}
-	}
-	switch len(unique) {
-	case 0:
-		return resource.RemoteResource{}, fmt.Errorf("meta: read %s: %w", res.Address, provider.ErrNotFound)
-	case 1:
-		live, err := p.remoteCustomConversion(res, unique[0])
-		if err != nil {
-			return resource.RemoteResource{}, fmt.Errorf("meta: read %s: %w", res.Address, err)
-		}
-		return live, nil
-	default:
-		ids := make([]string, 0, len(unique))
-		for _, item := range unique {
-			ids = append(ids, item.ID)
-		}
-		return resource.RemoteResource{}, fmt.Errorf("meta: read %s: multiple remote custom conversions named %q (ids %s); names must be unique", res.Address, name, strings.Join(ids, ", "))
-	}
+	// Custom Conversions are managed resources, not name-adopted bindings.
+	// Returning a discovered identity for an equivalent unbound object would
+	// produce an unchanged plan, and apply intentionally does not persist
+	// identities for unchanged resources. Existing objects must therefore be
+	// imported explicitly; otherwise an unbound declaration plans a create.
+	return resource.RemoteResource{}, fmt.Errorf("meta: read %s: %w", res.Address, provider.ErrNotFound)
 }
 
 func (p *Provider) createCustomConversion(ctx context.Context, res resource.Resource) (resource.RemoteResource, error) {
@@ -354,26 +327,6 @@ func (p *Provider) readCustomConversionByID(ctx context.Context, res resource.Re
 		return resource.RemoteResource{}, err
 	}
 	return p.rememberLive(live), nil
-}
-
-func (p *Provider) listCustomConversions(ctx context.Context) ([]customConversion, error) {
-	c, err := p.Client()
-	if err != nil {
-		return nil, err
-	}
-	raw, err := c.List(ctx, c.AdAccountID()+"/customconversions", url.Values{"fields": {customConversionFields}})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]customConversion, 0, len(raw))
-	for _, item := range raw {
-		var conv customConversion
-		if err := json.Unmarshal(item, &conv); err != nil {
-			return nil, fmt.Errorf("malformed CustomConversion list element")
-		}
-		out = append(out, conv)
-	}
-	return out, nil
 }
 
 func (p *Provider) remoteCustomConversion(res resource.Resource, item customConversion) (resource.RemoteResource, error) {

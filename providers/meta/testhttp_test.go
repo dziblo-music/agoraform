@@ -27,24 +27,33 @@ type graphObject map[string]any
 type graphServer struct {
 	t *testing.T
 
-	mu       sync.Mutex
-	pixels   map[string]graphObject
-	convs    map[string]graphObject
-	posts    int
-	deletes  int
-	requests []string
+	mu            sync.Mutex
+	pixels        map[string]graphObject
+	accountPixels map[string]bool
+	convs         map[string]graphObject
+	posts         int
+	deletes       int
+	requests      []string
 }
 
 func newGraphServer(t *testing.T) *graphServer {
 	t.Helper()
 	return &graphServer{
-		t:      t,
-		pixels: map[string]graphObject{},
-		convs:  map[string]graphObject{},
+		t:             t,
+		pixels:        map[string]graphObject{},
+		accountPixels: map[string]bool{},
+		convs:         map[string]graphObject{},
 	}
 }
 
 func (s *graphServer) seedPixel(id, name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pixels[id] = graphObject{"id": id, "name": name, "is_unavailable": false}
+	s.accountPixels[id] = true
+}
+
+func (s *graphServer) seedForeignPixel(id, name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.pixels[id] = graphObject{"id": id, "name": name, "is_unavailable": false}
@@ -87,7 +96,7 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case r.Method == http.MethodGet && path == "act_"+testAccountID+"/adspixels":
-		s.writeList(w, mapsValues(s.pixels))
+		s.writeList(w, s.accountPixelValues())
 	case r.Method == http.MethodGet && path == "act_"+testAccountID+"/customconversions":
 		s.writeList(w, mapsValues(s.convs))
 	case r.Method == http.MethodPost && path == "act_"+testAccountID+"/customconversions":
@@ -144,6 +153,16 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = io.WriteString(w, `{"error":{"message":"Unsupported get request","code":803}}`)
 	}
+}
+
+func (s *graphServer) accountPixelValues() []graphObject {
+	out := make([]graphObject, 0, len(s.accountPixels))
+	for id := range s.accountPixels {
+		if item := s.pixels[id]; item != nil {
+			out = append(out, item)
+		}
+	}
+	return out
 }
 
 func (s *graphServer) writeList(w http.ResponseWriter, items []graphObject) {

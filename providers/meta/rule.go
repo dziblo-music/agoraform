@@ -3,7 +3,9 @@ package meta
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"strings"
 )
@@ -24,10 +26,21 @@ func parseRule(v any) (any, error) {
 		if err := dec.Decode(&decoded); err != nil {
 			return nil, fmt.Errorf("must be a valid Meta rule JSON object")
 		}
-		return canonicalizeJSON(decoded)
+		var trailing any
+		if err := dec.Decode(&trailing); !errors.Is(err, io.EOF) {
+			return nil, fmt.Errorf("must be a valid Meta rule JSON object")
+		}
+		return canonicalizeRuleObject(decoded)
 	default:
-		return canonicalizeJSON(x)
+		return canonicalizeRuleObject(x)
 	}
+}
+
+func canonicalizeRuleObject(v any) (any, error) {
+	if _, ok := v.(map[string]any); !ok {
+		return nil, fmt.Errorf("must be a Meta rule object")
+	}
+	return canonicalizeJSON(v)
 }
 
 func encodeRule(v any) (string, error) {

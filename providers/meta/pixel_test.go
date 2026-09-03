@@ -176,6 +176,20 @@ func TestImportPixelMissing(t *testing.T) {
 	}
 }
 
+func TestImportPixelRejectsObjectOutsideConfiguredAccount(t *testing.T) {
+	t.Parallel()
+	srv := newGraphServer(t)
+	srv.seedForeignPixel(testPixelID, "Other Account Website")
+	httpSrv := srv.start()
+	defer httpSrv.Close()
+	p := testProvider(t, httpSrv)
+
+	_, err := p.Import(context.Background(), pixelAddress(t, "website"), testPixelID)
+	if err == nil || !errors.Is(err, provider.ErrNotFound) {
+		t.Fatalf("foreign-account pixel import = %v, want ErrNotFound", err)
+	}
+}
+
 func TestUpdatePixelNameIsUnsupported(t *testing.T) {
 	t.Parallel()
 	srv := newGraphServer(t)

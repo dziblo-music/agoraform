@@ -39,6 +39,21 @@ func TestValidateCustomConversion(t *testing.T) {
 	if err := p.Validate(context.Background(), conversionResource(t, "trial_started", currency)); err == nil || !strings.Contains(err.Error(), "computed") {
 		t.Fatalf("currency: %v", err)
 	}
+
+	invalidRules := []any{
+		[]any{map[string]any{"event": map[string]any{"eq": "StartTrial"}}},
+		true,
+		1,
+		"null",
+		`{"event":{"eq":"StartTrial"}} trailing`,
+	}
+	for _, rule := range invalidRules {
+		attrs := websiteConversionAttrs(t)
+		attrs[meta.AttrRule] = rule
+		if err := p.Validate(context.Background(), conversionResource(t, "trial_started", attrs)); err == nil || !strings.Contains(err.Error(), "rule") {
+			t.Fatalf("rule %#v should be rejected: %v", rule, err)
+		}
+	}
 }
 
 func TestCustomConversionOutputs(t *testing.T) {
@@ -233,18 +248,47 @@ func TestImportCustomConversionRejectsNonWebsiteSource(t *testing.T) {
 	}
 }
 
-func TestReadCustomConversionAmbiguousName(t *testing.T) {
+func TestEquivalentUnboundCustomConversionPlansCreate(t *testing.T) {
 	t.Parallel()
 	srv := newGraphServer(t)
-	srv.seedConversion("1", graphObject{"name": "Trial Started", "custom_event_type": "START_TRIAL", "rule": `{"event":{"eq":"StartTrial"}}`, "pixel": graphObject{"id": testPixelID}, "event_source_type": "pixel"})
-	srv.seedConversion("2", graphObject{"name": "Trial Started", "custom_event_type": "START_TRIAL", "rule": `{"event":{"eq":"StartTrial"}}`, "pixel": graphObject{"id": testPixelID}, "event_source_type": "pixel"})
+	srv.seedPixel(testPixelID, "Website")
+	srv.seedConversion(testConvID, graphObject{
+		"name":              "Trial Started",
+		"custom_event_type": "START_TRIAL",
+		"rule":              `{"and":[{"event":{"eq":"StartTrial"}}]}`,
+		"pixel":             graphObject{"id": testPixelID},
+		"event_source_type": "pixel",
+	})
 	httpSrv := srv.start()
 	defer httpSrv.Close()
 	p := testProvider(t, httpSrv)
-	_, err := p.Read(context.Background(), conversionResource(t, "trial_started", websiteConversionAttrs(t)))
-	if err == nil || !strings.Contains(err.Error(), "multiple remote") {
-		t.Fatalf("ambiguous name = %v", err)
+
+	st, err := state.Load(filepath.Join(t.TempDir(), "agoraform.state.json"))
+	if err != nil {
+		t.Fatal(err)
 	}
+	if err := st.Bind(pixelAddress(t, "website"), resource.Identity{ID: testPixelID}); err != nil {
+		t.Fatal(err)
+	}
+	desired := []resource.Resource{
+		pixelResource(t, "website"),
+		conversionResource(t, "trial_started", websiteConversionAttrs(t)),
+	}
+	got, err := plan.BuildWithState(context.Background(), desired, func(resource.Address) (provider.Reader, error) {
+		return p, nil
+	}, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range got.Changes {
+		if change.Address == conversionAddress(t, "trial_started") {
+			if change.Action != plan.ActionCreate {
+				t.Fatalf("unbound custom conversion action = %q, want create", change.Action)
+			}
+			return
+		}
+	}
+	t.Fatal("custom conversion change was not planned")
 }
 
 func TestDestroyCustomConversionArchives(t *testing.T) {

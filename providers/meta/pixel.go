@@ -11,7 +11,6 @@ import (
 
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/resource"
-	"github.com/dziblo-music/agoraform/providers/meta/client"
 )
 
 const (
@@ -221,23 +220,25 @@ func (p *Provider) normalizePixelComparable(desired resource.Resource, live *res
 }
 
 func (p *Provider) readPixelByID(ctx context.Context, addr resource.Address, id string) (resource.RemoteResource, error) {
-	c, err := p.Client()
+	pixels, err := p.listAccountPixels(ctx)
 	if err != nil {
 		return resource.RemoteResource{}, err
 	}
-	var pixel adsPixel
-	q := url.Values{"fields": {pixelFields}}
-	if err := c.Get(ctx, id, q, &pixel); err != nil {
-		if client.IsNotFound(err) {
-			return resource.RemoteResource{}, provider.ErrNotFound
+	for _, pixel := range pixels {
+		pixelID, err := normalizeObjectID(pixel.ID)
+		if err != nil {
+			return resource.RemoteResource{}, fmt.Errorf("remote Pixel/Dataset id is invalid: %w", err)
 		}
-		return resource.RemoteResource{}, err
+		if pixelID != id {
+			continue
+		}
+		live, err := remotePixel(addr, pixel)
+		if err != nil {
+			return resource.RemoteResource{}, err
+		}
+		return p.rememberLive(live), nil
 	}
-	live, err := remotePixel(addr, pixel)
-	if err != nil {
-		return resource.RemoteResource{}, err
-	}
-	return p.rememberLive(live), nil
+	return resource.RemoteResource{}, provider.ErrNotFound
 }
 
 func (p *Provider) listAccountPixels(ctx context.Context) ([]adsPixel, error) {

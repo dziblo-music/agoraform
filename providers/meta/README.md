@@ -75,6 +75,10 @@ contract. Update may change `name` and `defaultValue` only. Changing `rule`,
 `DELETE /{custom_conversion_id}` and treats a subsequent `is_archived=true`
 response or object absence as the terminal state.
 
+An unbound `meta.custom_conversion` is created. Agoraform does not discover
+or adopt existing Custom Conversions by name because an equivalent object
+would not acquire a persisted identity. Import an existing object explicitly.
+
 Import a Custom Conversion after the pixel is bound:
 
 ```bash
