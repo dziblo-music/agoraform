@@ -85,8 +85,10 @@ and the
 `META_AD_ACCOUNT_ID` from runtime configuration. The v0.6.0 foundation pins
 Graph and Marketing API v26.0. The provider manages website
 `meta.pixel` event-source bindings (import/adopt only) and website
-`meta.custom_conversion` resources, plus paused-by-default `meta.campaign`
-resources with ODAX objectives and optional campaign-level budgets. See the
+`meta.custom_conversion` resources, paused-by-default `meta.campaign`
+resources with ODAX objectives and optional campaign-level budgets, and
+`meta.ad_set` resources with typed targeting, Instagram placements, schedules,
+and website-conversion optimization. See the
 [Meta provider reference](meta/README.md) and the
 [conversion-measurement example](../examples/meta-conversion/README.md), and
 the [campaign example](../examples/meta-campaign/README.md).

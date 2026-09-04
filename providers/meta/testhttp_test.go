@@ -21,6 +21,7 @@ const (
 	testPixelID    = "111222333444555"
 	testConvID     = "998877665544332"
 	testCampaignID = "777888999000111"
+	testAdSetID    = "222333444555666"
 )
 
 type graphObject map[string]any
@@ -28,14 +29,16 @@ type graphObject map[string]any
 type graphServer struct {
 	t *testing.T
 
-	mu            sync.Mutex
-	pixels        map[string]graphObject
-	accountPixels map[string]bool
-	convs         map[string]graphObject
-	campaigns     map[string]graphObject
-	posts         int
-	deletes       int
-	requests      []string
+	mu                 sync.Mutex
+	pixels             map[string]graphObject
+	accountPixels      map[string]bool
+	convs              map[string]graphObject
+	campaigns          map[string]graphObject
+	adSets             map[string]graphObject
+	posts              int
+	deletes            int
+	requests           []string
+	adSetCreateFailure bool
 }
 
 func newGraphServer(t *testing.T) *graphServer {
@@ -46,7 +49,25 @@ func newGraphServer(t *testing.T) *graphServer {
 		accountPixels: map[string]bool{},
 		convs:         map[string]graphObject{},
 		campaigns:     map[string]graphObject{},
+		adSets:        map[string]graphObject{},
 	}
+}
+
+func (s *graphServer) seedAdSet(id string, fields graphObject) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	item := graphObject{
+		"id": id, "account_id": testAccountID, "campaign_id": testCampaignID,
+		"name": "Instagram", "status": "PAUSED", "configured_status": "PAUSED", "effective_status": "PAUSED",
+		"billing_event": "IMPRESSIONS", "optimization_goal": "OFFSITE_CONVERSIONS",
+		"bid_strategy": "LOWEST_COST_WITHOUT_CAP", "destination_type": "WEBSITE",
+		"promoted_object": graphObject{"pixel_id": testPixelID, "custom_conversion_id": testConvID},
+		"targeting":       graphObject{"geo_locations": graphObject{"countries": []string{"US"}}, "age_min": 18, "age_max": 65},
+	}
+	for k, v := range fields {
+		item[k] = v
+	}
+	s.adSets[id] = item
 }
 
 func (s *graphServer) seedCampaign(id string, fields graphObject) {
@@ -180,6 +201,34 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		s.campaigns[testCampaignID] = item
 		_, _ = io.WriteString(w, `{"id":"`+testCampaignID+`"}`)
+	case r.Method == http.MethodPost && path == "act_"+testAccountID+"/adsets":
+		s.posts++
+		if s.adSetCreateFailure {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = io.WriteString(w, `{"error":{"message":"temporary ad set failure","code":1,"is_transient":true}}`)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		var promoted, targeting graphObject
+		if err := json.Unmarshal([]byte(r.Form.Get("promoted_object")), &promoted); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := json.Unmarshal([]byte(r.Form.Get("targeting")), &targeting); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		item := graphObject{"id": testAdSetID, "account_id": testAccountID, "campaign_id": r.Form.Get("campaign_id"), "name": r.Form.Get("name"), "status": r.Form.Get("status"), "configured_status": r.Form.Get("status"), "effective_status": r.Form.Get("status"), "billing_event": r.Form.Get("billing_event"), "optimization_goal": r.Form.Get("optimization_goal"), "bid_strategy": r.Form.Get("bid_strategy"), "destination_type": r.Form.Get("destination_type"), "promoted_object": promoted, "targeting": targeting}
+		for _, key := range []string{"daily_budget", "lifetime_budget", "start_time", "end_time", "bid_amount"} {
+			if value := r.Form.Get(key); value != "" {
+				item[key] = value
+			}
+		}
+		s.adSets[testAdSetID] = item
+		_, _ = io.WriteString(w, `{"id":"`+testAdSetID+`"}`)
 	case r.Method == http.MethodGet && s.pixels[path] != nil:
 		if strings.Contains(r.URL.Query().Get("fields"), "code") {
 			s.t.Errorf("pixel read requested secret-bearing code field")
@@ -189,6 +238,8 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, s.convs[path])
 	case r.Method == http.MethodGet && s.campaigns[path] != nil:
 		writeJSON(w, s.campaigns[path])
+	case r.Method == http.MethodGet && s.adSets[path] != nil:
+		writeJSON(w, s.adSets[path])
 	case r.Method == http.MethodPost && s.convs[path] != nil:
 		s.posts++
 		if err := r.ParseForm(); err != nil {
@@ -233,6 +284,32 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		s.campaigns[path] = item
 		_, _ = io.WriteString(w, `{"success":true}`)
+	case r.Method == http.MethodPost && s.adSets[path] != nil:
+		s.posts++
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		item := s.adSets[path]
+		for _, key := range []string{"name", "status", "daily_budget", "lifetime_budget", "end_time", "bid_strategy", "bid_amount"} {
+			if value := r.Form.Get(key); value != "" {
+				item[key] = value
+				if key == "status" {
+					item["configured_status"] = value
+					item["effective_status"] = value
+				}
+			}
+		}
+		if value := r.Form.Get("targeting"); value != "" {
+			var targeting graphObject
+			if err := json.Unmarshal([]byte(value), &targeting); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			item["targeting"] = targeting
+		}
+		s.adSets[path] = item
+		_, _ = io.WriteString(w, `{"success":true}`)
 	case r.Method == http.MethodDelete && s.convs[path] != nil:
 		s.deletes++
 		item := s.convs[path]
@@ -246,6 +323,14 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 		item["configured_status"] = "DELETED"
 		item["effective_status"] = "DELETED"
 		s.campaigns[path] = item
+		_, _ = io.WriteString(w, `{"success":true}`)
+	case r.Method == http.MethodDelete && s.adSets[path] != nil:
+		s.deletes++
+		item := s.adSets[path]
+		item["status"] = "DELETED"
+		item["configured_status"] = "DELETED"
+		item["effective_status"] = "DELETED"
+		s.adSets[path] = item
 		_, _ = io.WriteString(w, `{"success":true}`)
 	default:
 		w.WriteHeader(http.StatusNotFound)
@@ -325,6 +410,20 @@ func campaignAddress(t *testing.T, name string) resource.Address {
 func campaignResource(t *testing.T, name string, attrs resource.Attributes) resource.Resource {
 	t.Helper()
 	return resource.Resource{Address: campaignAddress(t, name), Attributes: attrs}
+}
+
+func adSetAddress(t *testing.T, name string) resource.Address {
+	t.Helper()
+	addr, err := resource.ParseAddress("meta.ad_set." + name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return addr
+}
+
+func adSetResource(t *testing.T, name string, attrs resource.Attributes) resource.Resource {
+	t.Helper()
+	return resource.Resource{Address: adSetAddress(t, name), Attributes: attrs}
 }
 
 func standardCampaignAttrs() resource.Attributes {

@@ -40,6 +40,12 @@ var destroyLifecycleByType = map[string]resourceDestroyLifecycle{
 		AlreadyTerminal: "status=DELETED or ARCHIVED, or not found",
 		Precondition:    "Marketing API DELETE /{campaign_id}; Agoraform treats the provider terminal status as removal",
 	},
+	TypeAdSet: {
+		Capability:      provider.DestroyRemove,
+		TerminalState:   "status=DELETED or ARCHIVED, or not found after DELETE",
+		AlreadyTerminal: "status=DELETED or ARCHIVED, or not found",
+		Precondition:    "Marketing API DELETE /{ad_set_id}; Agoraform treats the provider terminal status as removal",
+	},
 }
 
 // DestroyCapability implements provider.Destroyer.
@@ -65,6 +71,8 @@ func (p *Provider) Destroy(ctx context.Context, res resource.Resource) (provider
 		return p.destroyCustomConversion(ctx, res)
 	case TypeCampaign:
 		return p.destroyCampaign(ctx, res)
+	case TypeAdSet:
+		return p.destroyAdSet(ctx, res)
 	default:
 		return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: unsupported resource type", res.Address)
 	}
