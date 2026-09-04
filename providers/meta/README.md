@@ -3,8 +3,91 @@
 The `meta` provider is the Meta Marketing API provider for Agoraform v0.6.0.
 It is registered with the same provider-neutral lifecycle used by the existing
 providers. Website conversion measurement and campaign management are
-implemented here. Ad-set, creative, ad, and targeting types remain later
-v0.6.0 issues.
+and ad-set management are implemented here. Creative and ad resources remain
+later v0.6.0 issues.
+
+## `meta.ad_set`
+
+Ad sets connect a managed campaign to budget, schedule, targeting, placements,
+and website conversion measurement. This fixed-duration example targets only
+Instagram Feed, Stories, and Reels in the United States:
+
+```yaml
+- address: meta.ad_set.instagram_acquisition
+  attributes:
+    name: Instagram Acquisition
+    status: PAUSED
+    campaign:
+      $ref: meta.campaign.acquisition
+    lifetimeBudget: 50000
+    startTime: "2026-09-01T05:00:00Z"
+    endTime: "2026-10-01T05:00:00Z"
+    billingEvent: IMPRESSIONS
+    optimizationGoal: OFFSITE_CONVERSIONS
+    bidStrategy: LOWEST_COST_WITHOUT_CAP
+    destinationType: WEBSITE
+    pixel:
+      $ref: meta.pixel.website
+    customConversion:
+      $ref: meta.custom_conversion.trial_started
+    targeting:
+      countries: [US]
+      ageMin: 18
+      ageMax: 65
+      publisherPlatforms: [INSTAGRAM]
+      instagramPositions: [FEED, STORIES, REELS]
+      devicePlatforms: [MOBILE]
+```
+
+`status` defaults to `PAUSED`; enabling delivery requires an explicit
+`ACTIVE` configuration and therefore appears in `plan`. `billingEvent`
+currently supports `IMPRESSIONS`. The initial optimization subset is
+`OFFSITE_CONVERSIONS` and `LINK_CLICKS`, both with `destinationType: WEBSITE`.
+Website conversions require logical `pixel` and `customConversion` references.
+The referenced Custom Conversion must use the same pixel, and
+`OFFSITE_CONVERSIONS` requires an `OUTCOME_SALES` campaign. Link-click ad sets
+do not accept conversion references and require an `OUTCOME_TRAFFIC` or
+`OUTCOME_SALES` campaign.
+
+Budgets use the ad-account currency's smallest unit, exactly like campaign
+budgets. `dailyBudget` and `lifetimeBudget` are mutually exclusive. A campaign
+with a campaign-level budget forbids an ad-set budget; a campaign without one
+requires each ad set to declare a budget. A lifetime budget requires both
+`startTime` and `endTime`. Timestamps must be RFC3339 and are canonicalized to
+UTC. The supported bid strategies are `LOWEST_COST_WITHOUT_CAP`,
+`LOWEST_COST_WITH_BID_CAP`, and `COST_CAP`; the latter two require a positive
+whole-number `bidAmount`, while lowest cost without a cap forbids one.
+
+The intentionally bounded targeting object supports:
+
+- ISO two-letter `countries` and numeric Meta `regions` identifiers;
+- `ageMin`/`ageMax` from 18 through 65 (defaulting to 18/65);
+- `genders` values `MALE` and `FEMALE` (omission means all genders);
+- positive numeric Meta `locales` identifiers;
+- `publisherPlatforms: [INSTAGRAM]` and the Instagram positions `FEED`,
+  `STORIES`, and `REELS`;
+- `devicePlatforms` values `MOBILE` and `DESKTOP`.
+
+At least one country or region is required. Instagram positions require the
+Instagram publisher platform. Omitting both placement fields leaves placement
+selection to Meta. Arbitrary targeting JSON, interests, custom audiences,
+lookalikes, and additional publishers are rejected rather than silently
+discarded. Attribution settings are not managed by this initial schema and
+remain provider-owned. In the API payload, Agoraform maps the three documented
+position names to Meta's `stream`, `story`, and `reels` values.
+
+Updates support name, serving status, the existing budget value, end time,
+targeting, and compatible bid values. Campaign, billing/optimization goal,
+destination, promoted conversion object, start time, and budget ownership/type
+are treated as immutable or unsafe; Agoraform fails planning rather than
+performing a hidden replacement.
+
+Import uses the numeric ad-set id and reconstructs campaign, pixel, and Custom
+Conversion references only when each remote id has one unique binding in local
+state. Import dependencies first. Unsupported targeting or ambiguous/unbound
+relationships fail without persisting the ad-set identity. The declared output
+is `adSetId`. Destroy calls `DELETE /{ad_set_id}` and treats `DELETED`,
+`ARCHIVED`, or absence as terminal and idempotent.
 
 ## `meta.campaign`
 

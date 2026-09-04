@@ -33,15 +33,36 @@ const (
 	// AttrAdSetBudgetSharing declares whether an ad-set-budget campaign allows
 	// budget sharing between its ad sets.
 	AttrAdSetBudgetSharing = "adSetBudgetSharingEnabled"
+	// AttrCampaign is a logical $ref from a child resource to its campaign.
+	AttrCampaign = "campaign"
+	// AttrStartTime and AttrEndTime are RFC3339 ad-set schedule timestamps.
+	AttrStartTime = "startTime"
+	AttrEndTime   = "endTime"
+	// AttrBillingEvent is the provider-native ad-set billing event.
+	AttrBillingEvent = "billingEvent"
+	// AttrOptimizationGoal is the provider-native ad-set optimization goal.
+	AttrOptimizationGoal = "optimizationGoal"
+	// AttrBidAmount is an ad-set bid in the ad account currency's smallest unit.
+	AttrBidAmount = "bidAmount"
+	// AttrDestinationType is the ad-set conversion destination.
+	AttrDestinationType = "destinationType"
+	// AttrCustomConversion is a logical $ref to a managed Custom Conversion.
+	AttrCustomConversion = "customConversion"
+	// AttrTargeting is the typed, bounded ad-set targeting object.
+	AttrTargeting = "targeting"
 
 	// TypeCustomConversion is used in addresses such as
 	// meta.custom_conversion.trial_started.
 	TypeCustomConversion = "custom_conversion"
 	// TypeCampaign is used in addresses such as meta.campaign.acquisition.
 	TypeCampaign = "campaign"
+	// TypeAdSet is used in addresses such as meta.ad_set.instagram.
+	TypeAdSet = "ad_set"
 
 	// OutputCustomConversionID is the declared non-secret Custom Conversion id.
 	OutputCustomConversionID = "customConversionId"
 	// OutputCampaignID is the declared non-secret Meta campaign id.
 	OutputCampaignID = "campaignId"
+	// OutputAdSetID is the declared non-secret Meta ad-set id.
+	OutputAdSetID = "adSetId"
 )
