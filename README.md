@@ -46,7 +46,7 @@ v0.1.0 was the first public release and managed `matomo.goal` only.
 
 Current source after v0.5.0 also contains the v0.6.0 `meta` provider
 foundation, website conversion-measurement resources, `meta.campaign`, and
-`meta.ad_set`.
+`meta.ad_set`, plus `meta.ad_creative`.
 The provider pins
 Graph and Marketing API v26.0. `meta.pixel` is an import/adopt binding for an
 existing website Pixel/Dataset. `meta.custom_conversion` manages website
@@ -54,7 +54,9 @@ Custom Conversions against that event source. `meta.campaign` manages safe,
 paused-by-default ODAX campaigns and optional campaign-level budgets.
 `meta.ad_set` manages budget ownership, schedules, a typed initial targeting
 subset, Instagram Feed/Stories/Reels placements, and website-conversion
-optimization. Creative and ad types remain later v0.6.0 work.
+optimization. `meta.ad_creative` manages typed external-image and
+external-video website creatives, Instagram identity, and attribution URL
+tags without uploading binary assets. The ad type remains later v0.6.0 work.
 
 ## Install
 
