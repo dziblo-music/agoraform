@@ -54,7 +54,7 @@ func NewWithHTTPClient(cfg Config, httpClient *http.Client) *Provider {
 func (p *Provider) Name() string { return Name }
 
 func (p *Provider) ResourceTypes() []string {
-	return []string{TypePixel, TypeCustomConversion, TypeCampaign, TypeAdSet}
+	return []string{TypePixel, TypeCustomConversion, TypeCampaign, TypeAdSet, TypeAdCreative}
 }
 
 // Outputs implements provider.OutputCatalog.
@@ -68,6 +68,8 @@ func (p *Provider) Outputs(resourceType string) []provider.OutputSpec {
 		return []provider.OutputSpec{{Name: OutputCampaignID, Kind: provider.OutputKindString}}
 	case TypeAdSet:
 		return []provider.OutputSpec{{Name: OutputAdSetID, Kind: provider.OutputKindString}}
+	case TypeAdCreative:
+		return []provider.OutputSpec{{Name: OutputAdCreativeID, Kind: provider.OutputKindString}}
 	default:
 		return nil
 	}
@@ -142,6 +144,8 @@ func (p *Provider) Validate(_ context.Context, res resource.Resource) error {
 		return p.validateCampaign(res)
 	case TypeAdSet:
 		return p.validateAdSet(res)
+	case TypeAdCreative:
+		return p.validateAdCreative(res)
 	default:
 		return fmt.Errorf("resource %s: unknown type %q for provider %q", res.Address, res.Address.Type, Name)
 	}
@@ -157,6 +161,8 @@ func (p *Provider) Read(ctx context.Context, res resource.Resource) (resource.Re
 		return p.readCampaign(ctx, res)
 	case TypeAdSet:
 		return p.readAdSet(ctx, res)
+	case TypeAdCreative:
+		return p.readAdCreative(ctx, res)
 	default:
 		return resource.RemoteResource{}, fmt.Errorf("meta: read is not implemented for this resource type")
 	}
@@ -172,6 +178,8 @@ func (p *Provider) Create(ctx context.Context, res resource.Resource) (resource.
 		return p.createCampaign(ctx, res)
 	case TypeAdSet:
 		return p.createAdSet(ctx, res)
+	case TypeAdCreative:
+		return p.createAdCreative(ctx, res)
 	default:
 		return resource.RemoteResource{}, fmt.Errorf("meta: create is not implemented for this resource type")
 	}
@@ -187,6 +195,8 @@ func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual
 		return p.updateCampaign(ctx, desired, actual)
 	case TypeAdSet:
 		return p.updateAdSet(ctx, desired, actual)
+	case TypeAdCreative:
+		return p.updateAdCreative(ctx, desired, actual)
 	default:
 		return resource.RemoteResource{}, fmt.Errorf("meta: update is not implemented for this resource type")
 	}
@@ -202,6 +212,8 @@ func (p *Provider) Import(ctx context.Context, addr resource.Address, id string)
 		return p.importCampaign(ctx, addr, id)
 	case TypeAdSet:
 		return p.importAdSet(ctx, addr, id)
+	case TypeAdCreative:
+		return p.importAdCreative(ctx, addr, id)
 	default:
 		return resource.RemoteResource{}, fmt.Errorf("meta: import is not implemented for this resource type")
 	}
@@ -212,7 +224,7 @@ func (p *Provider) NormalizeImportID(addr resource.Address, raw string) (string,
 	switch addr.Type {
 	case TypePixel:
 		return p.canonicalPixelImportID(addr, raw)
-	case TypeCustomConversion, TypeCampaign, TypeAdSet:
+	case TypeCustomConversion, TypeCampaign, TypeAdSet, TypeAdCreative:
 		return p.canonicalCustomConversionImportID(addr, raw)
 	default:
 		return strings.TrimSpace(raw), nil
@@ -230,6 +242,8 @@ func (p *Provider) NormalizeComparable(desired resource.Resource, live *resource
 		return p.normalizeCampaignComparable(desired, live)
 	case TypeAdSet:
 		return p.normalizeAdSetComparable(desired, live)
+	case TypeAdCreative:
+		return p.normalizeAdCreativeComparable(desired, live)
 	default:
 		return desired.Attributes.Clone(), nil, nil
 	}

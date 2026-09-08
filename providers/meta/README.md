@@ -3,8 +3,55 @@
 The `meta` provider is the Meta Marketing API provider for Agoraform v0.6.0.
 It is registered with the same provider-neutral lifecycle used by the existing
 providers. Website conversion measurement and campaign management are
-and ad-set management are implemented here. Creative and ad resources remain
-later v0.6.0 issues.
+implemented here together with ad-set and external-media ad-creative
+management. Ad resources remain later v0.6.0 work.
+
+## `meta.ad_creative`
+
+The initial creative surface manages deterministic website/link creatives
+whose media has already been prepared in Meta. It never reads local files or
+uploads image/video bytes. Use exactly one external `imageHash` or `videoId`:
+
+```yaml
+- address: meta.ad_creative.instagram_video
+  attributes:
+    name: Instagram Trial Video
+    pageId: "123456789012345"
+    instagramUserId: "234567890123456"
+    destinationUrl: https://example.com/trial
+    primaryText: Start organizing your catalog today.
+    headline: Start Your Free Trial
+    description: Keep every pitch and placement organized.
+    callToAction: LEARN_MORE
+    videoId: "345678901234567"
+    urlTags: utm_source=meta&utm_medium=paid_social&utm_campaign={{campaign.name}}&utm_content={{ad.name}}
+```
+
+For a static creative, replace `videoId` with the existing account image's
+`imageHash`. The supported v26.0 `object_story_spec` mapping is intentionally
+narrow: `page_id`, optional `instagram_user_id`, and exactly one `link_data`
+or `video_data` object. Existing posts, catalogs, dynamic creative, templates,
+playables, arbitrary `object_story_spec` JSON, and binary uploads are rejected.
+
+`destinationUrl` must be an absolute HTTP(S) URL. `urlTags` uses Meta's native
+query-string format without a leading `?`; Meta dynamic macros are preserved
+as literals. The verified website CTA subset is `GET_STARTED`, `LEARN_MORE`,
+and `SIGN_UP`. `START_TRIAL` is a conversion event/category, not a creative CTA
+in the pinned v26.0 API; use `LEARN_MORE` or `SIGN_UP` for this workflow.
+
+Meta permits updating an Ad Creative's name, so Agoraform reconciles `name` in
+place. Page/Instagram identity, destination, copy, CTA, media mode/id, and URL
+tags are immutable after creation. Changing any of those fields fails planning
+with guidance to declare a new logical creative and repoint the future ad
+resource. Agoraform never performs a hidden replacement.
+
+Import uses the numeric creative id and emits only the canonical typed fields.
+External image/video identifiers remain literal values because Agoraform does
+not own those assets. Equivalent imported configuration produces a no-op plan.
+Destroy uses Meta's native Ad Creative delete operation; absence or the
+`DELETED` terminal status is idempotent success. Meta can reject deletion while
+a creative is still referenced by an ad, in which case Agoraform preserves the
+state binding and returns the provider error.
 
 ## `meta.ad_set`
 

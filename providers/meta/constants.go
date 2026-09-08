@@ -50,6 +50,26 @@ const (
 	AttrCustomConversion = "customConversion"
 	// AttrTargeting is the typed, bounded ad-set targeting object.
 	AttrTargeting = "targeting"
+	// AttrPageID is the Facebook Page identity used to publish a creative.
+	AttrPageID = "pageId"
+	// AttrInstagramUserID is the optional Instagram account identity used for
+	// Instagram delivery.
+	AttrInstagramUserID = "instagramUserId"
+	// AttrDestinationURL is the website URL opened by a creative.
+	AttrDestinationURL = "destinationUrl"
+	// AttrPrimaryText, AttrHeadline, and AttrDescription are the supported
+	// website creative copy fields.
+	AttrPrimaryText = "primaryText"
+	AttrHeadline    = "headline"
+	AttrDescription = "description"
+	// AttrCallToAction is the provider-native website CTA type.
+	AttrCallToAction = "callToAction"
+	// AttrImageHash and AttrVideoID are mutually exclusive external media
+	// identifiers. Agoraform does not own or upload these assets.
+	AttrImageHash = "imageHash"
+	AttrVideoID   = "videoId"
+	// AttrURLTags is Meta's provider-native destination URL parameter string.
+	AttrURLTags = "urlTags"
 
 	// TypeCustomConversion is used in addresses such as
 	// meta.custom_conversion.trial_started.
@@ -58,6 +78,8 @@ const (
 	TypeCampaign = "campaign"
 	// TypeAdSet is used in addresses such as meta.ad_set.instagram.
 	TypeAdSet = "ad_set"
+	// TypeAdCreative is used in addresses such as meta.ad_creative.instagram.
+	TypeAdCreative = "ad_creative"
 
 	// OutputCustomConversionID is the declared non-secret Custom Conversion id.
 	OutputCustomConversionID = "customConversionId"
@@ -65,4 +87,6 @@ const (
 	OutputCampaignID = "campaignId"
 	// OutputAdSetID is the declared non-secret Meta ad-set id.
 	OutputAdSetID = "adSetId"
+	// OutputAdCreativeID is the declared non-secret Meta ad creative id.
+	OutputAdCreativeID = "adCreativeId"
 )
