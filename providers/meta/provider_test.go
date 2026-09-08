@@ -30,8 +30,8 @@ func TestProviderRegisterAndLookup(t *testing.T) {
 	if !ok || got.Name() != meta.Name {
 		t.Fatalf("Lookup(meta) = %v, %v", got, ok)
 	}
-	if got := got.ResourceTypes(); len(got) != 5 || got[0] != meta.TypePixel || got[1] != meta.TypeCustomConversion || got[2] != meta.TypeCampaign || got[3] != meta.TypeAdSet || got[4] != meta.TypeAdCreative {
-		t.Fatalf("resource types = %v, want pixel, custom_conversion, campaign, ad_set, and ad_creative", got)
+	if got := got.ResourceTypes(); len(got) != 6 || got[0] != meta.TypePixel || got[1] != meta.TypeCustomConversion || got[2] != meta.TypeCampaign || got[3] != meta.TypeAdSet || got[4] != meta.TypeAdCreative || got[5] != meta.TypeAd {
+		t.Fatalf("resource types = %v, want pixel, custom_conversion, campaign, ad_set, ad_creative, and ad", got)
 	}
 }
 
@@ -102,7 +102,7 @@ func TestProviderCheckConnection(t *testing.T) {
 func TestProviderRejectsUnknownResourceType(t *testing.T) {
 	t.Parallel()
 	p := meta.New(meta.Config{AccessToken: providerToken, AdAccountID: providerAccount})
-	addr, err := resource.ParseAddress("meta.ad.test")
+	addr, err := resource.ParseAddress("meta.unknown.test")
 	if err != nil {
 		t.Fatal(err)
 	}

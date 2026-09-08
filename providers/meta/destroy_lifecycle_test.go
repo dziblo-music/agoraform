@@ -17,6 +17,7 @@ func TestDestroyLifecycleCoversRegisteredTypes(t *testing.T) {
 		meta.TypeCampaign:         provider.DestroyRemove,
 		meta.TypeAdSet:            provider.DestroyRemove,
 		meta.TypeAdCreative:       provider.DestroyDelete,
+		meta.TypeAd:               provider.DestroyRemove,
 	}
 	for _, typ := range p.ResourceTypes() {
 		cap, ok := want[typ]

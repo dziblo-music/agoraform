@@ -4,7 +4,46 @@ The `meta` provider is the Meta Marketing API provider for Agoraform v0.6.0.
 It is registered with the same provider-neutral lifecycle used by the existing
 providers. Website conversion measurement and campaign management are
 implemented here together with ad-set and external-media ad-creative
-management. Ad resources remain later v0.6.0 work.
+management, including the final ad serving relationship.
+
+## `meta.ad`
+
+Ads connect one managed ad set to one managed creative. Both relationships
+must be logical references; provider-native ids are resolved only during
+apply:
+
+```yaml
+- address: meta.ad.instagram_trial
+  attributes:
+    name: Instagram Trial Ad
+    adSet:
+      $ref: meta.ad_set.instagram_acquisition
+    creative:
+      $ref: meta.ad_creative.instagram_video
+    status: PAUSED
+```
+
+`status` defaults to `PAUSED`. Setting it to `ACTIVE` must be explicit and is
+shown as a normal before/after update in `plan`. This keeps creation safe even
+when the referenced campaign and ad set are already active. Import preserves
+the remote configured status.
+
+Agoraform updates `name`, `status`, and `creative` in place. This makes the
+documented workflow of declaring a new immutable creative and repointing an ad
+explicit and reviewable. The parent `adSet` cannot change in place; planning
+fails with guidance to create a new logical ad instead of performing a hidden
+replacement. Tracking specifications remain provider-owned in this initial
+schema because Agoraform cannot round-trip arbitrary Meta tracking objects
+deterministically.
+
+Import uses the numeric ad id and reconstructs both references only when the
+remote ids are uniquely bound to `meta.ad_set` and `meta.ad_creative`
+resources in local state. Import those dependencies first. A successful create
+response always preserves the returned `adId` for the state write, even if the
+immediate refresh is temporarily unavailable, preventing a blind retry from
+creating a duplicate ad. Destroy calls `DELETE /{ad_id}` and treats `DELETED`,
+`ARCHIVED`, or absence as terminal and idempotent. Dependency ordering creates
+the ad after its ad set and creative and destroys it before either dependency.
 
 ## `meta.ad_creative`
 

@@ -46,7 +46,7 @@ v0.1.0 was the first public release and managed `matomo.goal` only.
 
 Current source after v0.5.0 also contains the v0.6.0 `meta` provider
 foundation, website conversion-measurement resources, `meta.campaign`, and
-`meta.ad_set`, plus `meta.ad_creative`.
+`meta.ad_set`, `meta.ad_creative`, and `meta.ad`.
 The provider pins
 Graph and Marketing API v26.0. `meta.pixel` is an import/adopt binding for an
 existing website Pixel/Dataset. `meta.custom_conversion` manages website
@@ -56,7 +56,9 @@ paused-by-default ODAX campaigns and optional campaign-level budgets.
 subset, Instagram Feed/Stories/Reels placements, and website-conversion
 optimization. `meta.ad_creative` manages typed external-image and
 external-video website creatives, Instagram identity, and attribution URL
-tags without uploading binary assets. The ad type remains later v0.6.0 work.
+tags without uploading binary assets. `meta.ad` binds an ad set to a creative,
+defaults new ads to `PAUSED`, supports explicit creative repointing, and
+completes the initial serving-resource graph.
 
 ## Install
 
@@ -617,8 +619,9 @@ agoraform destroy [-f path/to/manifest.yaml]
 
 ## Current development limitations
 
-- v0.5.0 supports Matomo plus Google Ads website conversion measurement and
-  the complete Search campaign graph. Meta Ads is not implemented.
+- The latest tagged release, v0.5.0, supports Matomo plus Google Ads website
+  conversion measurement and the complete Search campaign graph. Meta Ads is
+  present only in the current v0.6.0 development source.
 - Google Ads campaign support is Search only. Performance Max, Display,
   Video, Shopping, App, Dynamic Search Ads, and other campaign families
   are not implemented.

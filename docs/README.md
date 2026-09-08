@@ -52,7 +52,9 @@ conversion-tag references, import, and destroy.
 
 Current v0.6.0 source adds the Meta provider, website Pixel/Dataset and Custom
 Conversion configuration, and paused-by-default ODAX `meta.campaign`
-management. See the [Meta provider reference](../providers/meta/README.md).
+management, typed ad sets and creatives, and paused-by-default `meta.ad`
+serving relationships. See the
+[Meta provider reference](../providers/meta/README.md).
 
 Provider credentials and connection settings can be stored locally in an
 optional [`.agoraform.env`](local-configuration.md) file instead of being

@@ -88,7 +88,9 @@ Graph and Marketing API v26.0. The provider manages website
 `meta.custom_conversion` resources, paused-by-default `meta.campaign`
 resources with ODAX objectives and optional campaign-level budgets, and
 `meta.ad_set` resources with typed targeting, Instagram placements, schedules,
-and website-conversion optimization. See the
+and website-conversion optimization. External-media `meta.ad_creative`
+resources and paused-by-default `meta.ad` serving relationships complete the
+initial campaign graph. See the
 [Meta provider reference](meta/README.md) and the
 [conversion-measurement example](../examples/meta-conversion/README.md), and
 the [campaign example](../examples/meta-campaign/README.md).
