@@ -70,6 +70,10 @@ const (
 	AttrVideoID   = "videoId"
 	// AttrURLTags is Meta's provider-native destination URL parameter string.
 	AttrURLTags = "urlTags"
+	// AttrAdSet and AttrCreative are logical references from an ad to its
+	// managed serving container and creative.
+	AttrAdSet    = "adSet"
+	AttrCreative = "creative"
 
 	// TypeCustomConversion is used in addresses such as
 	// meta.custom_conversion.trial_started.
@@ -80,6 +84,8 @@ const (
 	TypeAdSet = "ad_set"
 	// TypeAdCreative is used in addresses such as meta.ad_creative.instagram.
 	TypeAdCreative = "ad_creative"
+	// TypeAd is used in addresses such as meta.ad.instagram.
+	TypeAd = "ad"
 
 	// OutputCustomConversionID is the declared non-secret Custom Conversion id.
 	OutputCustomConversionID = "customConversionId"
@@ -89,4 +95,6 @@ const (
 	OutputAdSetID = "adSetId"
 	// OutputAdCreativeID is the declared non-secret Meta ad creative id.
 	OutputAdCreativeID = "adCreativeId"
+	// OutputAdID is the declared non-secret Meta ad id.
+	OutputAdID = "adId"
 )

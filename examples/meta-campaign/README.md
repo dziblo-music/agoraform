@@ -25,5 +25,6 @@ agoraform import -f examples/meta-campaign/agoraform.yaml \
   meta.campaign.acquisition 777888999000111
 ```
 
-Ad sets, targeting, creatives, and ads are intentionally outside this example
-until their v0.6.0 resources are implemented.
+Ad sets, targeting, creatives, and ads are intentionally outside this focused
+campaign-only example. See the Meta provider documentation for the complete
+v0.6.0 serving graph.

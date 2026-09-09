@@ -415,6 +415,23 @@ ad account currency's API-native smallest unit. `RESERVED`, terminal, legacy-
 objective, or otherwise unsupported campaigns fail import rather than losing
 configuration.
 
+## Meta Ads serving graph
+
+Import serving resources from parent to child so every remote relationship can
+be reconstructed as a logical reference:
+
+```bash
+agoraform import meta.ad_set.instagram 222333444555666
+agoraform import meta.ad_creative.instagram 333444555666777
+agoraform import meta.ad.instagram 444555666777888
+```
+
+An ad import preserves its configured `ACTIVE` or `PAUSED` status and emits
+logical `adSet` and `creative` references only when each remote id has one
+unique state binding. Missing or ambiguous bindings fail import without
+persisting the ad identity. Import does not recursively import dependencies or
+change serving status.
+
 ## Exit codes
 
 | Code | Meaning |

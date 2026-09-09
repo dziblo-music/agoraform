@@ -12,6 +12,12 @@ prints the SemVer identifier without the prefix (`0.5.0`).
 
 ### Added
 
+- First-class `meta.ad` lifecycle for v0.6.0 with logical references to a
+  managed ad set and creative, `PAUSED` creation by default, explicit serving
+  transitions, in-place name/status/creative updates, immutable-parent
+  planning errors, deterministic import reconstruction, a declared `adId`
+  output, retry-safe preservation of confirmed create identities, and
+  idempotent Marketing API deletion in reverse dependency order.
 - First-class `meta.campaign` lifecycle for v0.6.0 with current ODAX
   objectives, required special-ad-category declarations, `AUCTION` buying,
   optional campaign-level daily or lifetime budgets in account-currency minor

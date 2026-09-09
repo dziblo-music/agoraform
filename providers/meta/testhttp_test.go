@@ -23,6 +23,7 @@ const (
 	testCampaignID = "777888999000111"
 	testAdSetID    = "222333444555666"
 	testCreativeID = "333444555666777"
+	testAdID       = "444555666777888"
 )
 
 type graphObject map[string]any
@@ -37,11 +38,14 @@ type graphServer struct {
 	campaigns             map[string]graphObject
 	adSets                map[string]graphObject
 	creatives             map[string]graphObject
+	ads                   map[string]graphObject
 	posts                 int
 	deletes               int
 	requests              []string
 	adSetCreateFailure    bool
 	creativeCreateFailure bool
+	adCreateFailure       bool
+	adRefreshFailures     int
 }
 
 func newGraphServer(t *testing.T) *graphServer {
@@ -54,7 +58,22 @@ func newGraphServer(t *testing.T) *graphServer {
 		campaigns:     map[string]graphObject{},
 		adSets:        map[string]graphObject{},
 		creatives:     map[string]graphObject{},
+		ads:           map[string]graphObject{},
 	}
+}
+
+func (s *graphServer) seedAd(id string, fields graphObject) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	item := graphObject{
+		"id": id, "account_id": testAccountID, "adset_id": testAdSetID,
+		"name": "Instagram Trial Ad", "status": "PAUSED", "configured_status": "PAUSED",
+		"effective_status": "ADSET_PAUSED", "creative": graphObject{"id": testCreativeID},
+	}
+	for k, v := range fields {
+		item[k] = v
+	}
+	s.ads[id] = item
 }
 
 func (s *graphServer) seedCreative(id string, fields graphObject) {
@@ -277,6 +296,29 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 			"status": "ACTIVE", "object_story_spec": story, "url_tags": r.Form.Get("url_tags"),
 		}
 		_, _ = io.WriteString(w, `{"id":"`+testCreativeID+`"}`)
+	case r.Method == http.MethodPost && path == "act_"+testAccountID+"/ads":
+		s.posts++
+		if s.adCreateFailure {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = io.WriteString(w, `{"error":{"message":"temporary ad failure","code":1,"is_transient":true}}`)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		var creative graphObject
+		if err := json.Unmarshal([]byte(r.Form.Get("creative")), &creative); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		s.ads[testAdID] = graphObject{
+			"id": testAdID, "account_id": testAccountID, "adset_id": r.Form.Get("adset_id"),
+			"name": r.Form.Get("name"), "status": r.Form.Get("status"),
+			"configured_status": r.Form.Get("status"), "effective_status": r.Form.Get("status"),
+			"creative": graphObject{"id": creative["creative_id"]},
+		}
+		_, _ = io.WriteString(w, `{"id":"`+testAdID+`"}`)
 	case r.Method == http.MethodGet && s.pixels[path] != nil:
 		if strings.Contains(r.URL.Query().Get("fields"), "code") {
 			s.t.Errorf("pixel read requested secret-bearing code field")
@@ -290,6 +332,14 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, s.adSets[path])
 	case r.Method == http.MethodGet && s.creatives[path] != nil:
 		writeJSON(w, s.creatives[path])
+	case r.Method == http.MethodGet && s.ads[path] != nil:
+		if s.adRefreshFailures > 0 {
+			s.adRefreshFailures--
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = io.WriteString(w, `{"error":{"message":"temporary ad refresh failure","code":1,"is_transient":true}}`)
+			return
+		}
+		writeJSON(w, s.ads[path])
 	case r.Method == http.MethodPost && s.convs[path] != nil:
 		s.posts++
 		if err := r.ParseForm(); err != nil {
@@ -372,6 +422,32 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		s.creatives[path] = item
 		_, _ = io.WriteString(w, `{"success":true}`)
+	case r.Method == http.MethodPost && s.ads[path] != nil:
+		s.posts++
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		item := s.ads[path]
+		for _, key := range []string{"name", "status"} {
+			if value := r.Form.Get(key); value != "" {
+				item[key] = value
+				if key == "status" {
+					item["configured_status"] = value
+					item["effective_status"] = value
+				}
+			}
+		}
+		if value := r.Form.Get("creative"); value != "" {
+			var creative graphObject
+			if err := json.Unmarshal([]byte(value), &creative); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			item["creative"] = graphObject{"id": creative["creative_id"]}
+		}
+		s.ads[path] = item
+		_, _ = io.WriteString(w, `{"success":true}`)
 	case r.Method == http.MethodDelete && s.convs[path] != nil:
 		s.deletes++
 		item := s.convs[path]
@@ -399,6 +475,14 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 		item := s.creatives[path]
 		item["status"] = "DELETED"
 		s.creatives[path] = item
+		_, _ = io.WriteString(w, `{"success":true}`)
+	case r.Method == http.MethodDelete && s.ads[path] != nil:
+		s.deletes++
+		item := s.ads[path]
+		item["status"] = "DELETED"
+		item["configured_status"] = "DELETED"
+		item["effective_status"] = "DELETED"
+		s.ads[path] = item
 		_, _ = io.WriteString(w, `{"success":true}`)
 	default:
 		w.WriteHeader(http.StatusNotFound)
@@ -506,6 +590,20 @@ func creativeAddress(t *testing.T, name string) resource.Address {
 func creativeResource(t *testing.T, name string, attrs resource.Attributes) resource.Resource {
 	t.Helper()
 	return resource.Resource{Address: creativeAddress(t, name), Attributes: attrs}
+}
+
+func adAddress(t *testing.T, name string) resource.Address {
+	t.Helper()
+	addr, err := resource.ParseAddress("meta.ad." + name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return addr
+}
+
+func adResource(t *testing.T, name string, attrs resource.Attributes) resource.Resource {
+	t.Helper()
+	return resource.Resource{Address: adAddress(t, name), Attributes: attrs}
 }
 
 func standardCampaignAttrs() resource.Attributes {
