@@ -6,6 +6,38 @@ providers. Website conversion measurement and campaign management are
 implemented here together with ad-set and external-media ad-creative
 management, including the final ad serving relationship.
 
+## Lifecycle contract
+
+The provider keeps one exhaustive lifecycle declaration for every registered
+v0.6.0 resource. Adding a resource type without its identity, create, update,
+import, destroy, terminal-state, and relationship semantics fails the provider
+contract tests.
+
+| Type | Remote identity | Create | Mutable fields | Immutable/replacement fields | Import | Destroy |
+| --- | --- | --- | --- | --- | --- | --- |
+| `meta.pixel` | numeric Pixel/Dataset id | external/import-only; apply may uniquely adopt by name | none | `name` | numeric id | provider-owned; remains bound |
+| `meta.custom_conversion` | numeric custom conversion id | supported | `name`, `defaultValue` | `pixel`, `rule`, `eventType` | numeric id; requires Pixel ref | remove/archive with `DELETE` |
+| `meta.campaign` | numeric campaign id | supported | `name`, `status`, categories, existing budget value, bid strategy, budget sharing | objective, buying type, budget ownership/type | numeric id; preserves campaign/ad-set budget ownership | remove with `DELETE` |
+| `meta.ad_set` | numeric ad-set id | supported | `name`, `status`, existing budget value, end time, targeting, compatible bid values | campaign, billing/optimization/destination, conversion object, start time, budget ownership/type | numeric id; requires campaign and applicable conversion refs | remove with `DELETE` |
+| `meta.ad_creative` | numeric creative id | supported | `name` | page/account, destination, copy, CTA, media, URL tags | numeric id; external media ids remain lossless literals | delete with `DELETE` |
+| `meta.ad` | numeric ad id | supported | `name`, `status`, `creative` | `adSet` | numeric id; requires ad-set and creative refs | remove with `DELETE` |
+
+Import reconstructs managed relationships through the provider-neutral output
+catalog and the declared id outputs (`pixelId`, `customConversionId`,
+`campaignId`, `adSetId`, and `adCreativeId`). A unique output match emits the
+logical `$ref`. A missing or ambiguous match fails before state is written;
+none of these relationship fields permits an external literal. Import
+dependencies first.
+
+The manifest reference graph is also the destroy graph. Its reverse order
+removes ads before ad sets and creatives, ad sets before campaigns and custom
+conversions, and custom conversions before their Pixel/Dataset. Every remote
+destroy mutation is a `DELETE`; it never activates delivery or
+increases a budget. Confirmed terminal resources are unbound immediately,
+while a failed operation and all not-yet-attempted resources remain bound for
+a deterministic retry. Provider-owned pixels remain bound and make teardown
+explicitly incomplete.
+
 ## `meta.ad`
 
 Ads connect one managed ad set to one managed creative. Both relationships

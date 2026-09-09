@@ -260,14 +260,14 @@ func (p *Provider) readAdByID(ctx context.Context, desired resource.Resource, id
 	if status == adStatusDeleted || status == adStatusArchived {
 		return resource.RemoteResource{}, provider.ErrNotFound
 	}
-	live, err := p.remoteAd(desired, item)
+	live, err := p.remoteAd(ctx, desired, item)
 	if err != nil {
 		return resource.RemoteResource{}, err
 	}
 	return p.rememberLive(live), nil
 }
 
-func (p *Provider) remoteAd(desired resource.Resource, item ad) (resource.RemoteResource, error) {
+func (p *Provider) remoteAd(ctx context.Context, desired resource.Resource, item ad) (resource.RemoteResource, error) {
 	id, err := normalizeObjectID(item.ID)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("remote ad id is invalid: %w", err)
@@ -279,7 +279,7 @@ func (p *Provider) remoteAd(desired resource.Resource, item ad) (resource.Remote
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("remote ad %s has invalid adset_id: %w", id, err)
 	}
-	adSet, err := p.managedRefAttr(TypeAdSet, OutputAdSetID, adSetID, desired.Attributes[AttrAdSet])
+	adSet, err := p.managedRefAttr(ctx, TypeAdSet, OutputAdSetID, adSetID, desired.Attributes[AttrAdSet])
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("remote ad %s ad-set relationship: %w", id, err)
 	}
@@ -291,7 +291,7 @@ func (p *Provider) remoteAd(desired resource.Resource, item ad) (resource.Remote
 	if !ok {
 		return resource.RemoteResource{}, fmt.Errorf("remote ad %s creative is missing id", id)
 	}
-	creative, err := p.managedRefAttr(TypeAdCreative, OutputAdCreativeID, creativeID, desired.Attributes[AttrCreative])
+	creative, err := p.managedRefAttr(ctx, TypeAdCreative, OutputAdCreativeID, creativeID, desired.Attributes[AttrCreative])
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("remote ad %s creative relationship: %w", id, err)
 	}

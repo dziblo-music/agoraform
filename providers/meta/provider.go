@@ -25,6 +25,7 @@ type Provider struct {
 	mu         sync.Mutex
 	known      map[string]remoteBinding
 	identities IdentityCatalog
+	outputs    provider.OutputMatcher
 }
 
 var (
@@ -79,7 +80,8 @@ func (p *Provider) Outputs(resourceType string) []provider.OutputSpec {
 
 // PlanMissingResource implements provider.MissingResourcePlanner.
 func (p *Provider) PlanMissingResource(res resource.Resource) (provider.MissingResourceMode, error) {
-	if res.Address.Provider == Name && res.Address.Type == TypePixel {
+	spec, ok := Lifecycle(res.Address.Type)
+	if res.Address.Provider == Name && ok && spec.Create == CreateExternalImportOnly {
 		return provider.MissingResourceAdopt, nil
 	}
 	return provider.MissingResourceCreate, nil

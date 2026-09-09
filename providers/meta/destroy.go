@@ -12,71 +12,23 @@ import (
 
 const pixelDestroyGuidance = "Pixel/Dataset event sources are owned in Events Manager / Business Manager; Agoraform imports or adopts them and never deletes the remote object"
 
-// resourceDestroyLifecycle is the documented Meta destroy contract for one
-// registered resource type. Tests require this table to stay exhaustive over
-// Provider.ResourceTypes().
-type resourceDestroyLifecycle struct {
-	Capability      provider.DestroyCapability
-	TerminalState   string
-	AlreadyTerminal string
-	Precondition    string
-}
-
-var destroyLifecycleByType = map[string]resourceDestroyLifecycle{
-	TypePixel: {
-		Capability:      provider.DestroyProviderOwned,
-		AlreadyTerminal: "not applicable; object remains",
-		Precondition:    pixelDestroyGuidance,
-	},
-	TypeCustomConversion: {
-		Capability:      provider.DestroyRemove,
-		TerminalState:   "is_archived=true or not found after DELETE",
-		AlreadyTerminal: "is_archived=true or not found",
-		Precondition:    "Marketing API DELETE /{custom_conversion_id}; Agoraform does not assume a hard delete",
-	},
-	TypeCampaign: {
-		Capability:      provider.DestroyRemove,
-		TerminalState:   "status=DELETED or ARCHIVED, or not found after DELETE",
-		AlreadyTerminal: "status=DELETED or ARCHIVED, or not found",
-		Precondition:    "Marketing API DELETE /{campaign_id}; Agoraform treats the provider terminal status as removal",
-	},
-	TypeAdSet: {
-		Capability:      provider.DestroyRemove,
-		TerminalState:   "status=DELETED or ARCHIVED, or not found after DELETE",
-		AlreadyTerminal: "status=DELETED or ARCHIVED, or not found",
-		Precondition:    "Marketing API DELETE /{ad_set_id}; Agoraform treats the provider terminal status as removal",
-	},
-	TypeAdCreative: {
-		Capability:      provider.DestroyDelete,
-		TerminalState:   "status=DELETED or not found after DELETE",
-		AlreadyTerminal: "status=DELETED or not found",
-		Precondition:    "Marketing API DELETE /{ad_creative_id}; deletion may be rejected while the creative is in use",
-	},
-	TypeAd: {
-		Capability:      provider.DestroyRemove,
-		TerminalState:   "status=DELETED or ARCHIVED, or not found after DELETE",
-		AlreadyTerminal: "status=DELETED or ARCHIVED, or not found",
-		Precondition:    "Marketing API DELETE /{ad_id}; Agoraform treats the provider terminal status as removal",
-	},
-}
-
 // DestroyCapability implements provider.Destroyer.
 func (p *Provider) DestroyCapability(res resource.Resource) (provider.DestroyCapability, error) {
-	spec, ok := destroyLifecycleByType[res.Address.Type]
+	spec, ok := Lifecycle(res.Address.Type)
 	if !ok {
 		return provider.DestroyUnsupported, nil
 	}
-	return spec.Capability, nil
+	return spec.Destroy, nil
 }
 
 // Destroy implements provider.Destroyer.
 func (p *Provider) Destroy(ctx context.Context, res resource.Resource) (provider.DestroyResult, error) {
-	spec, ok := destroyLifecycleByType[res.Address.Type]
+	spec, ok := Lifecycle(res.Address.Type)
 	if !ok {
 		return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: unsupported resource type", res.Address)
 	}
-	if spec.Capability == provider.DestroyProviderOwned {
-		return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: %s", res.Address, spec.Precondition)
+	if spec.Destroy == provider.DestroyProviderOwned {
+		return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: %s", res.Address, spec.ServingSafety)
 	}
 	switch res.Address.Type {
 	case TypeCustomConversion:
