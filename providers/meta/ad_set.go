@@ -332,14 +332,14 @@ func (p *Provider) readAdSetByID(ctx context.Context, desired resource.Resource,
 	if status == adSetStatusDeleted || status == adSetStatusArchived {
 		return resource.RemoteResource{}, provider.ErrNotFound
 	}
-	live, err := p.remoteAdSet(desired, item)
+	live, err := p.remoteAdSet(ctx, desired, item)
 	if err != nil {
 		return resource.RemoteResource{}, err
 	}
 	return p.rememberLive(live), nil
 }
 
-func (p *Provider) remoteAdSet(desired resource.Resource, item adSet) (resource.RemoteResource, error) {
+func (p *Provider) remoteAdSet(ctx context.Context, desired resource.Resource, item adSet) (resource.RemoteResource, error) {
 	id, err := normalizeObjectID(item.ID)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("remote ad set id is invalid: %w", err)
@@ -351,7 +351,7 @@ func (p *Provider) remoteAdSet(desired resource.Resource, item adSet) (resource.
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("remote ad set %s has invalid campaign_id: %w", id, err)
 	}
-	campaign, err := p.managedRefAttr(TypeCampaign, OutputCampaignID, campaignID, desired.Attributes[AttrCampaign])
+	campaign, err := p.managedRefAttr(ctx, TypeCampaign, OutputCampaignID, campaignID, desired.Attributes[AttrCampaign])
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("remote ad set %s campaign relationship: %w", id, err)
 	}
@@ -370,11 +370,11 @@ func (p *Provider) remoteAdSet(desired resource.Resource, item adSet) (resource.
 		if !ok {
 			return resource.RemoteResource{}, fmt.Errorf("remote ad set %s promoted_object is missing custom_conversion_id", id)
 		}
-		pixel, err = p.managedRefAttr(TypePixel, OutputPixelID, pixelID, desired.Attributes[AttrPixel])
+		pixel, err = p.managedRefAttr(ctx, TypePixel, OutputPixelID, pixelID, desired.Attributes[AttrPixel])
 		if err != nil {
 			return resource.RemoteResource{}, fmt.Errorf("remote ad set %s pixel relationship: %w", id, err)
 		}
-		conversion, err = p.managedRefAttr(TypeCustomConversion, OutputCustomConversionID, conversionID, desired.Attributes[AttrCustomConversion])
+		conversion, err = p.managedRefAttr(ctx, TypeCustomConversion, OutputCustomConversionID, conversionID, desired.Attributes[AttrCustomConversion])
 		if err != nil {
 			return resource.RemoteResource{}, fmt.Errorf("remote ad set %s custom conversion relationship: %w", id, err)
 		}
@@ -890,7 +890,7 @@ func (p *Provider) refID(ref resource.Ref, output string) (string, error) {
 	return "", fmt.Errorf("reference %s has no provider-native identity", ref.Address)
 }
 
-func (p *Provider) managedRefAttr(resourceType, output, remoteID string, desired any) (resource.Ref, error) {
+func (p *Provider) managedRefAttr(ctx context.Context, resourceType, output, remoteID string, desired any) (resource.Ref, error) {
 	ref := logicalRef(desired)
 	if !ref.IsZero() {
 		id := ""
@@ -907,7 +907,7 @@ func (p *Provider) managedRefAttr(resourceType, output, remoteID string, desired
 			return resource.Ref{Address: ref.Address}, nil
 		}
 	}
-	managed, found, err := p.lookupManagedAddress(resourceType, remoteID)
+	managed, found, err := p.matchManagedAddress(ctx, resourceType, output, remoteID)
 	if err != nil {
 		return resource.Ref{}, err
 	}

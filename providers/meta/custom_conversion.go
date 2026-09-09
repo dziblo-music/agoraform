@@ -322,14 +322,14 @@ func (p *Provider) readCustomConversionByID(ctx context.Context, res resource.Re
 	if item.IsArchived {
 		return resource.RemoteResource{}, provider.ErrNotFound
 	}
-	live, err := p.remoteCustomConversion(res, item)
+	live, err := p.remoteCustomConversion(ctx, res, item)
 	if err != nil {
 		return resource.RemoteResource{}, err
 	}
 	return p.rememberLive(live), nil
 }
 
-func (p *Provider) remoteCustomConversion(res resource.Resource, item customConversion) (resource.RemoteResource, error) {
+func (p *Provider) remoteCustomConversion(ctx context.Context, res resource.Resource, item customConversion) (resource.RemoteResource, error) {
 	id, err := normalizeObjectID(item.ID)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("remote custom conversion id is invalid: %w", err)
@@ -357,7 +357,7 @@ func (p *Provider) remoteCustomConversion(res resource.Resource, item customConv
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("remote custom conversion %s: %w", id, err)
 	}
-	pixelAttr, err := p.livePixelAttr(res.Address, pixelID, res.Attributes[AttrPixel])
+	pixelAttr, err := p.livePixelAttr(ctx, res.Address, pixelID, res.Attributes[AttrPixel])
 	if err != nil {
 		return resource.RemoteResource{}, err
 	}
@@ -388,7 +388,7 @@ func (p *Provider) remoteCustomConversion(res resource.Resource, item customConv
 	}, nil
 }
 
-func (p *Provider) livePixelAttr(addr resource.Address, pixelID string, desired any) (any, error) {
+func (p *Provider) livePixelAttr(ctx context.Context, addr resource.Address, pixelID string, desired any) (any, error) {
 	want := logicalRef(desired)
 	if !want.IsZero() {
 		wantID := ""
@@ -407,7 +407,7 @@ func (p *Provider) livePixelAttr(addr resource.Address, pixelID string, desired 
 			return resource.Ref{Address: want.Address}, nil
 		}
 	}
-	managed, found, err := p.lookupManagedAddress(TypePixel, pixelID)
+	managed, found, err := p.matchManagedAddress(ctx, TypePixel, OutputPixelID, pixelID)
 	if err != nil {
 		return nil, err
 	}
