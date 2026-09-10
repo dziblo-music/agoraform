@@ -272,7 +272,7 @@ func TestImportCampaignEmitsCanonicalYAML(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"objective: OUTCOME_TRAFFIC", "status: ACTIVE", "dailyBudget: 2500", "specialAdCategories:", "- HOUSING"} {
+	for _, want := range []string{"objective: OUTCOME_TRAFFIC", "status: ACTIVE", "dailyBudgetMinorUnits: 2500", "specialAdCategories:", "- HOUSING"} {
 		if !strings.Contains(result.YAML, want) {
 			t.Fatalf("import YAML missing %q:\n%s", want, result.YAML)
 		}
