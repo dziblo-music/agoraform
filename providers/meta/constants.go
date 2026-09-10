@@ -21,12 +21,12 @@ const (
 	// AttrBuyingType is the campaign buying type. The initial schema supports
 	// the regular AUCTION workflow only.
 	AttrBuyingType = "buyingType"
-	// AttrDailyBudget is a campaign-level daily budget in the ad account
-	// currency's smallest unit (for example cents for USD).
-	AttrDailyBudget = "dailyBudget"
-	// AttrLifetimeBudget is a campaign-level lifetime budget in the ad account
-	// currency's smallest unit.
-	AttrLifetimeBudget = "lifetimeBudget"
+	// AttrDailyBudget is a daily budget expressed explicitly in the ad account
+	// currency's minor units (for example cents for USD).
+	AttrDailyBudget = "dailyBudgetMinorUnits"
+	// AttrLifetimeBudget is a lifetime budget expressed explicitly in the ad
+	// account currency's minor units.
+	AttrLifetimeBudget = "lifetimeBudgetMinorUnits"
 	// AttrBidStrategy is the campaign-level Meta bid strategy used with a
 	// campaign-level budget.
 	AttrBidStrategy = "bidStrategy"
