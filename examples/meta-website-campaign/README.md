@@ -34,10 +34,13 @@ The ad set references the pixel directly as well as through its Custom
 Conversion, and Agoraform rejects the configuration if those two pixels
 disagree.
 
-Provider-native IDs, access tokens, Page and Instagram identities, and media
-identifiers do not belong in the manifest. Replace the placeholder landing
-page, copy, budget, targeting, Page ID, Instagram user ID, and image hash
-with values for your own account before enabling delivery.
+Provider-native IDs for Agoraform-managed resources and access tokens do not
+belong in the manifest. External values that the creative must reference —
+the Page ID, optional Instagram user ID, and image hash or video ID — remain
+literal manifest attributes because Agoraform does not manage those objects.
+Replace the placeholder landing page, copy, budget, targeting, Page ID,
+Instagram user ID, and image hash with values for your own account before
+enabling delivery.
 
 ## What Agoraform manages here
 
