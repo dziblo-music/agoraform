@@ -700,7 +700,7 @@ Meta campaigns use current Outcome-Driven Ad Experiences (ODAX) objectives:
 | `specialAdCategories` | yes | Applicable categories, or an empty list when none apply. |
 | `status` | no | `PAUSED` (default) or `ACTIVE`. |
 | `buyingType` | no | `AUCTION` (default and only supported value). |
-| `dailyBudget` / `lifetimeBudget` | no | Mutually exclusive positive integers in the account currency's smallest unit. Omit both for ad-set budget ownership. |
+| `dailyBudgetMinorUnits` / `lifetimeBudgetMinorUnits` | no | Mutually exclusive positive integers in the account currency's minor units. For USD, `5000` means USD 50.00. Omit both for ad-set budget ownership. |
 | `bidStrategy` | no | Campaign bid strategy; valid only with a campaign-level budget. |
 | `adSetBudgetSharingEnabled` | no | Ad-set budget-sharing flag; defaults to `false` and cannot be true with a campaign-level budget. |
 
@@ -719,7 +719,7 @@ conversion configuration:
     status: PAUSED
     campaign:
       $ref: meta.campaign.website_acquisition
-    dailyBudget: 5000
+    dailyBudgetMinorUnits: 5000
     billingEvent: IMPRESSIONS
     optimizationGoal: OFFSITE_CONVERSIONS
     bidStrategy: LOWEST_COST_WITHOUT_CAP
@@ -742,8 +742,8 @@ conversion configuration:
 | `destinationType` | yes | `WEBSITE`. |
 | `targeting` | yes | Typed targeting object with at least one country or region. |
 | `status` | no | `PAUSED` (default) or `ACTIVE`. |
-| `dailyBudget` / `lifetimeBudget` | conditional | Exactly one is required when the campaign has no campaign-level budget; forbidden when the campaign owns the budget. |
-| `startTime` / `endTime` | conditional | RFC3339 timestamps; both are required with `lifetimeBudget`. |
+| `dailyBudgetMinorUnits` / `lifetimeBudgetMinorUnits` | conditional | Exactly one is required when the campaign has no campaign-level budget; values are account-currency minor units. |
+| `startTime` / `endTime` | conditional | RFC3339 timestamps; both are required with `lifetimeBudgetMinorUnits`. |
 | `billingEvent` | no | `IMPRESSIONS` (default and only supported value). |
 | `bidStrategy` / `bidAmount` | no | Defaults to `LOWEST_COST_WITHOUT_CAP`; capped strategies require `bidAmount`. |
 | `pixel` / `customConversion` | conditional | Required `$ref` values for `OFFSITE_CONVERSIONS`; forbidden for `LINK_CLICKS`. |
@@ -858,6 +858,3 @@ from `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`,
 `META_ACCESS_TOKEN` and `META_AD_ACCOUNT_ID`; Meta provider configuration in
 the manifest is an empty `meta: {}` block because both values are runtime
 settings.
-
-See [plan.md](plan.md), [apply.md](apply.md), [import.md](import.md), and
-[state.md](state.md).
