@@ -26,5 +26,7 @@ agoraform import -f examples/meta-campaign/agoraform.yaml \
 ```
 
 Ad sets, targeting, creatives, and ads are intentionally outside this focused
-campaign-only example. See the Meta provider documentation for the complete
-v0.6.0 serving graph.
+campaign-only example. See the
+[website conversion campaign example](../meta-website-campaign/README.md) for
+the complete v0.6.0 serving graph, including the ad-set-owned budget
+arrangement that is the alternative to the campaign-level budget used here.

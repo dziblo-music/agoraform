@@ -675,6 +675,7 @@ agoraform destroy [-f path/to/manifest.yaml]
 - [v0.4 Google Ads Search campaign example](examples/googleads-search/README.md)
 - [v0.5 Matomo + Google Ads lifecycle example](examples/matomo-googleads/README.md)
 - [v0.6 Meta conversion example](examples/meta-conversion/README.md)
+- [v0.6 Meta website conversion campaign example](examples/meta-website-campaign/README.md)
 - [Release process](docs/release.md)
 - [Changelog](CHANGELOG.md)
 

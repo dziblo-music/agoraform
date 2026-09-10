@@ -19,6 +19,7 @@ guides lives here.
 - [Google Ads provider](../providers/googleads/README.md)
 - [Meta Ads provider](../providers/meta/README.md)
 - [v0.2 Matomo conversion example](../examples/matomo-conversion/README.md)
+- [v0.6 Meta website conversion campaign example](../examples/meta-website-campaign/README.md)
 - [v0.6 Meta conversion example](../examples/meta-conversion/README.md)
 - [v0.6 Meta campaign example](../examples/meta-campaign/README.md)
 - [v0.3 Google Ads conversion example](../examples/googleads-conversion/README.md)
@@ -54,7 +55,10 @@ Current v0.6.0 source adds the Meta provider, website Pixel/Dataset and Custom
 Conversion configuration, and paused-by-default ODAX `meta.campaign`
 management, typed ad sets and creatives, and paused-by-default `meta.ad`
 serving relationships. See the
-[Meta provider reference](../providers/meta/README.md).
+[Meta provider reference](../providers/meta/README.md). The
+[v0.6 Meta website conversion campaign example](../examples/meta-website-campaign/README.md)
+runs that complete graph through validate, plan, apply, import, and destroy
+while every serving resource stays paused.
 
 Provider credentials and connection settings can be stored locally in an
 optional [`.agoraform.env`](local-configuration.md) file instead of being

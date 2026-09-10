@@ -12,6 +12,20 @@ prints the SemVer identifier without the prefix (`0.5.0`).
 
 ### Added
 
+- A complete secret-free Meta Ads website conversion campaign example under
+  `examples/meta-website-campaign/`, automatically validated by the test
+  suite. The example covers the full supported v0.6.0 graph — Pixel/Dataset
+  binding, website Custom Conversion, `OUTCOME_SALES` campaign, ad set with
+  an ad-set-owned daily budget, typed targeting and website conversion
+  optimization, external-media ad creative, and the serving ad — with every
+  serving resource `PAUSED`, logical `$ref` relationships throughout, and
+  placeholder Page, Instagram, media, and landing-page values. Its README
+  documents the Agoraform/external configuration boundary, the
+  `validate` → `plan` → `apply` → `plan` convergence to zero changes,
+  dependency-ordered import and the references it reconstructs, destroy
+  ordering with the provider-owned Pixel preserved, retry behavior after a
+  partial teardown failure, and Ads Manager verification that never enables
+  delivery or spend.
 - First-class `meta.ad` lifecycle for v0.6.0 with logical references to a
   managed ad set and creative, `PAUSED` creation by default, explicit serving
   transitions, in-place name/status/creative updates, immutable-parent

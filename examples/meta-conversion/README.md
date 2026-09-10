@@ -70,3 +70,6 @@ Marketing API and leaves the Pixel/Dataset in Events Manager.
 
 See the [Meta provider reference](../../providers/meta/README.md) for the
 API-verified field contract, immutable update rules, and destroy semantics.
+The [website conversion campaign example](../meta-website-campaign/README.md)
+extends this measurement graph into a complete paused campaign, ad set,
+creative, and ad.
