@@ -38,7 +38,8 @@ resources:
       status: PAUSED
       campaign:
         $ref: meta.campaign.website_acquisition
-      dailyBudget: 5000
+      # Meta budgets use account-currency minor units: 5000 = USD 50.00.
+      dailyBudgetMinorUnits: 5000
       billingEvent: IMPRESSIONS
       optimizationGoal: OFFSITE_CONVERSIONS
       bidStrategy: LOWEST_COST_WITHOUT_CAP

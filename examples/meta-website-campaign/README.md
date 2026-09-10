@@ -186,8 +186,8 @@ is immutable, the supported way to change ad copy or media is to add a new
 `meta.ad_creative` resource and repoint the ad's `creative` `$ref`;
 Agoraform updates that relationship in place and the plan shows the swap.
 
-Budgets are expressed in the ad account currency's smallest unit. In a USD
-account, `dailyBudget: 5000` is USD 50.00 per day. This example puts the
+Budget attribute names make the unit explicit. In a USD account,
+`dailyBudgetMinorUnits: 5000` means USD 50.00 per day. This example puts the
 budget on the ad set, so the campaign declares no budget and
 `adSetBudgetSharingEnabled: false`. The reverse arrangement — a
 campaign-level budget with no ad-set budget — is shown in the
