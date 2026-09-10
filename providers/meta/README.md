@@ -141,7 +141,7 @@ Instagram Feed, Stories, and Reels in the United States:
     status: PAUSED
     campaign:
       $ref: meta.campaign.acquisition
-    lifetimeBudget: 50000
+    lifetimeBudgetMinorUnits: 50000
     startTime: "2026-09-01T05:00:00Z"
     endTime: "2026-10-01T05:00:00Z"
     billingEvent: IMPRESSIONS
@@ -171,12 +171,14 @@ The referenced Custom Conversion must use the same pixel, and
 do not accept conversion references and require an `OUTCOME_TRAFFIC` or
 `OUTCOME_SALES` campaign.
 
-Budgets use the ad-account currency's smallest unit, exactly like campaign
-budgets. `dailyBudget` and `lifetimeBudget` are mutually exclusive. A campaign
-with a campaign-level budget forbids an ad-set budget; a campaign without one
-requires each ad set to declare a budget. A lifetime budget requires both
-`startTime` and `endTime`. Timestamps must be RFC3339 and are canonicalized to
-UTC. The supported bid strategies are `LOWEST_COST_WITHOUT_CAP`,
+Budget attribute names make the unit explicit. `dailyBudgetMinorUnits` and
+`lifetimeBudgetMinorUnits` are mutually exclusive positive integers expressed
+in the ad-account currency's minor units; for example, `5000` means USD 50.00
+in a USD account and JPY 5,000 in a JPY account. A campaign with a
+campaign-level budget forbids an ad-set budget; a campaign without one requires
+each ad set to declare a budget. A lifetime budget requires both `startTime`
+and `endTime`. Timestamps must be RFC3339 and are canonicalized to UTC. The
+supported bid strategies are `LOWEST_COST_WITHOUT_CAP`,
 `LOWEST_COST_WITH_BID_CAP`, and `COST_CAP`; the latter two require a positive
 whole-number `bidAmount`, while lowest cost without a cap forbids one.
 
@@ -223,7 +225,7 @@ Declare an Outcome-Driven Ad Experiences (ODAX) campaign:
     status: PAUSED
     specialAdCategories: []
     buyingType: AUCTION
-    lifetimeBudget: 50000
+    lifetimeBudgetMinorUnits: 50000
     bidStrategy: LOWEST_COST_WITHOUT_CAP
 ```
 
@@ -241,13 +243,13 @@ before/after value is shown by `plan`. Import preserves the remote `ACTIVE` or
 `PAUSED` configured status; it never pauses an existing campaign.
 
 `buyingType` defaults to `AUCTION`. `RESERVED` requires a materially different
-schema and is not supported. `dailyBudget` and `lifetimeBudget` are mutually
-exclusive positive integers in the ad account currency's smallest unit (for
-example, `5000` means USD 50.00 and means JPY 5,000). Using the API-native
-smallest unit avoids rounding and makes campaign and future ad-set budget
-normalization deterministic. A campaign without either field uses ad-set
-budget ownership. `bidStrategy` is optional and is valid only with a
-campaign-level budget.
+schema and is not supported. `dailyBudgetMinorUnits` and
+`lifetimeBudgetMinorUnits` are mutually exclusive positive integers in the ad
+account currency's minor units (for example, `5000` means USD 50.00 and means
+JPY 5,000). The explicit attribute names make the API-native unit visible in
+the manifest while retaining integer arithmetic and deterministic
+normalization. A campaign without either field uses ad-set budget ownership.
+`bidStrategy` is optional and is valid only with a campaign-level budget.
 
 For campaigns whose budgets live on ad sets, `adSetBudgetSharingEnabled`
 defaults to `false` and is sent explicitly as required by current Graph API
