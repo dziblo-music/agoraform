@@ -858,3 +858,6 @@ from `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`,
 `META_ACCESS_TOKEN` and `META_AD_ACCOUNT_ID`; Meta provider configuration in
 the manifest is an empty `meta: {}` block because both values are runtime
 settings.
+
+See [plan.md](plan.md), [apply.md](apply.md), [import.md](import.md), and
+[state.md](state.md).
