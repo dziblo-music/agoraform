@@ -11,5 +11,6 @@ resources:
       status: PAUSED
       specialAdCategories: []
       buyingType: AUCTION
-      lifetimeBudget: 50000
+      # Meta budgets use account-currency minor units: 50000 = USD 500.00.
+      lifetimeBudgetMinorUnits: 50000
       bidStrategy: LOWEST_COST_WITHOUT_CAP
