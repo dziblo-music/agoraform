@@ -45,10 +45,12 @@ func TestValidateCampaignAndSafeDefaults(t *testing.T) {
 		{"bad category", func(a resource.Attributes) { a[meta.AttrSpecialAdCategories] = []any{"ALCOHOL"} }, "specialAdCategories"},
 		{"duplicate category", func(a resource.Attributes) { a[meta.AttrSpecialAdCategories] = []any{"CREDIT", "credit"} }, "duplicate"},
 		{"missing categories", func(a resource.Attributes) { delete(a, meta.AttrSpecialAdCategories) }, "empty list"},
-		{"double budget", func(a resource.Attributes) { a[meta.AttrDailyBudget] = 1000; a[meta.AttrLifetimeBudget] = 5000 }, "mutually exclusive"},
-		{"fractional budget", func(a resource.Attributes) { a[meta.AttrDailyBudget] = 10.5 }, "smallest unit"},
+		{"double budget", func(a resource.Attributes) { a[meta.AttrDailyBudget] = 10; a[meta.AttrLifetimeBudget] = 50 }, "mutually exclusive"},
+		{"sub-cent budget", func(a resource.Attributes) { a[meta.AttrDailyBudget] = 10.555 }, "at most 2 decimal places"},
+		{"zero budget", func(a resource.Attributes) { a[meta.AttrDailyBudget] = 0 }, "greater than 0"},
+		{"non-numeric budget", func(a resource.Attributes) { a[meta.AttrDailyBudget] = "fifty" }, "account-currency units"},
 		{"bid without budget", func(a resource.Attributes) { a[meta.AttrBidStrategy] = "COST_CAP" }, "requires"},
-		{"budget sharing with campaign budget", func(a resource.Attributes) { a[meta.AttrDailyBudget] = 1000; a[meta.AttrAdSetBudgetSharing] = true }, "cannot be true"},
+		{"budget sharing with campaign budget", func(a resource.Attributes) { a[meta.AttrDailyBudget] = 10; a[meta.AttrAdSetBudgetSharing] = true }, "cannot be true"},
 		{"non-boolean budget sharing", func(a resource.Attributes) { a[meta.AttrAdSetBudgetSharing] = "false" }, "must be a boolean"},
 	}
 	for _, tc := range tests {
@@ -70,7 +72,7 @@ func TestCreateReadUpdateCampaign(t *testing.T) {
 	defer httpSrv.Close()
 	p := testProvider(t, httpSrv)
 	attrs := standardCampaignAttrs()
-	attrs[meta.AttrDailyBudget] = 5000
+	attrs[meta.AttrDailyBudget] = 50
 	attrs[meta.AttrBidStrategy] = "LOWEST_COST_WITHOUT_CAP"
 	created, err := p.Create(context.Background(), campaignResource(t, "acquisition", attrs))
 	if err != nil {
@@ -88,15 +90,18 @@ func TestCreateReadUpdateCampaign(t *testing.T) {
 	updatedAttrs := attrs.Clone()
 	updatedAttrs[meta.AttrName] = "Acquisition 2026"
 	updatedAttrs[meta.AttrStatus] = "ACTIVE"
-	updatedAttrs[meta.AttrDailyBudget] = 6000
+	updatedAttrs[meta.AttrDailyBudget] = 60.25
 	desired := campaignResource(t, "acquisition", updatedAttrs)
 	desired.Identity = created.Identity
 	updated, err := p.Update(context.Background(), desired, live)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Attributes[meta.AttrName] != "Acquisition 2026" || updated.Attributes[meta.AttrStatus] != "ACTIVE" || updated.Attributes[meta.AttrDailyBudget] != int64(6000) {
+	if updated.Attributes[meta.AttrName] != "Acquisition 2026" || updated.Attributes[meta.AttrStatus] != "ACTIVE" || updated.Attributes[meta.AttrDailyBudget] != 60.25 {
 		t.Fatalf("updated=%#v", updated.Attributes)
+	}
+	if got := srv.campaignField(testCampaignID, "daily_budget"); got != "6025" {
+		t.Fatalf("daily_budget sent to Meta = %v, want minimum-denomination 6025", got)
 	}
 	posts, _ := srv.mutationCounts()
 	if posts != 2 {
@@ -108,6 +113,57 @@ func TestCreateReadUpdateCampaign(t *testing.T) {
 	posts, _ = srv.mutationCounts()
 	if posts != 2 {
 		t.Fatalf("no-op mutated: posts=%d", posts)
+	}
+}
+
+func TestCampaignBudgetsFollowTheAdAccountCurrencyOffset(t *testing.T) {
+	t.Parallel()
+	srv := newGraphServer(t)
+	srv.currency = "JPY"
+	httpSrv := srv.start()
+	defer httpSrv.Close()
+	p := testProvider(t, httpSrv)
+
+	attrs := standardCampaignAttrs()
+	attrs[meta.AttrDailyBudget] = 2000
+	created, err := p.Create(context.Background(), campaignResource(t, "acquisition", attrs))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// JPY has no minor unit, so 2000 yen must stay 2000 rather than becoming
+	// the 200000 a hard-coded cent conversion would send.
+	if got := srv.campaignField(testCampaignID, "daily_budget"); got != "2000" {
+		t.Fatalf("daily_budget sent to Meta = %v, want 2000", got)
+	}
+	if got := created.Attributes[meta.AttrDailyBudget]; got != int64(2000) {
+		t.Fatalf("dailyBudget = %#v, want 2000", got)
+	}
+
+	fractional := standardCampaignAttrs()
+	fractional[meta.AttrDailyBudget] = 2000.5
+	_, err = p.Create(context.Background(), campaignResource(t, "fractional", fractional))
+	if err == nil || !strings.Contains(err.Error(), "JPY amounts must be whole numbers") {
+		t.Fatalf("error = %v, want a JPY precision failure before any mutation", err)
+	}
+	if got := srv.requestCount(http.MethodGet, "/act_"+testAccountID); got != 1 {
+		t.Fatalf("ad account currency reads = %d, want one cached read", got)
+	}
+}
+
+func TestCampaignWithoutMoneyNeverReadsTheAccountCurrency(t *testing.T) {
+	t.Parallel()
+	srv := newGraphServer(t)
+	httpSrv := srv.start()
+	defer httpSrv.Close()
+	p := testProvider(t, httpSrv)
+
+	attrs := standardCampaignAttrs()
+	attrs[meta.AttrAdSetBudgetSharing] = true
+	if _, err := p.Create(context.Background(), campaignResource(t, "shared", attrs)); err != nil {
+		t.Fatal(err)
+	}
+	if got := srv.requestCount(http.MethodGet, "/act_"+testAccountID); got != 0 {
+		t.Fatalf("ad account currency reads = %d, want none for a budget-free campaign", got)
 	}
 }
 
@@ -161,7 +217,7 @@ func TestCampaignImmutableChangesFailPlanning(t *testing.T) {
 		contains string
 	}{
 		{"objective", func(a resource.Attributes) { a[meta.AttrObjective] = "OUTCOME_TRAFFIC" }, "objective is immutable"},
-		{"budget ownership", func(a resource.Attributes) { a[meta.AttrDailyBudget] = 1000 }, "budget ownership/type"},
+		{"budget ownership", func(a resource.Attributes) { a[meta.AttrDailyBudget] = 10 }, "budget ownership/type"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			attrs := standardCampaignAttrs()
@@ -272,7 +328,7 @@ func TestImportCampaignEmitsCanonicalYAML(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"objective: OUTCOME_TRAFFIC", "status: ACTIVE", "dailyBudgetMinorUnits: 2500", "specialAdCategories:", "- HOUSING"} {
+	for _, want := range []string{"objective: OUTCOME_TRAFFIC", "status: ACTIVE", "dailyBudget: 25", "specialAdCategories:", "- HOUSING"} {
 		if !strings.Contains(result.YAML, want) {
 			t.Fatalf("import YAML missing %q:\n%s", want, result.YAML)
 		}

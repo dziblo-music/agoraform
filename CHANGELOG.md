@@ -34,8 +34,8 @@ prints the SemVer identifier without the prefix (`0.5.0`).
   idempotent Marketing API deletion in reverse dependency order.
 - First-class `meta.campaign` lifecycle for v0.6.0 with current ODAX
   objectives, required special-ad-category declarations, `AUCTION` buying,
-  optional campaign-level daily or lifetime budgets in account-currency minor
-  units, optional campaign bid strategy, explicit ad-set budget sharing, and a
+  optional campaign-level daily or lifetime budgets in account-currency units,
+  optional campaign bid strategy, explicit ad-set budget sharing, and a
   declared `campaignId` output.
   New campaigns default to `PAUSED`; import preserves configured status;
   objective, buying-type, and budget-ownership changes fail planning; and
@@ -60,6 +60,20 @@ prints the SemVer identifier without the prefix (`0.5.0`).
   pagination, bounded JSON decoding, API code/subcode and request/trace ID
   mapping, transient classification without automatic mutation retries, and
   secret-safe diagnostics.
+
+### Changed
+
+- Meta money attributes are declared in ad account currency units instead of
+  the API's minimum denomination: `dailyBudgetMinorUnits` and
+  `lifetimeBudgetMinorUnits` are now `dailyBudget` and `lifetimeBudget`, and
+  those plus `bidAmount` take amounts such as `20` or `20.50` for USD 20.00 and
+  USD 20.50. Agoraform reads the ad account's currency once per run and applies
+  Meta's published per-currency offset, so accounts in JPY, KRW, HUF, ISK, IDR,
+  and TWD send whole units rather than a hundredfold budget. An unlisted
+  account currency, or an amount the currency cannot pay, fails before any
+  mutation. Plan output, state, and import all show the account-currency
+  amount. Both Meta budget resource types are v0.6.0 additions that have not
+  shipped in a release, so no released manifest syntax changes.
 
 ## [0.5.0] - 2026-09-01
 

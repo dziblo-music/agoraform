@@ -21,12 +21,11 @@ const (
 	// AttrBuyingType is the campaign buying type. The initial schema supports
 	// the regular AUCTION workflow only.
 	AttrBuyingType = "buyingType"
-	// AttrDailyBudget is a daily budget expressed explicitly in the ad account
-	// currency's minor units (for example cents for USD).
-	AttrDailyBudget = "dailyBudgetMinorUnits"
-	// AttrLifetimeBudget is a lifetime budget expressed explicitly in the ad
-	// account currency's minor units.
-	AttrLifetimeBudget = "lifetimeBudgetMinorUnits"
+	// AttrDailyBudget is a daily budget in ad account currency units, so 20 in
+	// a USD account means USD 20.00.
+	AttrDailyBudget = "dailyBudget"
+	// AttrLifetimeBudget is a lifetime budget in ad account currency units.
+	AttrLifetimeBudget = "lifetimeBudget"
 	// AttrBidStrategy is the campaign-level Meta bid strategy used with a
 	// campaign-level budget.
 	AttrBidStrategy = "bidStrategy"
@@ -42,7 +41,7 @@ const (
 	AttrBillingEvent = "billingEvent"
 	// AttrOptimizationGoal is the provider-native ad-set optimization goal.
 	AttrOptimizationGoal = "optimizationGoal"
-	// AttrBidAmount is an ad-set bid in the ad account currency's smallest unit.
+	// AttrBidAmount is an ad-set bid in ad account currency units.
 	AttrBidAmount = "bidAmount"
 	// AttrDestinationType is the ad-set conversion destination.
 	AttrDestinationType = "destinationType"

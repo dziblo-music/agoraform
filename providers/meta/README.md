@@ -42,6 +42,28 @@ while a failed operation and all not-yet-attempted resources remain bound for
 a deterministic retry. Provider-owned pixels remain bound and make teardown
 explicitly incomplete.
 
+## Money values
+
+Every money attribute — `dailyBudget`, `lifetimeBudget`, and `bidAmount` — is
+declared in ad account currency units. A `20` in a USD account is USD 20.00, a
+`20` in a JPY account is 20 yen, and fractions such as `20.50` are supported
+where the currency has a minor unit.
+
+Meta's API instead expects the account currency's minimum denomination, and
+Meta's per-currency [offset](https://developers.facebook.com/docs/marketing-api/currencies/)
+decides how many of those make up one unit. That offset is 100 for USD and EUR
+but 1 for JPY, KRW, HUF, ISK, IDR, and TWD, so the conversion cannot be
+assumed. Agoraform reads the configured ad account's currency the first time an
+amount has to cross the API boundary, caches it, and converts there; plan
+output, state, and import always show the account-currency amount. Resources
+that declare no money never trigger that read. An ad account in a currency Meta
+does not list fails rather than falling back to a guessed conversion.
+
+Amounts accept at most two decimal places. An amount the account currency
+cannot pay — 20.50 in a JPY account, for instance — fails before the mutation
+is sent, because the offset is only known once the account currency has been
+read.
+
 ## `meta.ad`
 
 Ads connect one managed ad set to one managed creative. Both relationships
@@ -141,7 +163,7 @@ Instagram Feed, Stories, and Reels in the United States:
     status: PAUSED
     campaign:
       $ref: meta.campaign.acquisition
-    lifetimeBudgetMinorUnits: 50000
+    lifetimeBudget: 500
     startTime: "2026-09-01T05:00:00Z"
     endTime: "2026-10-01T05:00:00Z"
     billingEvent: IMPRESSIONS
@@ -171,16 +193,15 @@ The referenced Custom Conversion must use the same pixel, and
 do not accept conversion references and require an `OUTCOME_TRAFFIC` or
 `OUTCOME_SALES` campaign.
 
-Budget attribute names make the unit explicit. `dailyBudgetMinorUnits` and
-`lifetimeBudgetMinorUnits` are mutually exclusive positive integers expressed
-in the ad-account currency's minor units; for example, `5000` means USD 50.00
-in a USD account and JPY 5,000 in a JPY account. A campaign with a
-campaign-level budget forbids an ad-set budget; a campaign without one requires
-each ad set to declare a budget. A lifetime budget requires both `startTime`
-and `endTime`. Timestamps must be RFC3339 and are canonicalized to UTC. The
-supported bid strategies are `LOWEST_COST_WITHOUT_CAP`,
-`LOWEST_COST_WITH_BID_CAP`, and `COST_CAP`; the latter two require a positive
-whole-number `bidAmount`, while lowest cost without a cap forbids one.
+`dailyBudget` and `lifetimeBudget` are mutually exclusive positive amounts in
+ad account currency units, so `50` means USD 50.00 in a USD account. See
+[money values](#money-values). A campaign with a campaign-level budget forbids
+an ad-set budget; a campaign without one requires each ad set to declare a
+budget. A lifetime budget requires both `startTime` and `endTime`. Timestamps
+must be RFC3339 and are canonicalized to UTC. The supported bid strategies are
+`LOWEST_COST_WITHOUT_CAP`, `LOWEST_COST_WITH_BID_CAP`, and `COST_CAP`; the
+latter two require a positive `bidAmount`, also in account currency units,
+while lowest cost without a cap forbids one.
 
 The intentionally bounded targeting object supports:
 
@@ -225,7 +246,7 @@ Declare an Outcome-Driven Ad Experiences (ODAX) campaign:
     status: PAUSED
     specialAdCategories: []
     buyingType: AUCTION
-    lifetimeBudgetMinorUnits: 50000
+    lifetimeBudget: 500
     bidStrategy: LOWEST_COST_WITHOUT_CAP
 ```
 
@@ -243,13 +264,11 @@ before/after value is shown by `plan`. Import preserves the remote `ACTIVE` or
 `PAUSED` configured status; it never pauses an existing campaign.
 
 `buyingType` defaults to `AUCTION`. `RESERVED` requires a materially different
-schema and is not supported. `dailyBudgetMinorUnits` and
-`lifetimeBudgetMinorUnits` are mutually exclusive positive integers in the ad
-account currency's minor units (for example, `5000` means USD 50.00 and means
-JPY 5,000). The explicit attribute names make the API-native unit visible in
-the manifest while retaining integer arithmetic and deterministic
-normalization. A campaign without either field uses ad-set budget ownership.
-`bidStrategy` is optional and is valid only with a campaign-level budget.
+schema and is not supported. `dailyBudget` and `lifetimeBudget` are mutually
+exclusive positive amounts in ad account currency units (see
+[money values](#money-values)). A campaign without either field uses ad-set
+budget ownership. `bidStrategy` is optional and is valid only with a
+campaign-level budget.
 
 For campaigns whose budgets live on ad sets, `adSetBudgetSharingEnabled`
 defaults to `false` and is sent explicitly as required by current Graph API

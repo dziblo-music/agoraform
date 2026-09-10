@@ -32,6 +32,7 @@ type graphServer struct {
 	t *testing.T
 
 	mu                    sync.Mutex
+	currency              string
 	pixels                map[string]graphObject
 	accountPixels         map[string]bool
 	convs                 map[string]graphObject
@@ -52,6 +53,7 @@ func newGraphServer(t *testing.T) *graphServer {
 	t.Helper()
 	return &graphServer{
 		t:             t,
+		currency:      "USD",
 		pixels:        map[string]graphObject{},
 		accountPixels: map[string]bool{},
 		convs:         map[string]graphObject{},
@@ -183,7 +185,7 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && path == "me/permissions":
 		s.writeList(w, []graphObject{{"permission": "ads_management", "status": "granted"}})
 	case r.Method == http.MethodGet && path == "act_"+testAccountID:
-		writeJSON(w, graphObject{"id": testAccountID, "account_status": 1})
+		writeJSON(w, graphObject{"id": testAccountID, "account_status": 1, "currency": s.currency})
 	case r.Method == http.MethodGet && path == "act_"+testAccountID+"/adspixels":
 		s.writeList(w, s.accountPixelValues())
 	case r.Method == http.MethodGet && path == "act_"+testAccountID+"/customconversions":
@@ -502,6 +504,34 @@ func (s *graphServer) accountPixelValues() []graphObject {
 
 func (s *graphServer) writeList(w http.ResponseWriter, items []graphObject) {
 	writeJSON(w, map[string]any{"data": items})
+}
+
+// campaignField and adSetField expose the stored provider-native value so
+// tests can assert the exact minimum-denomination amount Meta received.
+func (s *graphServer) campaignField(id, field string) any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.campaigns[id][field]
+}
+
+func (s *graphServer) adSetField(id, field string) any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.adSets[id][field]
+}
+
+// requestCount reports how many requests ended with suffix, such as the ad
+// account node read used for the account currency.
+func (s *graphServer) requestCount(method, suffix string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	count := 0
+	for _, entry := range s.requests {
+		if strings.HasPrefix(entry, method+" ") && strings.HasSuffix(entry, suffix) {
+			count++
+		}
+	}
+	return count
 }
 
 func (s *graphServer) mutationCounts() (posts, deletes int) {
