@@ -91,9 +91,10 @@ resources with ODAX objectives and optional campaign-level budgets, and
 and website-conversion optimization. External-media `meta.ad_creative`
 resources and paused-by-default `meta.ad` serving relationships complete the
 initial campaign graph. See the
-[Meta provider reference](meta/README.md) and the
-[conversion-measurement example](../examples/meta-conversion/README.md), and
-the [campaign example](../examples/meta-campaign/README.md).
+[Meta provider reference](meta/README.md), the
+[complete website conversion campaign example](../examples/meta-website-campaign/README.md),
+the [conversion-measurement example](../examples/meta-conversion/README.md),
+and the [campaign example](../examples/meta-campaign/README.md).
 
 ## Test provider
 

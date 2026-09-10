@@ -1,0 +1,78 @@
+# Meta Ads website conversion campaign example for Agoraform v0.6.0.
+# Credentials, ad account IDs, Page/Instagram identities, media, and
+# provider-native identities stay outside this manifest. Serving stays paused
+# until you enable delivery on purpose.
+
+apiVersion: agoraform.io/v1alpha1
+providers:
+  meta: {}
+resources:
+  - address: meta.pixel.website
+    attributes:
+      name: Website
+
+  - address: meta.custom_conversion.trial_started
+    attributes:
+      name: Trial Started
+      eventType: START_TRIAL
+      pixel:
+        $ref: meta.pixel.website
+      rule:
+        and:
+          - event:
+              eq: StartTrial
+      defaultValue: 0
+
+  - address: meta.campaign.website_acquisition
+    attributes:
+      name: Website Acquisition
+      objective: OUTCOME_SALES
+      status: PAUSED
+      specialAdCategories: []
+      buyingType: AUCTION
+      adSetBudgetSharingEnabled: false
+
+  - address: meta.ad_set.instagram_trial
+    attributes:
+      name: Instagram Trial Acquisition
+      status: PAUSED
+      campaign:
+        $ref: meta.campaign.website_acquisition
+      dailyBudget: 5000
+      billingEvent: IMPRESSIONS
+      optimizationGoal: OFFSITE_CONVERSIONS
+      bidStrategy: LOWEST_COST_WITHOUT_CAP
+      destinationType: WEBSITE
+      pixel:
+        $ref: meta.pixel.website
+      customConversion:
+        $ref: meta.custom_conversion.trial_started
+      targeting:
+        countries: [US]
+        ageMin: 25
+        ageMax: 55
+        publisherPlatforms: [INSTAGRAM]
+        instagramPositions: [FEED, STORIES, REELS]
+        devicePlatforms: [MOBILE]
+
+  - address: meta.ad_creative.instagram_trial
+    attributes:
+      name: Instagram Trial Creative
+      pageId: "123456789012345"
+      instagramUserId: "234567890123456"
+      destinationUrl: https://example.com/trial
+      primaryText: Plan, ship, and grow with less overhead.
+      headline: Start Your Free Trial
+      description: No credit card required.
+      callToAction: LEARN_MORE
+      imageHash: "0123456789abcdef0123456789abcdef"
+      urlTags: utm_source=meta&utm_medium=paid_social&utm_campaign={{campaign.name}}&utm_content={{ad.name}}
+
+  - address: meta.ad.instagram_trial
+    attributes:
+      name: Instagram Trial Ad
+      adSet:
+        $ref: meta.ad_set.instagram_trial
+      creative:
+        $ref: meta.ad_creative.instagram_trial
+      status: PAUSED

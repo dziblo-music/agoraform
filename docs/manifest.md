@@ -46,10 +46,13 @@ MATOMO_TOKEN_AUTH
 MATOMO_URL
 GOOGLE_ADS_DEVELOPER_TOKEN
 GOOGLE_ADS_REFRESH_TOKEN
+META_ACCESS_TOKEN
+META_AD_ACCOUNT_ID
 ```
 
 See [Matomo Tag Manager publication](matomo-publishing.md) and the
-[Google Ads provider](../providers/googleads/README.md).
+[Google Ads provider](../providers/googleads/README.md), and the
+[Meta Ads provider](../providers/meta/README.md).
 
 ## Resource addresses
 
@@ -587,6 +590,228 @@ these objects automatically; Agoraform only updates `biddable`.
 
 See the [complete Google Ads Search campaign example](../examples/googleads-search/README.md).
 
+## Meta Ads resources
+
+v0.6.0 supports one complete Meta website-conversion campaign graph.
+Declare the provider with an empty configuration block:
+
+```yaml
+providers:
+  meta: {}
+```
+
+The provider block accepts no fields. `META_ACCESS_TOKEN` and
+`META_AD_ACCOUNT_ID` are runtime settings and must not be placed in YAML.
+
+The supported resources form this graph:
+
+```text
+meta.ad
+├── meta.ad_set
+│   ├── meta.campaign
+│   ├── meta.custom_conversion
+│   │   └── meta.pixel
+│   └── meta.pixel
+└── meta.ad_creative
+```
+
+Managed relationships use logical `$ref` values. Provider-native IDs for
+managed pixels, conversions, campaigns, ad sets, creatives, and ads are kept
+in local state. External Page, Instagram, image, and video identifiers are
+different: Agoraform does not manage those objects, so an ad creative declares
+their IDs as literal attributes.
+
+New campaigns, ad sets, and ads default to `PAUSED`. Setting all three to
+`ACTIVE` is an explicit manifest change that appears in `plan`. Agoraform does
+not install browser Pixel code, send Conversions API events, generate creative
+assets, or upload binary media.
+
+See the
+[complete Meta website conversion campaign example](../examples/meta-website-campaign/README.md)
+and [Meta provider reference](../providers/meta/README.md).
+
+### `meta.pixel`
+
+Declares an existing Pixel/Dataset event source by name:
+
+```yaml
+- address: meta.pixel.website
+  attributes:
+    name: Website
+```
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `name` | yes | Exact Pixel/Dataset name used for unique adoption. |
+
+Agoraform does not create, rename, or delete Pixels/Datasets. Import binds a
+specific numeric ID; otherwise apply adopts exactly one account event source
+whose name matches. The provider-owned object remains bound after destroy.
+
+### `meta.custom_conversion`
+
+Website Custom Conversions reference a managed Pixel/Dataset:
+
+```yaml
+- address: meta.custom_conversion.trial_started
+  attributes:
+    name: Trial Started
+    eventType: START_TRIAL
+    pixel:
+      $ref: meta.pixel.website
+    rule:
+      and:
+        - event:
+            eq: StartTrial
+    defaultValue: 0
+```
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `name` | yes | Custom Conversion name. |
+| `pixel` | yes | `$ref` to a managed `meta.pixel`. |
+| `rule` | yes | Meta rule object, such as an event or URL condition. |
+| `eventType` | yes | Meta `custom_event_type`, such as `START_TRIAL`, `PURCHASE`, or `LEAD`. |
+| `defaultValue` | no | Non-negative default conversion value. |
+
+`pixel`, `rule`, and `eventType` are immutable after creation. `name` and
+`defaultValue` can be updated. Browser and server event delivery remain
+external to Agoraform.
+
+### `meta.campaign`
+
+Meta campaigns use current Outcome-Driven Ad Experiences (ODAX) objectives:
+
+```yaml
+- address: meta.campaign.website_acquisition
+  attributes:
+    name: Website Acquisition
+    objective: OUTCOME_SALES
+    status: PAUSED
+    specialAdCategories: []
+    buyingType: AUCTION
+    adSetBudgetSharingEnabled: false
+```
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `name` | yes | Campaign name. |
+| `objective` | yes | Supported `OUTCOME_*` objective. |
+| `specialAdCategories` | yes | Applicable categories, or an empty list when none apply. |
+| `status` | no | `PAUSED` (default) or `ACTIVE`. |
+| `buyingType` | no | `AUCTION` (default and only supported value). |
+| `dailyBudget` / `lifetimeBudget` | no | Mutually exclusive positive integers in the account currency's smallest unit. Omit both for ad-set budget ownership. |
+| `bidStrategy` | no | Campaign bid strategy; valid only with a campaign-level budget. |
+| `adSetBudgetSharingEnabled` | no | Ad-set budget-sharing flag; defaults to `false` and cannot be true with a campaign-level budget. |
+
+Objective, buying type, and budget ownership/type cannot change in place.
+Declare a new logical resource when one of those immutable fields must change.
+
+### `meta.ad_set`
+
+Ad sets connect the campaign to its budget, targeting, placement, and website
+conversion configuration:
+
+```yaml
+- address: meta.ad_set.instagram_trial
+  attributes:
+    name: Instagram Trial Acquisition
+    status: PAUSED
+    campaign:
+      $ref: meta.campaign.website_acquisition
+    dailyBudget: 5000
+    billingEvent: IMPRESSIONS
+    optimizationGoal: OFFSITE_CONVERSIONS
+    bidStrategy: LOWEST_COST_WITHOUT_CAP
+    destinationType: WEBSITE
+    pixel:
+      $ref: meta.pixel.website
+    customConversion:
+      $ref: meta.custom_conversion.trial_started
+    targeting:
+      countries: [US]
+      publisherPlatforms: [INSTAGRAM]
+      instagramPositions: [FEED, STORIES, REELS]
+```
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `name` | yes | Ad-set name. |
+| `campaign` | yes | `$ref` to a managed `meta.campaign`. |
+| `optimizationGoal` | yes | `OFFSITE_CONVERSIONS` or `LINK_CLICKS`. |
+| `destinationType` | yes | `WEBSITE`. |
+| `targeting` | yes | Typed targeting object with at least one country or region. |
+| `status` | no | `PAUSED` (default) or `ACTIVE`. |
+| `dailyBudget` / `lifetimeBudget` | conditional | Exactly one is required when the campaign has no campaign-level budget; forbidden when the campaign owns the budget. |
+| `startTime` / `endTime` | conditional | RFC3339 timestamps; both are required with `lifetimeBudget`. |
+| `billingEvent` | no | `IMPRESSIONS` (default and only supported value). |
+| `bidStrategy` / `bidAmount` | no | Defaults to `LOWEST_COST_WITHOUT_CAP`; capped strategies require `bidAmount`. |
+| `pixel` / `customConversion` | conditional | Required `$ref` values for `OFFSITE_CONVERSIONS`; forbidden for `LINK_CLICKS`. |
+
+Targeting supports countries, Meta region IDs, ages 18–65, genders, Meta
+locale IDs, Instagram placements, and mobile/desktop device platforms.
+Arbitrary targeting JSON and audience objects are rejected. For website
+conversions, the custom conversion and ad set must reference the same pixel,
+and the campaign objective must be `OUTCOME_SALES`.
+
+### `meta.ad_creative`
+
+Ad creatives use media already uploaded to Meta:
+
+```yaml
+- address: meta.ad_creative.instagram_trial
+  attributes:
+    name: Instagram Trial Creative
+    pageId: "123456789012345"
+    instagramUserId: "234567890123456"
+    destinationUrl: https://example.com/trial
+    primaryText: Start organizing your catalog today.
+    headline: Start Your Free Trial
+    callToAction: LEARN_MORE
+    imageHash: "0123456789abcdef0123456789abcdef"
+```
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `name` | yes | Creative name. |
+| `pageId` | yes | Literal numeric ID of an externally administered Facebook Page. |
+| `instagramUserId` | no | Literal numeric ID of an externally administered Instagram account. |
+| `destinationUrl` | yes | Absolute HTTP(S) landing-page URL. |
+| `primaryText` | yes | Main ad copy. |
+| `headline` | yes | Creative headline. |
+| `description` | no | Optional description. |
+| `callToAction` | yes | `GET_STARTED`, `LEARN_MORE`, or `SIGN_UP`. |
+| `imageHash` / `videoId` | yes | Exactly one externally prepared Meta media identifier. |
+| `urlTags` | no | Query-string parameters without a leading `?`. |
+
+Only `name` is mutable. To change identity, copy, destination, CTA, media, or
+URL tags, declare a new creative and update the ad's `creative` reference.
+
+### `meta.ad`
+
+An ad binds one managed ad set to one managed creative:
+
+```yaml
+- address: meta.ad.instagram_trial
+  attributes:
+    name: Instagram Trial Ad
+    adSet:
+      $ref: meta.ad_set.instagram_trial
+    creative:
+      $ref: meta.ad_creative.instagram_trial
+    status: PAUSED
+```
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `name` | yes | Ad name. |
+| `adSet` | yes | `$ref` to a managed `meta.ad_set`. |
+| `creative` | yes | `$ref` to a managed `meta.ad_creative`. |
+| `status` | no | `PAUSED` (default) or `ACTIVE`. |
+
+`name`, `status`, and `creative` can be updated. The parent `adSet` is
+immutable after creation.
+
 ## Matomo provider desired state
 
 v0.2.0 recognizes:
@@ -629,7 +854,10 @@ publication also require either a `matomo.container` resource or
 `MATOMO_CONTAINER_ID`. Google Ads connection settings come
 from `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`,
 `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`, and
-`GOOGLE_ADS_CUSTOMER_ID`.
+`GOOGLE_ADS_CUSTOMER_ID`. Meta connection settings come from
+`META_ACCESS_TOKEN` and `META_AD_ACCOUNT_ID`; Meta provider configuration in
+the manifest is an empty `meta: {}` block because both values are runtime
+settings.
 
 See [plan.md](plan.md), [apply.md](apply.md), [import.md](import.md), and
 [state.md](state.md).

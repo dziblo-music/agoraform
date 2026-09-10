@@ -29,6 +29,7 @@ func TestManifestsRemainValid(t *testing.T) {
 		"matomo-googleads/external/agoraform.yaml": false,
 		"meta-conversion/agoraform.yaml":           false,
 		"meta-campaign/agoraform.yaml":             false,
+		"meta-website-campaign/agoraform.yaml":     false,
 	}
 	for _, path := range paths {
 		slash := filepath.ToSlash(path)
@@ -421,6 +422,93 @@ func TestMatomoGoogleAdsExternalExampleApplyAndDestroyOrder(t *testing.T) {
 		"matomo.variable.config",
 		"matomo.variable.trial_id",
 		"matomo.tag.google_ads_trial_started",
+	})
+}
+
+func TestMetaWebsiteCampaignExampleCoversServingGraph(t *testing.T) {
+	t.Parallel()
+
+	m := loadExample(t, "meta-website-campaign/agoraform.yaml")
+	byType := resourcesByProviderType(m.Resources)
+
+	pixel := onlyTypedResource(t, byType, meta.Name, meta.TypePixel)
+	conversion := onlyTypedResource(t, byType, meta.Name, meta.TypeCustomConversion)
+	campaign := onlyTypedResource(t, byType, meta.Name, meta.TypeCampaign)
+	adSet := onlyTypedResource(t, byType, meta.Name, meta.TypeAdSet)
+	creative := onlyTypedResource(t, byType, meta.Name, meta.TypeAdCreative)
+	ad := onlyTypedResource(t, byType, meta.Name, meta.TypeAd)
+
+	if got := requireRef(t, conversion, meta.AttrPixel); got != pixel.Address.String() {
+		t.Errorf("custom conversion pixel $ref = %s, want %s", got, pixel.Address)
+	}
+	if got := requireRef(t, adSet, meta.AttrCampaign); got != campaign.Address.String() {
+		t.Errorf("ad set campaign $ref = %s, want %s", got, campaign.Address)
+	}
+	if got := requireRef(t, adSet, meta.AttrPixel); got != pixel.Address.String() {
+		t.Errorf("ad set pixel $ref = %s, want %s", got, pixel.Address)
+	}
+	if got := requireRef(t, adSet, meta.AttrCustomConversion); got != conversion.Address.String() {
+		t.Errorf("ad set customConversion $ref = %s, want %s", got, conversion.Address)
+	}
+	if got := requireRef(t, ad, meta.AttrAdSet); got != adSet.Address.String() {
+		t.Errorf("ad adSet $ref = %s, want %s", got, adSet.Address)
+	}
+	if got := requireRef(t, ad, meta.AttrCreative); got != creative.Address.String() {
+		t.Errorf("ad creative $ref = %s, want %s", got, creative.Address)
+	}
+
+	for _, res := range []resource.Resource{campaign, adSet, ad} {
+		if got, _ := res.Attributes[meta.AttrStatus].(string); got != "PAUSED" {
+			t.Errorf("%s status = %q, want PAUSED", res.Address, got)
+		}
+	}
+
+	// The campaign delegates budget ownership to the ad set, so the example
+	// exercises the ad-set-budget branch of the provider's budget rules.
+	for _, attr := range []string{meta.AttrDailyBudget, meta.AttrLifetimeBudget} {
+		if _, ok := campaign.Attributes[attr]; ok {
+			t.Errorf("campaign must not declare %s; the ad set owns the budget", attr)
+		}
+	}
+	if _, ok := adSet.Attributes[meta.AttrDailyBudget]; !ok {
+		t.Errorf("ad set must declare %s", meta.AttrDailyBudget)
+	}
+	if got, _ := adSet.Attributes[meta.AttrOptimizationGoal].(string); got != "OFFSITE_CONVERSIONS" {
+		t.Errorf("ad set optimizationGoal = %q, want OFFSITE_CONVERSIONS", got)
+	}
+	targeting, ok := adSet.Attributes[meta.AttrTargeting].(map[string]any)
+	if !ok {
+		t.Fatalf("ad set targeting = %#v, want an object", adSet.Attributes[meta.AttrTargeting])
+	}
+	for _, key := range []string{"countries", "publisherPlatforms", "instagramPositions"} {
+		if _, ok := targeting[key]; !ok {
+			t.Errorf("ad set targeting must declare %s", key)
+		}
+	}
+
+	// Media stays an external literal: Agoraform does not upload assets.
+	if _, ok := creative.Attributes[meta.AttrImageHash]; !ok {
+		t.Errorf("creative must reference an externally prepared %s", meta.AttrImageHash)
+	}
+	if _, ok := creative.Attributes[meta.AttrVideoID]; ok {
+		t.Errorf("creative must declare exactly one media identifier")
+	}
+	if got, _ := creative.Attributes[meta.AttrPageID].(string); got == "" {
+		t.Errorf("creative must declare a placeholder %s", meta.AttrPageID)
+	}
+}
+
+func TestMetaWebsiteCampaignExampleApplyAndDestroyOrder(t *testing.T) {
+	t.Parallel()
+
+	m := loadExample(t, "meta-website-campaign/agoraform.yaml")
+	assertAddressOrder(t, m.Resources, []string{
+		"meta.ad_creative.instagram_trial",
+		"meta.campaign.website_acquisition",
+		"meta.pixel.website",
+		"meta.custom_conversion.trial_started",
+		"meta.ad_set.instagram_trial",
+		"meta.ad.instagram_trial",
 	})
 }
 

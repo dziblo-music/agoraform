@@ -6,6 +6,10 @@ providers. Website conversion measurement and campaign management are
 implemented here together with ad-set and external-media ad-creative
 management, including the final ad serving relationship.
 
+The [website conversion campaign example](../../examples/meta-website-campaign/README.md)
+runs the complete supported graph through validate, plan, apply, import, and
+destroy while every serving resource stays paused.
+
 ## Lifecycle contract
 
 The provider keeps one exhaustive lifecycle declaration for every registered

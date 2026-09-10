@@ -3,6 +3,10 @@
 Example manifests live here. They are validated automatically by the Go test
 suite and contain no credentials or private deployment values.
 
+- [meta-website-campaign](meta-website-campaign/README.md) — primary v0.6.0
+  quickstart: complete paused Meta Ads website conversion campaign from the
+  Pixel/Dataset binding and Custom Conversion through the campaign, ad set,
+  external-media creative, and ad, plus import/adoption and destroy.
 - [meta-campaign](meta-campaign/README.md) — v0.6.0 paused-by-default ODAX
   campaign with a deterministic campaign-level lifetime budget.
 - [meta-conversion](meta-conversion/README.md) — v0.6.0 website Pixel/Dataset
@@ -31,6 +35,48 @@ suite and contain no credentials or private deployment values.
 
 Managed identities belong in `agoraform.state.json` beside the working
 manifest, not in resource attributes. See [docs/state.md](../docs/state.md).
+
+## v0.6.0 quickstart
+
+`validate`, `plan`, `apply`, `import`, and `destroy` contact Meta. Set the
+required runtime configuration first. `META_AD_ACCOUNT_ID` accepts the bare
+numeric id or the `act_` form. Load the access token from your normal secret
+manager; for an interactive Bash session, `read -s` avoids placing it in
+shell command history:
+
+```bash
+export META_AD_ACCOUNT_ID=act_123456789012345
+
+read -rsp "Meta access token: " META_ACCESS_TOKEN; echo
+export META_ACCESS_TOKEN
+
+cp examples/meta-website-campaign/agoraform.yaml agoraform.yaml
+
+agoraform validate
+agoraform plan
+agoraform apply
+agoraform plan
+```
+
+Do not substitute a literal token into that prompt command. On automated
+systems, inject `META_ACCESS_TOKEN` from your secret manager.
+
+Replace the placeholder Page ID, Instagram user ID, image hash, and landing
+page in the copied manifest before applying. Review the first plan: the
+Custom Conversion, campaign, ad set, creative, and ad are created, and the
+Pixel/Dataset is adopted rather than created because Agoraform never creates
+or deletes an event source. Every serving resource stays `PAUSED` until you
+change `status` on purpose. The final `plan` should report `No changes.`
+when configuration and remote state are unchanged.
+
+See [meta-website-campaign/README.md](meta-website-campaign/README.md) for
+the configuration boundary between Agoraform and external Meta setup, the
+Ads Manager verification steps that never enable spend, import ordering for
+an equivalent manually built campaign, and destroy and retry behavior.
+
+Provider credentials are supplied through `META_*` environment variables,
+never in the manifest. See
+[providers/meta/README.md](../providers/meta/README.md).
 
 ## v0.5.0 quickstart
 
