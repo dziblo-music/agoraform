@@ -49,8 +49,16 @@ type RemoteResource struct {
 //
 // The core treats Identity.ID as an uninterpreted string. Providers decide
 // the format; it must never include credentials.
+//
+// Fingerprint is an optional provider-specific content fingerprint stored
+// alongside the remote identity. Providers that manage content-addressed
+// resources (such as uploaded image files) may use this field to persist a
+// locally-computed checksum separately from the provider-native ID, enabling
+// content-change detection in subsequent plans without an API round-trip.
+// The fingerprint must never include credentials or secrets.
 type Identity struct {
-	ID string
+	ID          string
+	Fingerprint string
 }
 
 // IsZero reports whether the identity is unset.

@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -40,6 +42,7 @@ type graphServer struct {
 	adSets                map[string]graphObject
 	creatives             map[string]graphObject
 	ads                   map[string]graphObject
+	images                map[string]graphObject // keyed by Meta image hash
 	posts                 int
 	deletes               int
 	requests              []string
@@ -47,6 +50,7 @@ type graphServer struct {
 	creativeCreateFailure bool
 	adCreateFailure       bool
 	adRefreshFailures     int
+	imageUploadFailure    bool
 }
 
 func newGraphServer(t *testing.T) *graphServer {
@@ -61,6 +65,7 @@ func newGraphServer(t *testing.T) *graphServer {
 		adSets:        map[string]graphObject{},
 		creatives:     map[string]graphObject{},
 		ads:           map[string]graphObject{},
+		images:        map[string]graphObject{},
 	}
 }
 
@@ -277,6 +282,20 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		s.adSets[testAdSetID] = item
 		_, _ = io.WriteString(w, `{"id":"`+testAdSetID+`"}`)
+	case r.Method == http.MethodPost && path == "act_"+testAccountID+"/adimages":
+		s.posts++
+		if s.imageUploadFailure {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = io.WriteString(w, `{"error":{"message":"temporary image upload failure","code":1,"is_transient":true}}`)
+			return
+		}
+		hash := testImageHash
+		if len(s.images) > 0 {
+			// Use a variant hash when images already exist to avoid collision.
+			hash = "aabbccdd11223344aabbccdd11223344"
+		}
+		s.images[hash] = graphObject{"hash": hash, "url": "https://example.com/image.jpg", "width": 1200, "height": 628}
+		writeJSON(w, map[string]any{"images": map[string]any{"test.jpg": graphObject{"hash": hash, "url": "https://example.com/image.jpg", "width": 1200, "height": 628}}})
 	case r.Method == http.MethodPost && path == "act_"+testAccountID+"/adcreatives":
 		s.posts++
 		if s.creativeCreateFailure {
@@ -560,6 +579,32 @@ func testProvider(t *testing.T, server *httptest.Server) *meta.Provider {
 		BaseURL:     server.URL,
 		Timeout:     time.Second,
 	}, server.Client())
+}
+
+func imageAddress(t *testing.T, name string) resource.Address {
+	t.Helper()
+	addr, err := resource.ParseAddress("meta.image." + name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return addr
+}
+
+func imageResource(t *testing.T, name string) resource.Resource {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, name+".jpg")
+	if err := os.WriteFile(path, []byte("test image content"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return resource.Resource{
+		Address:    imageAddress(t, name),
+		Attributes: resource.Attributes{meta.AttrFile: path},
+	}
+}
+
+func standardImageAttrs(filePath string) resource.Attributes {
+	return resource.Attributes{meta.AttrFile: filePath}
 }
 
 func pixelAddress(t *testing.T, name string) resource.Address {

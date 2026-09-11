@@ -56,9 +56,16 @@ func (e *DuplicateIdentityError) OwnerOtherThan(addr resource.Address) string {
 }
 
 // Record is the persisted management metadata for one logical resource.
+//
+// Fingerprint is an optional provider-specific content fingerprint. Providers
+// that manage content-addressed resources may persist a locally-computed
+// checksum here alongside the provider-native remote identity, enabling
+// content-change detection in subsequent plans without storing the content
+// itself. The fingerprint must never hold credentials or secrets.
 type Record struct {
-	Provider string `json:"provider"`
-	RemoteID string `json:"remoteId"`
+	Provider    string `json:"provider"`
+	RemoteID    string `json:"remoteId"`
+	Fingerprint string `json:"fingerprint,omitempty"`
 }
 
 type file struct {

@@ -51,6 +51,16 @@ type ResourceLifecycle struct {
 }
 
 var lifecycleByType = map[string]ResourceLifecycle{
+	TypeImage: {
+		RemoteIdentity:  "sha256 fingerprint of uploaded file content (state ID) + Meta image hash (Fingerprint/computed output)",
+		Create:          CreateSupported,
+		Update:          UpdateReadOnly,
+		ImmutableFields: []string{AttrFile},
+		ImportSupported: false,
+		Destroy:         provider.DestroyProviderOwned,
+		AlreadyTerminal: "not applicable; Meta image assets are provider-owned and not deleted by Agoraform",
+		ServingSafety:   imageDestroyGuidance,
+	},
 	TypePixel: {
 		RemoteIdentity:  "numeric Pixel/Dataset id",
 		Create:          CreateExternalImportOnly,

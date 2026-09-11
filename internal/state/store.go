@@ -85,7 +85,7 @@ func (s *Store) Identity(addr resource.Address) (resource.Identity, bool, error)
 	if err := validateRecord(addr, rec); err != nil {
 		return resource.Identity{}, true, fmt.Errorf("state: %w", err)
 	}
-	return resource.Identity{ID: rec.RemoteID}, true, nil
+	return resource.Identity{ID: rec.RemoteID, Fingerprint: rec.Fingerprint}, true, nil
 }
 
 // Binding is a logical address together with its provider-native identity.
@@ -176,7 +176,11 @@ func (s *Store) Bind(addr resource.Address, id resource.Identity) error {
 	if err := addr.Validate(); err != nil {
 		return fmt.Errorf("state: %w", err)
 	}
-	rec := Record{Provider: addr.Provider, RemoteID: strings.TrimSpace(id.ID)}
+	rec := Record{
+		Provider:    addr.Provider,
+		RemoteID:    strings.TrimSpace(id.ID),
+		Fingerprint: strings.TrimSpace(id.Fingerprint),
+	}
 	if err := validateRecord(addr, rec); err != nil {
 		return fmt.Errorf("state: %w", err)
 	}

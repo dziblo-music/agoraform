@@ -28,6 +28,13 @@ func (p *Provider) Destroy(ctx context.Context, res resource.Resource) (provider
 		return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: unsupported resource type", res.Address)
 	}
 	if spec.Destroy == provider.DestroyProviderOwned {
+		if res.Address.Type == TypeImage {
+			// meta.image assets are uploaded by Agoraform but owned by Meta's
+			// ad account. Destroying the resource removes only the local state
+			// binding; the uploaded image is retained in Meta so existing ad
+			// creatives referencing the image hash continue to work.
+			return provider.DestroyResult{Status: provider.DestroyStatusAlreadyAbsent}, nil
+		}
 		return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: %s", res.Address, spec.ServingSafety)
 	}
 	switch res.Address.Type {
