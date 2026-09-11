@@ -3,6 +3,7 @@ package manifest
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/dziblo-music/agoraform/internal/graph"
@@ -22,6 +23,12 @@ const (
 type Manifest struct {
 	// Origin is the source path or label used in diagnostics.
 	Origin string
+
+	// BaseDir is the directory containing the manifest file. It is populated
+	// by LoadFile and used to resolve relative file paths in resource
+	// attributes (such as file: in meta.image). Empty when the manifest is
+	// parsed from an in-memory source.
+	BaseDir string
 
 	// APIVersion is the schema version declared in the file.
 	APIVersion string
@@ -122,12 +129,25 @@ func Parse(data []byte, origin string) (*Manifest, error) {
 }
 
 // LoadFile reads and parses a manifest from disk.
+//
+// The manifest's BaseDir is set to the absolute directory of path so that
+// callers can resolve relative resource file paths against the manifest
+// location. This mirrors how users run agoraform: from the directory
+// containing agoraform.yaml, making relative paths resolve naturally.
 func LoadFile(path string) (*Manifest, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read manifest %s: %w", path, err)
 	}
-	return Parse(data, path)
+	m, err := Parse(data, path)
+	if err != nil {
+		return m, err
+	}
+	abs, err := filepath.Abs(filepath.Dir(path))
+	if err == nil {
+		m.BaseDir = abs
+	}
+	return m, nil
 }
 
 func isEmptyYAML(data []byte) bool {

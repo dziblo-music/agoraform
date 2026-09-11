@@ -68,6 +68,7 @@ func TestManifestsRemainValid(t *testing.T) {
 				if !ok {
 					t.Fatalf("unsupported example provider %q", res.Address.Provider)
 				}
+				res = resolveResourceFilePaths(res, m.BaseDir)
 				if err := p.Validate(context.Background(), res); err != nil {
 					t.Fatalf("validate %s: %v", res.Address, err)
 				}
@@ -112,6 +113,12 @@ func loadExample(t *testing.T, path string) *manifest.Manifest {
 	m, err := manifest.Parse(data, path)
 	if err != nil {
 		t.Fatalf("parse example: %v", err)
+	}
+	// Populate BaseDir so callers can resolve relative file paths in resource
+	// attributes. Examples are loaded with a path relative to the examples/
+	// test working directory; BaseDir anchors to the example's own directory.
+	if abs, err := filepath.Abs(filepath.Dir(path)); err == nil {
+		m.BaseDir = abs
 	}
 	return m
 }
@@ -486,9 +493,13 @@ func TestMetaWebsiteCampaignExampleCoversServingGraph(t *testing.T) {
 		}
 	}
 
-	// Media stays an external literal: Agoraform does not upload assets.
-	if _, ok := creative.Attributes[meta.AttrImageHash]; !ok {
-		t.Errorf("creative must reference an externally prepared %s", meta.AttrImageHash)
+	// Media is managed: the creative references a meta.image resource via $ref.
+	image := onlyTypedResource(t, byType, meta.Name, meta.TypeImage)
+	if got := requireRef(t, creative, meta.AttrImageRef); got != image.Address.String() {
+		t.Errorf("creative image $ref = %s, want %s", got, image.Address)
+	}
+	if _, ok := creative.Attributes[meta.AttrImageHash]; ok {
+		t.Errorf("creative must use a managed image $ref, not a hardcoded %s", meta.AttrImageHash)
 	}
 	if _, ok := creative.Attributes[meta.AttrVideoID]; ok {
 		t.Errorf("creative must declare exactly one media identifier")
@@ -503,8 +514,9 @@ func TestMetaWebsiteCampaignExampleApplyAndDestroyOrder(t *testing.T) {
 
 	m := loadExample(t, "meta-website-campaign/agoraform.yaml")
 	assertAddressOrder(t, m.Resources, []string{
-		"meta.ad_creative.instagram_trial",
 		"meta.campaign.website_acquisition",
+		"meta.image.instagram_trial_hero",
+		"meta.ad_creative.instagram_trial",
 		"meta.pixel.website",
 		"meta.custom_conversion.trial_started",
 		"meta.ad_set.instagram_trial",
@@ -604,4 +616,40 @@ func reverseStrings(in []string) []string {
 		out[len(in)-1-i] = v
 	}
 	return out
+}
+
+// resolveResourceFilePaths returns a copy of res with any relative string
+// attribute that maps to a known file-path attribute name resolved against
+// baseDir. This is necessary in tests because the test working directory is
+// the examples/ package directory, while manifests reference files relative
+// to the manifest's own directory.
+//
+// In production the user runs agoraform from the manifest directory, so
+// relative paths resolve naturally against CWD without this helper.
+func resolveResourceFilePaths(res resource.Resource, baseDir string) resource.Resource {
+	if baseDir == "" {
+		return res
+	}
+	fileAttrs := map[string]struct{}{
+		meta.AttrFile: {},
+	}
+	attrs := res.Attributes.Clone()
+	changed := false
+	for key := range fileAttrs {
+		val, ok := attrs[key]
+		if !ok {
+			continue
+		}
+		s, ok := val.(string)
+		if !ok || filepath.IsAbs(s) {
+			continue
+		}
+		attrs[key] = filepath.Join(baseDir, s)
+		changed = true
+	}
+	if !changed {
+		return res
+	}
+	res.Attributes = attrs
+	return res
 }

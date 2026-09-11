@@ -2,11 +2,24 @@
 # Credentials, ad account IDs, Page/Instagram identities, media, and
 # provider-native identities stay outside this manifest. Serving stays paused
 # until you enable delivery on purpose.
+#
+# Image assets live in assets/ beside this file. Agoraform uploads them on
+# the first apply and tracks the Meta image hash in state. Point ad creatives
+# at the managed image using `image: {$ref: meta.image.<name>}` instead of
+# hardcoding an imageHash.
 
 apiVersion: agoraform.io/v1alpha1
 providers:
   meta: {}
 resources:
+  # ── Image assets ────────────────────────────────────────────────────────────
+  # Agoraform uploads the local file and stores the Meta image hash in state.
+  # Replace assets/hero.jpg with your actual creative file.
+  - address: meta.image.instagram_trial_hero
+    attributes:
+      file: assets/hero.jpg
+
+  # ── Tracking ─────────────────────────────────────────────────────────────────
   - address: meta.pixel.website
     attributes:
       name: Website
@@ -66,7 +79,10 @@ resources:
       headline: Start Your Free Trial
       description: No credit card required.
       callToAction: LEARN_MORE
-      imageHash: "0123456789abcdef0123456789abcdef"
+      # Use the managed image uploaded above. Agoraform resolves the Meta
+      # image hash from state at apply time.
+      image:
+        $ref: meta.image.instagram_trial_hero
       urlTags: utm_source=meta&utm_medium=paid_social&utm_campaign={{campaign.name}}&utm_content={{ad.name}}
 
   - address: meta.ad.instagram_trial

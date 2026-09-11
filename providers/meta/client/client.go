@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strings"
@@ -63,6 +64,89 @@ func (c *Client) Post(ctx context.Context, path string, form url.Values, out any
 // Delete performs a versioned form-encoded DELETE and decodes its JSON response.
 func (c *Client) Delete(ctx context.Context, path string, form url.Values, out any) error {
 	return c.do(ctx, http.MethodDelete, path, nil, form, out)
+}
+
+// PostMultipart performs a versioned multipart/form-data POST and decodes its
+// JSON response. fields contains additional form fields. fileField names the
+// file part; filename is the declared file name included in the part header.
+// content is the raw file bytes. The Meta Marketing API uses multipart
+// uploads for ad images and video thumbnails.
+func (c *Client) PostMultipart(ctx context.Context, path string, fields url.Values, fileField, filename string, content []byte, out any) error {
+	if c == nil {
+		return fmt.Errorf("meta: client is nil")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
+	defer cancel()
+
+	cleanPath, err := normalizePath(path)
+	if err != nil {
+		return err
+	}
+	endpoint := c.baseURL + "/" + Version + "/" + cleanPath
+	operation := Redact("POST "+cleanPath, c.cfg.AccessToken)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	for key, values := range fields {
+		for _, val := range values {
+			if err := writer.WriteField(key, val); err != nil {
+				return transportError(operation, err, c.cfg.AccessToken)
+			}
+		}
+	}
+	part, err := writer.CreateFormFile(fileField, filename)
+	if err != nil {
+		return transportError(operation, err, c.cfg.AccessToken)
+	}
+	if _, err := part.Write(content); err != nil {
+		return transportError(operation, err, c.cfg.AccessToken)
+	}
+	if err := writer.Close(); err != nil {
+		return transportError(operation, err, c.cfg.AccessToken)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, &body)
+	if err != nil {
+		return transportError(operation, err, c.cfg.AccessToken)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.cfg.AccessToken)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("User-Agent", userAgent)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return transportError(operation, err, c.cfg.AccessToken)
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody+1))
+	if err != nil {
+		return &Error{Operation: operation, StatusCode: resp.StatusCode, Message: "response could not be read", Transient: true}
+	}
+	if len(raw) > maxResponseBody {
+		return &Error{Operation: operation, StatusCode: resp.StatusCode, Message: "response exceeded size limit"}
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		requestID := firstHeader(resp.Header, "x-fb-request-id")
+		traceID := firstHeader(resp.Header, "x-fb-trace-id")
+		return parseAPIError(operation, resp.StatusCode, requestID, traceID, raw, c.cfg.AccessToken)
+	}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		raw = []byte("{}")
+	}
+	if !json.Valid(raw) {
+		return &Error{Operation: operation, StatusCode: resp.StatusCode, Message: "malformed JSON response"}
+	}
+	if out == nil {
+		return nil
+	}
+	if err := json.Unmarshal(raw, out); err != nil {
+		return &Error{Operation: operation, StatusCode: resp.StatusCode, Message: "could not decode JSON response"}
+	}
+	return nil
 }
 
 // List follows Meta cursor pagination and returns each element of every data

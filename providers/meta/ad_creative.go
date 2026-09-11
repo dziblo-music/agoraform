@@ -26,7 +26,7 @@ var (
 	supportedAdCreativeAttrs = map[string]struct{}{
 		AttrName: {}, AttrPageID: {}, AttrInstagramUserID: {}, AttrDestinationURL: {},
 		AttrPrimaryText: {}, AttrHeadline: {}, AttrDescription: {}, AttrCallToAction: {},
-		AttrImageHash: {}, AttrVideoID: {}, AttrURLTags: {},
+		AttrImageHash: {}, AttrImageRef: {}, AttrVideoID: {}, AttrURLTags: {},
 	}
 	computedAdCreativeAttrs = map[string]struct{}{
 		"id": {}, "adCreativeId": {}, "account_id": {}, "accountId": {}, "status": {},
@@ -59,6 +59,8 @@ type normalizedAdCreative struct {
 	HasDescription     bool
 	CallToAction       string
 	ImageHash          string
+	ManagedImage       resource.Ref // set when image: {$ref: meta.image.*} is declared
+	HasManagedImage    bool         // true when image: ref is used instead of imageHash:
 	VideoID            string
 	Mode               string
 	URLTags            string
@@ -211,6 +213,15 @@ func (p *Provider) normalizeAdCreativeComparable(desired resource.Resource, live
 	if err != nil {
 		return nil, nil, fmt.Errorf("resource %s: %w", desired.Address, err)
 	}
+	// When the creative uses a managed image ref, resolve the image hash for
+	// plan-time comparison. The meta.image resource is read before its
+	// dependents (dependency-graph ordering), so lookupImageHash returns the
+	// hash that was read or created during this session.
+	if want.HasManagedImage && want.ImageHash == "" {
+		if hash := p.lookupImageHash(want.ManagedImage.Address); hash != "" {
+			want.ImageHash = hash
+		}
+	}
 	wantAttrs := adCreativeAttributes(want)
 	if live == nil {
 		return wantAttrs, nil, nil
@@ -227,7 +238,10 @@ func (p *Provider) normalizeAdCreativeComparable(desired resource.Resource, live
 	if err := validateAdCreativeTransition(desired.Address, want, got); err != nil {
 		return nil, nil, err
 	}
-	return wantAttrs, adCreativeAttributes(got), nil
+	// Normalize the comparable views so that a managed image ref and an
+	// explicit imageHash with the same hash produce no diff.
+	wantAttrs = adCreativeComparableAttributes(want)
+	return wantAttrs, adCreativeComparableAttributes(got), nil
 }
 
 func (p *Provider) readAdCreativeByID(ctx context.Context, addr resource.Address, id string) (resource.RemoteResource, error) {
@@ -380,12 +394,36 @@ func normalizeAdCreative(res resource.Resource) (normalizedAdCreative, error) {
 	if err != nil {
 		return normalizedAdCreative{}, err
 	}
+	imageRefRaw, hasImageRefKey := res.Attributes[AttrImageRef]
+	var managedImage resource.Ref
+	hasManagedImage := false
+	if hasImageRefKey {
+		if hasImage {
+			return normalizedAdCreative{}, fmt.Errorf("resource %s: attributes %q and %q are mutually exclusive; use one or the other", res.Address, AttrImageHash, AttrImageRef)
+		}
+		managedImage, err = requiredTypedRef(res, AttrImageRef, TypeImage)
+		if err != nil {
+			return normalizedAdCreative{}, err
+		}
+		hasManagedImage = true
+		// At apply time the ref is resolved and outputs are available.
+		if resolved, ok := resource.AsResolved(imageRefRaw); ok {
+			if hash, e := coerceString(resolved.Outputs[OutputImageHash]); e == nil && strings.TrimSpace(hash) != "" {
+				imageHash = strings.TrimSpace(hash)
+				hasImage = true
+			}
+		}
+	}
 	videoID, hasVideo, err := optionalObjectID(res, AttrVideoID)
 	if err != nil {
 		return normalizedAdCreative{}, err
 	}
-	if hasImage == hasVideo {
-		return normalizedAdCreative{}, fmt.Errorf("resource %s: exactly one of %q or %q is required", res.Address, AttrImageHash, AttrVideoID)
+	hasAnyImage := hasImage || hasManagedImage
+	if hasAnyImage == hasVideo {
+		if hasAnyImage {
+			return normalizedAdCreative{}, fmt.Errorf("resource %s: %q and %q cannot both be set; exactly one image source or videoId is required", res.Address, AttrVideoID, AttrImageRef)
+		}
+		return normalizedAdCreative{}, fmt.Errorf("resource %s: exactly one of %q, %q, or %q is required", res.Address, AttrImageHash, AttrImageRef, AttrVideoID)
 	}
 	if hasImage && strings.IndexFunc(imageHash, unicode.IsSpace) >= 0 {
 		return normalizedAdCreative{}, fmt.Errorf("resource %s: attribute %q must be one external Meta image hash without whitespace", res.Address, AttrImageHash)
@@ -407,7 +445,8 @@ func normalizeAdCreative(res resource.Resource) (normalizedAdCreative, error) {
 		Name: name, PageID: pageID, InstagramUserID: instagramID, HasInstagramUserID: hasInstagram,
 		DestinationURL: destination, PrimaryText: primary, Headline: headline,
 		Description: description, HasDescription: hasDescription, CallToAction: cta,
-		ImageHash: imageHash, VideoID: videoID, Mode: mode, URLTags: tags, HasURLTags: hasTags,
+		ImageHash: imageHash, ManagedImage: managedImage, HasManagedImage: hasManagedImage,
+		VideoID: videoID, Mode: mode, URLTags: tags, HasURLTags: hasTags,
 	}, nil
 }
 
@@ -423,7 +462,39 @@ func adCreativeAttributes(c normalizedAdCreative) resource.Attributes {
 		out[AttrDescription] = c.Description
 	}
 	if c.Mode == creativeModeImage {
-		out[AttrImageHash] = c.ImageHash
+		if c.HasManagedImage {
+			// Preserve the logical managed-image reference for plan output
+			// instead of the resolved hash; the hash is a computed detail.
+			out[AttrImageRef] = c.ManagedImage
+		} else {
+			out[AttrImageHash] = c.ImageHash
+		}
+	} else {
+		out[AttrVideoID] = c.VideoID
+	}
+	if c.HasURLTags {
+		out[AttrURLTags] = c.URLTags
+	}
+	return out
+}
+
+// adCreativeComparableAttributes returns a normalized attribute map suitable
+// for plan diffing. Unlike adCreativeAttributes (which preserves managed image
+// refs for plan output), this always uses AttrImageHash so a managed-image
+// creative and an explicit-imageHash creative with the same hash compare equal.
+func adCreativeComparableAttributes(c normalizedAdCreative) resource.Attributes {
+	out := resource.Attributes{
+		AttrName: c.Name, AttrPageID: c.PageID, AttrDestinationURL: c.DestinationURL,
+		AttrPrimaryText: c.PrimaryText, AttrHeadline: c.Headline, AttrCallToAction: c.CallToAction,
+	}
+	if c.HasInstagramUserID {
+		out[AttrInstagramUserID] = c.InstagramUserID
+	}
+	if c.HasDescription {
+		out[AttrDescription] = c.Description
+	}
+	if c.Mode == creativeModeImage {
+		out[AttrImageHash] = c.ImageHash // always use imageHash key for comparison
 	} else {
 		out[AttrVideoID] = c.VideoID
 	}
@@ -434,6 +505,12 @@ func adCreativeAttributes(c normalizedAdCreative) resource.Attributes {
 }
 
 func adCreativeForm(c normalizedAdCreative) (url.Values, error) {
+	if c.Mode == creativeModeImage && c.ImageHash == "" {
+		// This should not happen at apply time because normalizeAdCreative
+		// resolves the managed image ref at apply time (Resolved outputs
+		// are available). Surface a clear error if the ref was not resolved.
+		return nil, fmt.Errorf("image hash is not available; ensure the meta.image resource was applied before this ad creative")
+	}
 	cta := map[string]any{"type": c.CallToAction, "value": map[string]any{"link": c.DestinationURL}}
 	story := map[string]any{"page_id": c.PageID}
 	if c.HasInstagramUserID {
@@ -468,6 +545,12 @@ func validateAdCreativeTransition(addr resource.Address, want, got normalizedAdC
 	gotContent := got
 	wantContent.Name = ""
 	gotContent.Name = ""
+	// Normalize for comparison: both sides use ImageHash so a managed-image
+	// creative and an explicit-imageHash creative with the same hash are equal.
+	wantContent.HasManagedImage = false
+	wantContent.ManagedImage = resource.Ref{}
+	gotContent.HasManagedImage = false
+	gotContent.ManagedImage = resource.Ref{}
 	if reflect.DeepEqual(wantContent, gotContent) {
 		return nil
 	}

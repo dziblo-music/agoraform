@@ -64,9 +64,20 @@ const (
 	// AttrCallToAction is the provider-native website CTA type.
 	AttrCallToAction = "callToAction"
 	// AttrImageHash and AttrVideoID are mutually exclusive external media
-	// identifiers. Agoraform does not own or upload these assets.
+	// identifiers for ad creatives that reference externally managed assets.
+	// For managed local-file assets, use AttrImageRef on the creative and
+	// declare a meta.image resource with AttrFile.
 	AttrImageHash = "imageHash"
 	AttrVideoID   = "videoId"
+	// AttrImageRef is the managed image reference attribute on meta.ad_creative.
+	// It accepts a $ref to a meta.image resource and is mutually exclusive with
+	// AttrImageHash. The plan engine resolves the reference at apply time and
+	// sends the provider-native image hash to the Meta API.
+	AttrImageRef = "image"
+	// AttrFile is the local file path attribute on meta.image resources.
+	// The path is resolved relative to the working directory (run agoraform
+	// from the same directory as the manifest for relative paths to work).
+	AttrFile = "file"
 	// AttrURLTags is Meta's provider-native destination URL parameter string.
 	AttrURLTags = "urlTags"
 	// AttrAdSet and AttrCreative are logical references from an ad to its
@@ -74,6 +85,10 @@ const (
 	AttrAdSet    = "adSet"
 	AttrCreative = "creative"
 
+	// TypeImage is used in addresses such as meta.image.trial_ad.
+	// A meta.image resource uploads a local file during apply and captures the
+	// provider-native image hash for use by meta.ad_creative resources.
+	TypeImage = "image"
 	// TypeCustomConversion is used in addresses such as
 	// meta.custom_conversion.trial_started.
 	TypeCustomConversion = "custom_conversion"
@@ -86,6 +101,10 @@ const (
 	// TypeAd is used in addresses such as meta.ad.instagram.
 	TypeAd = "ad"
 
+	// OutputImageHash is the declared non-secret Meta image hash produced by
+	// meta.image after a successful upload. meta.ad_creative resources resolve
+	// image: {$ref: meta.image.name} to this output at apply time.
+	OutputImageHash = "imageHash"
 	// OutputCustomConversionID is the declared non-secret Custom Conversion id.
 	OutputCustomConversionID = "customConversionId"
 	// OutputCampaignID is the declared non-secret Meta campaign id.

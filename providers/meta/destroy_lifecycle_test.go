@@ -12,6 +12,7 @@ func TestDestroyLifecycleCoversRegisteredTypes(t *testing.T) {
 	t.Parallel()
 	p := meta.New(meta.Config{AccessToken: testToken, AdAccountID: testAccountID})
 	want := map[string]provider.DestroyCapability{
+		meta.TypeImage:            provider.DestroyProviderOwned,
 		meta.TypePixel:            provider.DestroyProviderOwned,
 		meta.TypeCustomConversion: provider.DestroyRemove,
 		meta.TypeCampaign:         provider.DestroyRemove,
@@ -28,7 +29,9 @@ func TestDestroyLifecycleCoversRegisteredTypes(t *testing.T) {
 		if !declared {
 			t.Fatalf("registered type %s has no explicit lifecycle declaration", typ)
 		}
-		if spec.RemoteIdentity == "" || !spec.ImportSupported || spec.Create == "" || spec.Update == "" || spec.Destroy == "" || spec.AlreadyTerminal == "" || spec.ServingSafety == "" {
+		// ImportSupported is intentionally false for meta.image (create-managed only).
+		importRequired := spec.Create != meta.CreateExternalImportOnly && typ != meta.TypeImage
+		if spec.RemoteIdentity == "" || (importRequired && !spec.ImportSupported) || spec.Create == "" || spec.Update == "" || spec.Destroy == "" || spec.AlreadyTerminal == "" || spec.ServingSafety == "" {
 			t.Fatalf("registered type %s has incomplete lifecycle declaration: %#v", typ, spec)
 		}
 		if spec.Destroy != provider.DestroyProviderOwned && spec.TerminalState == "" {
