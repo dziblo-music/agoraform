@@ -11,6 +11,6 @@ resources:
       status: PAUSED
       specialAdCategories: []
       buyingType: AUCTION
-      # Meta budgets use account-currency minor units: 50000 = USD 500.00.
-      lifetimeBudgetMinorUnits: 50000
+      # Budgets are account-currency units: 500 means USD 500.00 in a USD account.
+      lifetimeBudget: 500
       bidStrategy: LOWEST_COST_WITHOUT_CAP

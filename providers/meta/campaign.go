@@ -77,9 +77,9 @@ type normalizedCampaign struct {
 	Status              string
 	SpecialAdCategories []string
 	BuyingType          string
-	DailyBudget         int64
+	DailyBudget         amount
 	HasDailyBudget      bool
-	LifetimeBudget      int64
+	LifetimeBudget      amount
 	HasLifetimeBudget   bool
 	BidStrategy         string
 	HasBidStrategy      bool
@@ -140,7 +140,7 @@ func (p *Provider) createCampaign(ctx context.Context, res resource.Resource) (r
 		return resource.RemoteResource{}, fmt.Errorf("meta: create %s: resource already has persisted identity %q", res.Address, res.Identity.ID)
 	}
 	normalized, _ := normalizeCampaign(res)
-	form, err := campaignForm(normalized)
+	form, err := campaignForm(normalized, p.currencyResolver(ctx))
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("meta: create %s: %w", res.Address, err)
 	}
@@ -188,6 +188,7 @@ func (p *Provider) updateCampaign(ctx context.Context, desired resource.Resource
 	if err := validateCampaignTransition(desired.Address, want, got); err != nil {
 		return resource.RemoteResource{}, err
 	}
+	currency := p.currencyResolver(ctx)
 	form := url.Values{}
 	if want.Name != got.Name {
 		form.Set("name", want.Name)
@@ -200,10 +201,14 @@ func (p *Provider) updateCampaign(ctx context.Context, desired resource.Resource
 		form.Set("special_ad_categories", string(raw))
 	}
 	if want.HasDailyBudget && want.DailyBudget != got.DailyBudget {
-		form.Set("daily_budget", strconv.FormatInt(want.DailyBudget, 10))
+		if err := setAmount(form, "daily_budget", AttrDailyBudget, want.DailyBudget, currency); err != nil {
+			return resource.RemoteResource{}, fmt.Errorf("meta: update %s: %w", desired.Address, err)
+		}
 	}
 	if want.HasLifetimeBudget && want.LifetimeBudget != got.LifetimeBudget {
-		form.Set("lifetime_budget", strconv.FormatInt(want.LifetimeBudget, 10))
+		if err := setAmount(form, "lifetime_budget", AttrLifetimeBudget, want.LifetimeBudget, currency); err != nil {
+			return resource.RemoteResource{}, fmt.Errorf("meta: update %s: %w", desired.Address, err)
+		}
 	}
 	if want.HasBidStrategy && (!got.HasBidStrategy || want.BidStrategy != got.BidStrategy) {
 		form.Set("bid_strategy", want.BidStrategy)
@@ -293,14 +298,14 @@ func (p *Provider) readCampaignByID(ctx context.Context, addr resource.Address, 
 	if status == campaignStatusDeleted || status == campaignStatusArchived {
 		return resource.RemoteResource{}, provider.ErrNotFound
 	}
-	live, err := p.remoteCampaign(addr, item)
+	live, err := p.remoteCampaign(addr, item, p.currencyResolver(ctx))
 	if err != nil {
 		return resource.RemoteResource{}, err
 	}
 	return p.rememberLive(live), nil
 }
 
-func (p *Provider) remoteCampaign(addr resource.Address, item campaign) (resource.RemoteResource, error) {
+func (p *Provider) remoteCampaign(addr resource.Address, item campaign, currency currencyResolver) (resource.RemoteResource, error) {
 	id, err := normalizeObjectID(item.ID)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("remote campaign id is invalid: %w", err)
@@ -321,15 +326,15 @@ func (p *Provider) remoteCampaign(addr resource.Address, item campaign) (resourc
 	if attrs[AttrBuyingType] == "" {
 		attrs[AttrBuyingType] = campaignBuyingAuction
 	}
-	if budget, set, err := remoteBudget(item.DailyBudget); err != nil {
+	if budget, set, err := remoteAmount(item.DailyBudget, currency); err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("remote campaign %s has invalid daily_budget: %w", id, err)
 	} else if set {
-		attrs[AttrDailyBudget] = budget
+		attrs[AttrDailyBudget] = budget.value()
 	}
-	if budget, set, err := remoteBudget(item.LifetimeBudget); err != nil {
+	if budget, set, err := remoteAmount(item.LifetimeBudget, currency); err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("remote campaign %s has invalid lifetime_budget: %w", id, err)
 	} else if set {
-		attrs[AttrLifetimeBudget] = budget
+		attrs[AttrLifetimeBudget] = budget.value()
 	}
 	if bid := strings.ToUpper(strings.TrimSpace(item.BidStrategy)); bid != "" {
 		attrs[AttrBidStrategy] = bid
@@ -366,11 +371,11 @@ func normalizeCampaign(res resource.Resource) (normalizedCampaign, error) {
 	if err != nil {
 		return normalizedCampaign{}, err
 	}
-	daily, hasDaily, err := optionalBudget(res, AttrDailyBudget)
+	daily, hasDaily, err := optionalAmount(res, AttrDailyBudget)
 	if err != nil {
 		return normalizedCampaign{}, err
 	}
-	lifetime, hasLifetime, err := optionalBudget(res, AttrLifetimeBudget)
+	lifetime, hasLifetime, err := optionalAmount(res, AttrLifetimeBudget)
 	if err != nil {
 		return normalizedCampaign{}, err
 	}
@@ -466,19 +471,21 @@ func requiredCategories(res resource.Resource) ([]string, error) {
 	return out, nil
 }
 
-func optionalBudget(res resource.Resource, key string) (int64, bool, error) {
+func optionalAmount(res resource.Resource, key string) (amount, bool, error) {
 	v, ok := res.Attributes[key]
 	if !ok {
 		return 0, false, nil
 	}
-	n, err := coerceFloat(v)
-	if err != nil || math.IsNaN(n) || math.IsInf(n, 0) || n != math.Trunc(n) || n <= 0 || n > math.MaxInt64 {
-		return 0, true, fmt.Errorf("resource %s: attribute %q must be a positive whole number in the ad account currency's smallest unit", res.Address, key)
+	parsed, err := parseAmount(v)
+	if err != nil {
+		return 0, true, fmt.Errorf("resource %s: attribute %q %w", res.Address, key, err)
 	}
-	return int64(n), true, nil
+	return parsed, true, nil
 }
 
-func remoteBudget(v any) (int64, bool, error) {
+// remoteAmount converts a Graph API money field, which is expressed in the ad
+// account currency's minimum denomination, into an account-currency amount.
+func remoteAmount(v any, resolve currencyResolver) (amount, bool, error) {
 	if v == nil || v == "" {
 		return 0, false, nil
 	}
@@ -492,7 +499,15 @@ func remoteBudget(v any) (int64, bool, error) {
 	if n < 0 || n != math.Trunc(n) || n > math.MaxInt64 {
 		return 0, true, fmt.Errorf("must be a positive whole number")
 	}
-	return int64(n), true, nil
+	currency, err := resolve()
+	if err != nil {
+		return 0, true, err
+	}
+	parsed, err := amountFromMinimumDenomination(int64(n), currency)
+	if err != nil {
+		return 0, true, err
+	}
+	return parsed, true, nil
 }
 
 func campaignAttributes(c normalizedCampaign) resource.Attributes {
@@ -500,10 +515,10 @@ func campaignAttributes(c normalizedCampaign) resource.Attributes {
 		AttrSpecialAdCategories: stringsToAny(c.SpecialAdCategories), AttrBuyingType: c.BuyingType,
 		AttrAdSetBudgetSharing: c.AdSetBudgetSharing}
 	if c.HasDailyBudget {
-		out[AttrDailyBudget] = c.DailyBudget
+		out[AttrDailyBudget] = c.DailyBudget.value()
 	}
 	if c.HasLifetimeBudget {
-		out[AttrLifetimeBudget] = c.LifetimeBudget
+		out[AttrLifetimeBudget] = c.LifetimeBudget.value()
 	}
 	if c.HasBidStrategy {
 		out[AttrBidStrategy] = c.BidStrategy
@@ -511,7 +526,7 @@ func campaignAttributes(c normalizedCampaign) resource.Attributes {
 	return out
 }
 
-func campaignForm(c normalizedCampaign) (url.Values, error) {
+func campaignForm(c normalizedCampaign, currency currencyResolver) (url.Values, error) {
 	form := url.Values{}
 	form.Set("name", c.Name)
 	form.Set("objective", c.Objective)
@@ -523,10 +538,14 @@ func campaignForm(c normalizedCampaign) (url.Values, error) {
 	}
 	form.Set("special_ad_categories", string(raw))
 	if c.HasDailyBudget {
-		form.Set("daily_budget", strconv.FormatInt(c.DailyBudget, 10))
+		if err := setAmount(form, "daily_budget", AttrDailyBudget, c.DailyBudget, currency); err != nil {
+			return nil, err
+		}
 	}
 	if c.HasLifetimeBudget {
-		form.Set("lifetime_budget", strconv.FormatInt(c.LifetimeBudget, 10))
+		if err := setAmount(form, "lifetime_budget", AttrLifetimeBudget, c.LifetimeBudget, currency); err != nil {
+			return nil, err
+		}
 	}
 	if c.HasBidStrategy {
 		form.Set("bid_strategy", c.BidStrategy)

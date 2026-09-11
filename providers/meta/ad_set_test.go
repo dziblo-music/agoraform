@@ -46,11 +46,11 @@ func TestValidateAdSetRejectsInvalidCombinations(t *testing.T) {
 		name, contains string
 		mutate         func(resource.Attributes)
 	}{
-		{"double budget", "mutually exclusive", func(a resource.Attributes) { a[meta.AttrDailyBudget] = 1000 }},
+		{"double budget", "mutually exclusive", func(a resource.Attributes) { a[meta.AttrDailyBudget] = 10 }},
 		{"lifetime without end", "requires both", func(a resource.Attributes) { delete(a, meta.AttrEndTime) }},
 		{"bad schedule", "must be after", func(a resource.Attributes) { a[meta.AttrEndTime] = "2026-09-01T00:00:00Z" }},
 		{"bid cap without amount", "requires bidAmount", func(a resource.Attributes) { a[meta.AttrBidStrategy] = "LOWEST_COST_WITH_BID_CAP" }},
-		{"amount without cap", "valid only", func(a resource.Attributes) { a[meta.AttrBidAmount] = 100 }},
+		{"amount without cap", "valid only", func(a resource.Attributes) { a[meta.AttrBidAmount] = 1 }},
 		{"placement without platform", "requires publisherPlatforms", func(a resource.Attributes) { a[meta.AttrTargeting].(map[string]any)["publisherPlatforms"] = []any{} }},
 		{"raw targeting", "unsupported targeting field", func(a resource.Attributes) { a[meta.AttrTargeting].(map[string]any)["interests"] = []any{"music"} }},
 		{"clicks with conversion", "valid only", func(a resource.Attributes) { a[meta.AttrOptimizationGoal] = "LINK_CLICKS" }},
@@ -80,7 +80,7 @@ func TestValidateAdSetResourceSetBudgetAndConversionRelationships(t *testing.T) 
 
 	campaignBudget := campaign
 	campaignBudget.Attributes = campaignBudget.Attributes.Clone()
-	campaignBudget.Attributes[meta.AttrDailyBudget] = 5000
+	campaignBudget.Attributes[meta.AttrDailyBudget] = 50
 	if err := p.ValidateResourceSet(context.Background(), []resource.Resource{campaignBudget, pixel, conversion, ad}); err == nil || !strings.Contains(err.Error(), "ownership conflicts") {
 		t.Fatalf("conflict error=%v", err)
 	}
@@ -103,7 +103,7 @@ func TestValidateCampaignBudgetAndLinkClickAdSet(t *testing.T) {
 	t.Parallel()
 	p := meta.New(meta.Config{AccessToken: testToken, AdAccountID: testAccountID})
 	campaignAttrs := standardCampaignAttrs()
-	campaignAttrs[meta.AttrDailyBudget] = 5000
+	campaignAttrs[meta.AttrDailyBudget] = 50
 	campaign := campaignResource(t, "traffic", campaignAttrs)
 	campaign.Attributes[meta.AttrObjective] = "OUTCOME_TRAFFIC"
 	attrs := resource.Attributes{
@@ -149,14 +149,17 @@ func TestCreateReadUpdateAndNoOpAdSet(t *testing.T) {
 	desired.Identity = created.Identity
 	desired.Attributes[meta.AttrName] = "Instagram US"
 	desired.Attributes[meta.AttrStatus] = "ACTIVE"
-	desired.Attributes[meta.AttrLifetimeBudget] = 60000
+	desired.Attributes[meta.AttrLifetimeBudget] = 600
 	desired.Attributes[meta.AttrEndTime] = "2026-10-02T05:00:00Z"
 	updated, err := p.Update(context.Background(), desired, created)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Attributes[meta.AttrName] != "Instagram US" || updated.Attributes[meta.AttrStatus] != "ACTIVE" || updated.Attributes[meta.AttrLifetimeBudget] != int64(60000) {
+	if updated.Attributes[meta.AttrName] != "Instagram US" || updated.Attributes[meta.AttrStatus] != "ACTIVE" || updated.Attributes[meta.AttrLifetimeBudget] != int64(600) {
 		t.Fatalf("updated=%#v", updated.Attributes)
+	}
+	if got := srv.adSetField(testAdSetID, "lifetime_budget"); got != "60000" {
+		t.Fatalf("lifetime_budget sent to Meta = %v, want minimum-denomination 60000", got)
 	}
 	posts, _ := srv.mutationCounts()
 	if posts != 2 {
@@ -351,7 +354,7 @@ func TestDestroyAdSetIsIdempotent(t *testing.T) {
 
 func standardAdSetAttrs(t *testing.T) resource.Attributes {
 	t.Helper()
-	return resource.Attributes{meta.AttrName: "Instagram US", meta.AttrCampaign: resource.Ref{Address: campaignAddress(t, "acquisition")}, meta.AttrLifetimeBudget: 50000, meta.AttrStartTime: "2026-09-01T00:00:00-05:00", meta.AttrEndTime: "2026-10-01T00:00:00-05:00", meta.AttrOptimizationGoal: "OFFSITE_CONVERSIONS", meta.AttrDestinationType: "WEBSITE", meta.AttrPixel: resource.Ref{Address: pixelAddress(t, "website")}, meta.AttrCustomConversion: resource.Ref{Address: conversionAddress(t, "trial_started")}, meta.AttrTargeting: map[string]any{"countries": []any{"us"}, "publisherPlatforms": []any{"instagram"}, "instagramPositions": []any{"stories", "feed", "reels"}, "devicePlatforms": []any{"mobile"}}}
+	return resource.Attributes{meta.AttrName: "Instagram US", meta.AttrCampaign: resource.Ref{Address: campaignAddress(t, "acquisition")}, meta.AttrLifetimeBudget: 500, meta.AttrStartTime: "2026-09-01T00:00:00-05:00", meta.AttrEndTime: "2026-10-01T00:00:00-05:00", meta.AttrOptimizationGoal: "OFFSITE_CONVERSIONS", meta.AttrDestinationType: "WEBSITE", meta.AttrPixel: resource.Ref{Address: pixelAddress(t, "website")}, meta.AttrCustomConversion: resource.Ref{Address: conversionAddress(t, "trial_started")}, meta.AttrTargeting: map[string]any{"countries": []any{"us"}, "publisherPlatforms": []any{"instagram"}, "instagramPositions": []any{"stories", "feed", "reels"}, "devicePlatforms": []any{"mobile"}}}
 }
 func standardAdSetResources(t *testing.T) []resource.Resource {
 	return []resource.Resource{campaignResource(t, "acquisition", standardCampaignAttrs()), pixelResource(t, "website"), conversionResource(t, "trial_started", websiteConversionAttrs(t)), adSetResource(t, "instagram", standardAdSetAttrs(t))}

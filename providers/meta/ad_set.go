@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"reflect"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -90,9 +89,9 @@ type normalizedAdSet struct {
 	Name              string
 	Status            string
 	Campaign          resource.Ref
-	DailyBudget       int64
+	DailyBudget       amount
 	HasDailyBudget    bool
-	LifetimeBudget    int64
+	LifetimeBudget    amount
 	HasLifetimeBudget bool
 	StartTime         string
 	HasStartTime      bool
@@ -102,7 +101,7 @@ type normalizedAdSet struct {
 	OptimizationGoal  string
 	BidStrategy       string
 	HasBidStrategy    bool
-	BidAmount         int64
+	BidAmount         amount
 	HasBidAmount      bool
 	DestinationType   string
 	Pixel             resource.Ref
@@ -176,7 +175,7 @@ func (p *Provider) createAdSet(ctx context.Context, res resource.Resource) (reso
 		return resource.RemoteResource{}, fmt.Errorf("meta: create %s: resource already has persisted identity %q", res.Address, res.Identity.ID)
 	}
 	normalized, _ := normalizeAdSet(res)
-	form, err := p.adSetForm(normalized)
+	form, err := p.adSetForm(ctx, normalized)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("meta: create %s: %w", res.Address, err)
 	}
@@ -224,6 +223,7 @@ func (p *Provider) updateAdSet(ctx context.Context, desired resource.Resource, a
 	if err := validateAdSetTransition(desired.Address, want, got); err != nil {
 		return resource.RemoteResource{}, err
 	}
+	currency := p.currencyResolver(ctx)
 	form := url.Values{}
 	if want.Name != got.Name {
 		form.Set("name", want.Name)
@@ -232,10 +232,14 @@ func (p *Provider) updateAdSet(ctx context.Context, desired resource.Resource, a
 		form.Set("status", want.Status)
 	}
 	if want.HasDailyBudget && want.DailyBudget != got.DailyBudget {
-		form.Set("daily_budget", strconv.FormatInt(want.DailyBudget, 10))
+		if err := setAmount(form, "daily_budget", AttrDailyBudget, want.DailyBudget, currency); err != nil {
+			return resource.RemoteResource{}, fmt.Errorf("meta: update %s: %w", desired.Address, err)
+		}
 	}
 	if want.HasLifetimeBudget && want.LifetimeBudget != got.LifetimeBudget {
-		form.Set("lifetime_budget", strconv.FormatInt(want.LifetimeBudget, 10))
+		if err := setAmount(form, "lifetime_budget", AttrLifetimeBudget, want.LifetimeBudget, currency); err != nil {
+			return resource.RemoteResource{}, fmt.Errorf("meta: update %s: %w", desired.Address, err)
+		}
 	}
 	if want.HasEndTime && want.EndTime != got.EndTime {
 		form.Set("end_time", want.EndTime)
@@ -244,7 +248,9 @@ func (p *Provider) updateAdSet(ctx context.Context, desired resource.Resource, a
 		form.Set("bid_strategy", want.BidStrategy)
 	}
 	if want.HasBidAmount && want.BidAmount != got.BidAmount {
-		form.Set("bid_amount", strconv.FormatInt(want.BidAmount, 10))
+		if err := setAmount(form, "bid_amount", AttrBidAmount, want.BidAmount, currency); err != nil {
+			return resource.RemoteResource{}, fmt.Errorf("meta: update %s: %w", desired.Address, err)
+		}
 	}
 	if !reflect.DeepEqual(want.Targeting, got.Targeting) {
 		raw, _ := json.Marshal(targetingAPIObject(want.Targeting))
@@ -347,6 +353,7 @@ func (p *Provider) remoteAdSet(ctx context.Context, desired resource.Resource, i
 	if err := p.ensureAdSetAccount(item.AccountID); err != nil {
 		return resource.RemoteResource{}, err
 	}
+	currency := p.currencyResolver(ctx)
 	campaignID, err := normalizeObjectID(item.CampaignID)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("remote ad set %s has invalid campaign_id: %w", id, err)
@@ -400,15 +407,15 @@ func (p *Provider) remoteAdSet(ctx context.Context, desired resource.Resource, i
 	if !conversion.IsZero() {
 		attrs[AttrCustomConversion] = conversion
 	}
-	if budget, set, e := remoteBudget(item.DailyBudget); e != nil {
+	if budget, set, e := remoteAmount(item.DailyBudget, currency); e != nil {
 		return resource.RemoteResource{}, fmt.Errorf("remote ad set %s has invalid daily_budget: %w", id, e)
 	} else if set {
-		attrs[AttrDailyBudget] = budget
+		attrs[AttrDailyBudget] = budget.value()
 	}
-	if budget, set, e := remoteBudget(item.LifetimeBudget); e != nil {
+	if budget, set, e := remoteAmount(item.LifetimeBudget, currency); e != nil {
 		return resource.RemoteResource{}, fmt.Errorf("remote ad set %s has invalid lifetime_budget: %w", id, e)
 	} else if set {
-		attrs[AttrLifetimeBudget] = budget
+		attrs[AttrLifetimeBudget] = budget.value()
 	}
 	if value, set, e := normalizeScheduleValue(desired.Address, AttrStartTime, item.StartTime); e != nil {
 		return resource.RemoteResource{}, e
@@ -423,10 +430,10 @@ func (p *Provider) remoteAdSet(ctx context.Context, desired resource.Resource, i
 	if bid := strings.ToUpper(strings.TrimSpace(item.BidStrategy)); bid != "" {
 		attrs[AttrBidStrategy] = bid
 	}
-	if amount, set, e := remoteBudget(item.BidAmount); e != nil {
+	if bid, set, e := remoteAmount(item.BidAmount, currency); e != nil {
 		return resource.RemoteResource{}, fmt.Errorf("remote ad set %s has invalid bid_amount: %w", id, e)
 	} else if set {
-		attrs[AttrBidAmount] = amount
+		attrs[AttrBidAmount] = bid.value()
 	}
 	res := resource.Resource{Address: desired.Address, Attributes: attrs}
 	if _, err := normalizeAdSet(res); err != nil {
@@ -452,11 +459,11 @@ func normalizeAdSet(res resource.Resource) (normalizedAdSet, error) {
 	if err != nil {
 		return normalizedAdSet{}, err
 	}
-	daily, hasDaily, err := optionalBudget(res, AttrDailyBudget)
+	daily, hasDaily, err := optionalAmount(res, AttrDailyBudget)
 	if err != nil {
 		return normalizedAdSet{}, err
 	}
-	lifetime, hasLifetime, err := optionalBudget(res, AttrLifetimeBudget)
+	lifetime, hasLifetime, err := optionalAmount(res, AttrLifetimeBudget)
 	if err != nil {
 		return normalizedAdSet{}, err
 	}
@@ -498,7 +505,7 @@ func normalizeAdSet(res resource.Resource) (normalizedAdSet, error) {
 		return normalizedAdSet{}, err
 	}
 	_, hasBidStrategy := res.Attributes[AttrBidStrategy]
-	bidAmount, hasBidAmount, err := optionalBudget(res, AttrBidAmount)
+	bidAmount, hasBidAmount, err := optionalAmount(res, AttrBidAmount)
 	if err != nil {
 		return normalizedAdSet{}, err
 	}
@@ -749,10 +756,10 @@ func normalizeRemoteTargeting(addr resource.Address, raw json.RawMessage) (norma
 func adSetAttributes(a normalizedAdSet) resource.Attributes {
 	out := resource.Attributes{AttrName: a.Name, AttrStatus: a.Status, AttrCampaign: a.Campaign, AttrBillingEvent: a.BillingEvent, AttrOptimizationGoal: a.OptimizationGoal, AttrBidStrategy: a.BidStrategy, AttrDestinationType: a.DestinationType, AttrTargeting: targetingAttributes(a.Targeting)}
 	if a.HasDailyBudget {
-		out[AttrDailyBudget] = a.DailyBudget
+		out[AttrDailyBudget] = a.DailyBudget.value()
 	}
 	if a.HasLifetimeBudget {
-		out[AttrLifetimeBudget] = a.LifetimeBudget
+		out[AttrLifetimeBudget] = a.LifetimeBudget.value()
 	}
 	if a.HasStartTime {
 		out[AttrStartTime] = a.StartTime
@@ -761,7 +768,7 @@ func adSetAttributes(a normalizedAdSet) resource.Attributes {
 		out[AttrEndTime] = a.EndTime
 	}
 	if a.HasBidAmount {
-		out[AttrBidAmount] = a.BidAmount
+		out[AttrBidAmount] = a.BidAmount.value()
 	}
 	if !a.Pixel.IsZero() {
 		out[AttrPixel] = a.Pixel
@@ -842,7 +849,8 @@ func targetingAPIObject(t normalizedTargeting) map[string]any {
 	return out
 }
 
-func (p *Provider) adSetForm(a normalizedAdSet) (url.Values, error) {
+func (p *Provider) adSetForm(ctx context.Context, a normalizedAdSet) (url.Values, error) {
+	currency := p.currencyResolver(ctx)
 	campaignID, err := p.refID(a.Campaign, OutputCampaignID)
 	if err != nil {
 		return nil, fmt.Errorf("campaign %w", err)
@@ -852,10 +860,14 @@ func (p *Provider) adSetForm(a normalizedAdSet) (url.Values, error) {
 		form.Set("bid_strategy", a.BidStrategy)
 	}
 	if a.HasDailyBudget {
-		form.Set("daily_budget", strconv.FormatInt(a.DailyBudget, 10))
+		if err := setAmount(form, "daily_budget", AttrDailyBudget, a.DailyBudget, currency); err != nil {
+			return nil, err
+		}
 	}
 	if a.HasLifetimeBudget {
-		form.Set("lifetime_budget", strconv.FormatInt(a.LifetimeBudget, 10))
+		if err := setAmount(form, "lifetime_budget", AttrLifetimeBudget, a.LifetimeBudget, currency); err != nil {
+			return nil, err
+		}
 	}
 	if a.HasStartTime {
 		form.Set("start_time", a.StartTime)
@@ -864,7 +876,9 @@ func (p *Provider) adSetForm(a normalizedAdSet) (url.Values, error) {
 		form.Set("end_time", a.EndTime)
 	}
 	if a.HasBidAmount {
-		form.Set("bid_amount", strconv.FormatInt(a.BidAmount, 10))
+		if err := setAmount(form, "bid_amount", AttrBidAmount, a.BidAmount, currency); err != nil {
+			return nil, err
+		}
 	}
 	raw, _ := json.Marshal(targetingAPIObject(a.Targeting))
 	form.Set("targeting", string(raw))

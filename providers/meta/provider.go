@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -26,6 +27,9 @@ type Provider struct {
 	known      map[string]remoteBinding
 	identities IdentityCatalog
 	outputs    provider.OutputMatcher
+
+	currencyMu sync.Mutex
+	currency   string
 }
 
 var (
@@ -263,6 +267,43 @@ func (p *Provider) NormalizeComparable(desired resource.Resource, live *resource
 	default:
 		return desired.Attributes.Clone(), nil, nil
 	}
+}
+
+// currencyResolver defers the ad account currency read until a money value
+// actually has to cross the API boundary.
+func (p *Provider) currencyResolver(ctx context.Context) currencyResolver {
+	return func() (string, error) { return p.accountCurrency(ctx) }
+}
+
+// accountCurrency returns the configured ad account's currency. Manifests
+// declare money in account-currency units, so every conversion to or from the
+// Graph API's minimum denomination needs it. The read happens at most once per
+// provider and never mutates Meta.
+func (p *Provider) accountCurrency(ctx context.Context) (string, error) {
+	p.currencyMu.Lock()
+	defer p.currencyMu.Unlock()
+	if p.currency != "" {
+		return p.currency, nil
+	}
+	c, err := p.Client()
+	if err != nil {
+		return "", err
+	}
+	var account struct {
+		Currency string `json:"currency"`
+	}
+	if err := c.Get(ctx, c.AdAccountID(), url.Values{"fields": {"currency"}}, &account); err != nil {
+		return "", fmt.Errorf("meta: reading the currency of ad account %s: %w", c.AdAccountID(), err)
+	}
+	currency := strings.ToUpper(strings.TrimSpace(account.Currency))
+	if currency == "" {
+		return "", fmt.Errorf("meta: ad account %s did not report a currency", c.AdAccountID())
+	}
+	if _, err := currencyOffset(currency); err != nil {
+		return "", fmt.Errorf("meta: %w", err)
+	}
+	p.currency = currency
+	return currency, nil
 }
 
 func (p *Provider) requireConfig() error {

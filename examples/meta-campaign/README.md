@@ -4,9 +4,10 @@ This v0.6.0 example declares a standard auction campaign for website
 acquisition. It is explicitly paused and uses a campaign-level lifetime
 budget.
 
-`lifetimeBudgetMinorUnits` makes the unit explicit: the value is expressed in
-the ad account currency's minor units. In a USD account, `50000` means USD
-500.00. Review the planned `status` and budget before applying; changing
+`lifetimeBudget` is expressed in ad account currency units, so in a USD
+account `500` means USD 500.00. Agoraform reads the ad account's currency and
+converts to the unit Meta's API expects. Review the planned `status` and
+budget before applying; changing
 `status` to `ACTIVE` enables serving when the future ad-set and ad resources
 are also active and eligible.
 
