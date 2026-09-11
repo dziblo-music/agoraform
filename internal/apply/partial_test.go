@@ -44,7 +44,6 @@ func TestExecuteCreateAtomicStateWriteFailurePreservesFile(t *testing.T) {
 	}
 
 	restore := blockStateFileReplace(t, path)
-	t.Cleanup(restore)
 	_, err = apply.Execute(context.Background(), planned, []resource.Resource{res}, lookupProvider(p), st, ioDiscard())
 	restore()
 	if err == nil {
