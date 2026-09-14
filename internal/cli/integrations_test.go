@@ -5,19 +5,19 @@ import (
 	"testing"
 
 	"github.com/dziblo-music/agoraform/internal/cli"
-	"github.com/dziblo-music/agoraform/internal/provider"
-	"github.com/dziblo-music/agoraform/internal/provider/fake"
 )
 
 const integrationsManifest = `apiVersion: agoraform.io/v1alpha1
 resources:
-  - address: fake.widget.homepage
+  - address: matomo.trigger.trial_started
     attributes:
-      title: Homepage banner
+      type: customEvent
+      event: trialStarted
 applicationEvents:
   trial_started:
     matomo:
-      event: trialStarted
+      trigger:
+        $ref: matomo.trigger.trial_started
       fields:
         - userId
 `
@@ -58,25 +58,29 @@ applicationEvents:
 
 const integrationsMultiProviderManifest = `apiVersion: agoraform.io/v1alpha1
 resources:
-  - address: fake.widget.homepage
+  - address: matomo.trigger.page_view
     attributes:
-      title: Homepage banner
+      type: customEvent
+      event: pageView
+  - address: matomo.trigger.signup
+    attributes:
+      type: customEvent
+      event: signedUp
 applicationEvents:
   page_view:
     matomo:
-      event: pageView
+      trigger:
+        $ref: matomo.trigger.page_view
   signup:
     matomo:
-      event: signedUp
+      trigger:
+        $ref: matomo.trigger.signup
       fields:
         - planId
 `
 
-// TestIntegrationsNoEvents verifies that a manifest without applicationEvents
-// produces the "no events" message and exits cleanly.
 func TestIntegrationsNoEvents(t *testing.T) {
 	t.Parallel()
-
 	path := writeManifest(t, "agoraform.yaml", integrationsEmptyManifest)
 	streams, stdout, stderr := testStreams()
 	code := cli.ExecuteWith(streams, []string{"integrations", "-f", path})
@@ -84,157 +88,99 @@ func TestIntegrationsNoEvents(t *testing.T) {
 		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitOK, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "No application events") {
-		t.Fatalf("stdout = %q, want 'No application events'", stdout.String())
+		t.Fatalf("stdout = %q, want no-events message", stdout.String())
 	}
 }
 
-// TestIntegrationsMatomoOnly verifies that a Matomo-only event contract is
-// displayed without requiring provider credentials.
 func TestIntegrationsMatomoOnly(t *testing.T) {
 	t.Parallel()
-
-	p := fake.New()
-	reg := provider.NewRegistry()
-	if err := reg.Register(p); err != nil {
-		t.Fatal(err)
-	}
-
 	path := writeManifest(t, "agoraform.yaml", integrationsManifest)
 	streams, stdout, stderr := testStreams()
-	code := cli.ExecuteWithRegistry(streams, []string{"integrations", "-f", path}, reg)
+	code := cli.ExecuteWith(streams, []string{"integrations", "-f", path})
 	if code != cli.ExitOK {
 		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitOK, stderr.String())
 	}
-
 	out := stdout.String()
-	if !strings.Contains(out, "trial_started") {
-		t.Errorf("output missing event name 'trial_started'\n%s", out)
-	}
-	if !strings.Contains(out, "trialStarted") {
-		t.Errorf("output missing Matomo event name 'trialStarted'\n%s", out)
-	}
-	if !strings.Contains(out, "userId") {
-		t.Errorf("output missing field 'userId'\n%s", out)
-	}
-}
-
-// TestIntegrationsMultipleEvents verifies that multiple events are displayed
-// in sorted order.
-func TestIntegrationsMultipleEvents(t *testing.T) {
-	t.Parallel()
-
-	p := fake.New()
-	reg := provider.NewRegistry()
-	if err := reg.Register(p); err != nil {
-		t.Fatal(err)
-	}
-
-	path := writeManifest(t, "agoraform.yaml", integrationsMultiProviderManifest)
-	streams, stdout, stderr := testStreams()
-	code := cli.ExecuteWithRegistry(streams, []string{"integrations", "-f", path}, reg)
-	if code != cli.ExitOK {
-		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitOK, stderr.String())
-	}
-
-	out := stdout.String()
-	pageViewIdx := strings.Index(out, "page_view")
-	signupIdx := strings.Index(out, "signup")
-	if pageViewIdx < 0 || signupIdx < 0 {
-		t.Fatalf("output missing expected event names:\n%s", out)
-	}
-	// page_view sorts before signup alphabetically.
-	if pageViewIdx > signupIdx {
-		t.Errorf("events not in sorted order: page_view at %d, signup at %d", pageViewIdx, signupIdx)
-	}
-}
-
-// TestIntegrationsGoogleAds_NotApplied verifies the not-applied placeholder
-// when conversion action has no state identity.
-func TestIntegrationsGoogleAds_NotApplied(t *testing.T) {
-	t.Parallel()
-
-	// Register a minimal googleads-like fake for type resolution.
-	// We only need validate; no real provider connection required.
-	p := fake.New()
-	reg := provider.NewRegistry()
-	if err := reg.Register(p); err != nil {
-		t.Fatal(err)
-	}
-
-	// Use the validate-only registry path by passing nil for known provider.
-	// Since googleads isn't registered in this test registry, validation with
-	// a nil registry is used (skips provider checks but validates events).
-	path := writeManifest(t, "agoraform.yaml", integrationsGoogleAdsManifest)
-	streams, stdout, _ := testStreams()
-	// Use nil registry so provider checks are skipped, but event refs validated.
-	code := cli.ExecuteWithRegistry(streams, []string{"integrations", "-f", path}, nil)
-	if code != cli.ExitOK {
-		// With nil registry the integrations command may fail if providers
-		// are required; accept ExitError as acceptable here since the
-		// test only verifies offline event display behavior.
-		_ = stdout.String()
-		return
-	}
-	out := stdout.String()
-	if strings.Contains(out, "trial_started") {
-		if !strings.Contains(out, "not yet applied") {
-			t.Errorf("expected 'not yet applied' placeholder:\n%s", out)
+	for _, want := range []string{"trial_started", "trialStarted", "userId"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
 		}
 	}
 }
 
-// TestIntegrationsFlagFile verifies the -f flag is accepted.
+func TestIntegrationsMultipleEvents(t *testing.T) {
+	t.Parallel()
+	path := writeManifest(t, "agoraform.yaml", integrationsMultiProviderManifest)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWith(streams, []string{"integrations", "-f", path})
+	if code != cli.ExitOK {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitOK, stderr.String())
+	}
+	out := stdout.String()
+	if strings.Index(out, "page_view") > strings.Index(out, "signup") {
+		t.Fatalf("events not sorted:\n%s", out)
+	}
+}
+
+func TestIntegrationsGoogleAdsNotAppliedDoesNotRequireCredentials(t *testing.T) {
+	t.Parallel()
+	path := writeManifest(t, "agoraform.yaml", integrationsGoogleAdsManifest)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWith(streams, []string{"integrations", "-f", path})
+	if code != cli.ExitOK {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitOK, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "trial_started") || !strings.Contains(out, "not yet applied") {
+		t.Fatalf("expected unapplied Google Ads contract:\n%s", out)
+	}
+}
+
+func TestIntegrationsMetaNotAppliedDoesNotRequireCredentials(t *testing.T) {
+	t.Parallel()
+	path := writeManifest(t, "agoraform.yaml", integrationsMetaManifest)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWith(streams, []string{"integrations", "-f", path})
+	if code != cli.ExitOK {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitOK, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "purchase") || !strings.Contains(out, "not yet applied") {
+		t.Fatalf("expected unapplied Meta contract:\n%s", out)
+	}
+}
+
 func TestIntegrationsFlagFile(t *testing.T) {
 	t.Parallel()
-
-	p := fake.New()
-	reg := provider.NewRegistry()
-	if err := reg.Register(p); err != nil {
-		t.Fatal(err)
-	}
-
 	path := writeManifest(t, "agoraform.yaml", integrationsManifest)
-	streams, stdout, stderr := testStreams()
-	code := cli.ExecuteWithRegistry(streams, []string{"integrations", "--file", path}, reg)
-	if code != cli.ExitOK {
-		t.Fatalf("exit code = %d, want %d; stderr=%q; stdout=%q",
-			code, cli.ExitOK, stderr.String(), stdout.String())
+	streams, _, stderr := testStreams()
+	if code := cli.ExecuteWith(streams, []string{"integrations", "--file", path}); code != cli.ExitOK {
+		t.Fatalf("exit code = %d; stderr=%q", code, stderr.String())
 	}
 }
 
-// TestIntegrationsTooManyArgs verifies that extra arguments produce a usage
-// error.
 func TestIntegrationsTooManyArgs(t *testing.T) {
 	t.Parallel()
-
 	streams, _, _ := testStreams()
-	code := cli.ExecuteWith(streams, []string{"integrations", "arg1", "arg2"})
-	if code != cli.ExitUsage {
-		t.Fatalf("exit code = %d, want %d (usage error)", code, cli.ExitUsage)
+	if code := cli.ExecuteWith(streams, []string{"integrations", "arg1", "arg2"}); code != cli.ExitUsage {
+		t.Fatalf("exit code = %d, want %d", code, cli.ExitUsage)
 	}
 }
 
-// TestIntegrations_HelpIncludesCommand verifies that the help output lists
-// the integrations subcommand.
 func TestIntegrations_HelpIncludesCommand(t *testing.T) {
 	t.Parallel()
-
 	streams, stdout, _ := testStreams()
 	cli.ExecuteWith(streams, []string{"--help"})
 	if !strings.Contains(stdout.String(), "integrations") {
-		t.Errorf("help output does not mention 'integrations':\n%s", stdout.String())
+		t.Errorf("help output does not mention integrations:\n%s", stdout.String())
 	}
 }
 
-// TestIntegrations_InvalidManifest verifies that a malformed manifest
-// produces an error exit code.
 func TestIntegrations_InvalidManifest(t *testing.T) {
 	t.Parallel()
-
 	path := writeManifest(t, "agoraform.yaml", "not: valid: yaml: [[[")
 	streams, _, _ := testStreams()
-	code := cli.ExecuteWith(streams, []string{"integrations", "-f", path})
-	if code != cli.ExitError {
+	if code := cli.ExecuteWith(streams, []string{"integrations", "-f", path}); code != cli.ExitError {
 		t.Fatalf("exit code = %d, want %d", code, cli.ExitError)
 	}
 }
