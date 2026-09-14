@@ -2,40 +2,42 @@ package manifest
 
 import (
 	"fmt"
-	"sort"
+	"strings"
 
 	"github.com/dziblo-music/agoraform/internal/resource"
 )
 
-// knownGoogleAdsConversionActionType is the expected resource type for a
-// Google Ads conversion binding reference.
-const knownGoogleAdsConversionActionType = "conversion_action"
+const (
+	knownMatomoTriggerType              = "trigger"
+	knownGoogleAdsConversionActionType = "conversion_action"
+	knownMetaPixelType                  = "pixel"
+)
 
-// knownMetaPixelType is the expected resource type for a Meta event-source
-// binding reference.
-const knownMetaPixelType = "pixel"
+// CheckApplicationEvents validates only the provider-neutral application event
+// contract. It never requires provider credentials or contacts remote APIs.
+func CheckApplicationEvents(m *Manifest) error {
+	if m == nil {
+		return fmt.Errorf("manifest is nil")
+	}
+	origin := m.Origin
+	if origin == "" {
+		origin = "manifest"
+	}
+	return validateApplicationEvents(origin, m.ApplicationEvents, m.Resources)
+}
 
-// validateApplicationEvents checks the declared instrumentation contracts
-// against the resource set. It reports invalid references, wrong resource
-// types, and missing required contract fields without contacting providers or
-// mutating any remote state.
 func validateApplicationEvents(origin string, events map[string]ApplicationEvent, resources []resource.Resource) error {
 	if len(events) == 0 {
 		return nil
 	}
-
 	byAddr := make(map[string]resource.Resource, len(resources))
 	for _, res := range resources {
 		byAddr[res.Address.String()] = res
 	}
 
-	names := ApplicationEventNames(events)
-	sort.Strings(names)
-
-	for _, name := range names {
+	for _, name := range ApplicationEventNames(events) {
 		evt := events[name]
 		path := fmt.Sprintf("%s: applicationEvents.%s", origin, name)
-
 		if err := validateMatomoBinding(path, evt.Matomo, byAddr); err != nil {
 			return err
 		}
@@ -49,14 +51,24 @@ func validateApplicationEvents(origin string, events map[string]ApplicationEvent
 	return nil
 }
 
-func validateMatomoBinding(path string, b *MatomoEventBinding, _ map[string]resource.Resource) error {
+func validateMatomoBinding(path string, b *MatomoEventBinding, byAddr map[string]resource.Resource) error {
 	if b == nil {
 		return nil
 	}
-	// Event name is already validated during parsing; no resource references to
-	// resolve here because Matomo bindings reference the data-layer contract,
-	// not a specific managed resource.
-	_ = b.Event
+	p := path + ".matomo"
+	res, err := requireResourceRef(p+".trigger", b.Trigger, "matomo", knownMatomoTriggerType, byAddr)
+	if err != nil {
+		return err
+	}
+	typ, ok := res.Attributes["type"].(string)
+	if !ok || strings.TrimSpace(typ) != "customEvent" {
+		return fmt.Errorf("%s.trigger: references %q but the trigger must have type customEvent", p, res.Address)
+	}
+	event, ok := res.Attributes["event"].(string)
+	if !ok || strings.TrimSpace(event) == "" {
+		return fmt.Errorf("%s.trigger: references %q but the trigger must declare a non-empty event", p, res.Address)
+	}
+	b.Event = strings.TrimSpace(event)
 	return nil
 }
 
@@ -64,40 +76,29 @@ func validateGoogleAdsBinding(path string, b *GoogleAdsEventBinding, byAddr map[
 	if b == nil {
 		return nil
 	}
-	p := path + ".googleAds"
-	if err := requireResourceRef(p+".conversion", b.Conversion, "googleads", knownGoogleAdsConversionActionType, byAddr); err != nil {
-		return err
-	}
-	return nil
+	_, err := requireResourceRef(path+".googleAds.conversion", b.Conversion, "googleads", knownGoogleAdsConversionActionType, byAddr)
+	return err
 }
 
 func validateMetaBinding(path string, b *MetaEventBinding, byAddr map[string]resource.Resource) error {
 	if b == nil {
 		return nil
 	}
-	p := path + ".meta"
-	if err := requireResourceRef(p+".eventSource", b.EventSource, "meta", knownMetaPixelType, byAddr); err != nil {
-		return err
-	}
-	return nil
+	_, err := requireResourceRef(path+".meta.eventSource", b.EventSource, "meta", knownMetaPixelType, byAddr)
+	return err
 }
 
-// requireResourceRef validates that ref resolves to a known resource of the
-// expected provider and type.
-func requireResourceRef(path string, ref resource.Ref, expectedProvider, expectedType string, byAddr map[string]resource.Resource) error {
+func requireResourceRef(path string, ref resource.Ref, expectedProvider, expectedType string, byAddr map[string]resource.Resource) (resource.Resource, error) {
 	if ref.IsZero() {
-		return fmt.Errorf("%s: resource reference is required", path)
+		return resource.Resource{}, fmt.Errorf("%s: resource reference is required", path)
 	}
 	addr := ref.Address
 	res, ok := byAddr[addr.String()]
 	if !ok {
-		return fmt.Errorf("%s: references unknown resource %q", path, addr)
+		return resource.Resource{}, fmt.Errorf("%s: references unknown resource %q", path, addr)
 	}
-	if res.Address.Provider != expectedProvider {
-		return fmt.Errorf("%s: references %q but expected a %s.%s resource", path, addr, expectedProvider, expectedType)
+	if res.Address.Provider != expectedProvider || res.Address.Type != expectedType {
+		return resource.Resource{}, fmt.Errorf("%s: references %q but expected a %s.%s resource", path, addr, expectedProvider, expectedType)
 	}
-	if res.Address.Type != expectedType {
-		return fmt.Errorf("%s: references %q but expected a %s.%s resource", path, addr, expectedProvider, expectedType)
-	}
-	return nil
+	return res, nil
 }
