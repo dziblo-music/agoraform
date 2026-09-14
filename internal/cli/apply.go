@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/dziblo-music/agoraform/internal/apply"
+	"github.com/dziblo-music/agoraform/internal/integration"
 	"github.com/dziblo-music/agoraform/internal/manifest"
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/state"
@@ -20,16 +21,12 @@ func newApplyCommand(reg *provider.Registry) *cobra.Command {
 through registered providers.
 
 apply loads and validates the manifest, including provider-specific
-non-secret desired state, the resource dependency graph, and local identity
-state before any mutation. Creates and updates run sequentially in
-prerequisite-first order. Provider finalization actions that were visible in
-the plan run only after every resource mutation succeeds. Referenced
-resources receive provider-native identities at apply time; those identities
-are not written into the manifest. apply never deletes remote resources.
-Successful creates persist the provider-native identity returned by the
-provider in agoraform.state.json next to the manifest. If a remote mutation
-succeeds but a later state write or provider finalization fails, apply reports
-partial convergence and exits 1; it does not roll back the remote change.
+non-secret desired state, the resource dependency graph, local identity state,
+and the application integration contract before any mutation. Creates and
+updates run sequentially in prerequisite-first order. Provider finalization
+actions that were visible in the plan run only after every resource mutation
+succeeds. Application integration contracts are recorded locally only after a
+successful apply so subsequent plans can show contract-only changes.
 
 Exit codes:
   0  apply succeeded
@@ -64,9 +61,22 @@ The default manifest path is agoraform.yaml.`,
 			if err != nil {
 				return err
 			}
+			fingerprints, err := integration.ContractFingerprints(m.ApplicationEvents, m.Resources)
+			if err != nil {
+				return err
+			}
+			contractChanges := integration.DiffContractFingerprints(st.ApplicationEventFingerprints(), fingerprints)
 
-			_, err = apply.Run(cmd.Context(), m.Resources, nil, st, cmd.OutOrStdout(), reg)
-			return err
+			if _, err = apply.Run(cmd.Context(), m.Resources, nil, st, cmd.OutOrStdout(), reg); err != nil {
+				return err
+			}
+			if len(contractChanges) > 0 {
+				if err := st.RecordApplicationEvents(fingerprints); err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Recorded %d application integration contract change(s).\n", len(contractChanges))
+			}
+			return nil
 		},
 	}
 
