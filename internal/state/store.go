@@ -12,9 +12,10 @@ import (
 
 // Store is an in-memory view of a local state file.
 type Store struct {
-	path    string
-	version int
-	records map[string]Record
+	path              string
+	version           int
+	records           map[string]Record
+	applicationEvents map[string]string
 }
 
 // New returns an empty store that will write to path.
@@ -24,9 +25,10 @@ func New(path string) (*Store, error) {
 		return nil, fmt.Errorf("state: path is required")
 	}
 	return &Store{
-		path:    path,
-		version: Version,
-		records: make(map[string]Record),
+		path:              path,
+		version:           Version,
+		records:           make(map[string]Record),
+		applicationEvents: make(map[string]string),
 	}, nil
 }
 
@@ -58,6 +60,7 @@ func Load(path string) (*Store, error) {
 	}
 	st.version = f.Version
 	st.records = f.Resources
+	st.applicationEvents = cloneStrings(f.ApplicationEvents)
 	return st, nil
 }
 
@@ -128,8 +131,7 @@ func (s *Store) Bindings(provider, resourceType string) ([]Binding, error) {
 }
 
 // AddressByRemoteID finds the logical address bound to a provider-native
-// identity for the given resource type. Ownership is scoped the same way as
-// validateRecords: provider + resource type + remote id.
+// identity for the given resource type.
 func (s *Store) AddressByRemoteID(provider, resourceType, remoteID string) (resource.Address, bool, error) {
 	if s == nil {
 		return resource.Address{}, false, nil
@@ -194,14 +196,45 @@ func (s *Store) Bind(addr resource.Address, id resource.Identity) error {
 	return nil
 }
 
+// ApplicationEventFingerprints returns the last successfully applied
+// application integration contract fingerprints.
+func (s *Store) ApplicationEventFingerprints() map[string]string {
+	if s == nil {
+		return map[string]string{}
+	}
+	return cloneStrings(s.applicationEvents)
+}
+
+// RecordApplicationEvents atomically records the last successfully applied
+// application integration contract fingerprints. These values are hashes only
+// and contain no provider credentials, PII, or other secrets.
+func (s *Store) RecordApplicationEvents(fingerprints map[string]string) error {
+	if s == nil {
+		return fmt.Errorf("state: store is nil")
+	}
+	for name, fingerprint := range fingerprints {
+		if strings.TrimSpace(name) == "" || strings.TrimSpace(fingerprint) == "" {
+			return fmt.Errorf("state: application event fingerprints must have non-empty names and values")
+		}
+	}
+	prev := cloneStrings(s.applicationEvents)
+	s.applicationEvents = cloneStrings(fingerprints)
+	if err := s.Save(); err != nil {
+		s.applicationEvents = prev
+		return err
+	}
+	return nil
+}
+
 // Save writes the store to disk atomically.
 func (s *Store) Save() error {
 	if s == nil {
 		return fmt.Errorf("state: store is nil")
 	}
 	data, err := marshalFile(file{
-		Version:   s.version,
-		Resources: cloneRecords(s.records),
+		Version:           s.version,
+		Resources:         cloneRecords(s.records),
+		ApplicationEvents: cloneStrings(s.applicationEvents),
 	})
 	if err != nil {
 		return fmt.Errorf("state: encode %s: %w", s.path, err)
@@ -263,9 +296,7 @@ func (s *Store) Addresses() ([]resource.Address, error) {
 }
 
 // Remove deletes the identity binding for addr after a confirmed remote
-// terminal result. A missing address is a no-op. If the atomic write fails,
-// the in-memory and on-disk bindings are left unchanged so retry can confirm
-// terminal state safely.
+// terminal result.
 func (s *Store) Remove(addr resource.Address) error {
 	if s == nil {
 		return fmt.Errorf("state: store is nil")
@@ -302,6 +333,14 @@ func (s *Store) persist(addr resource.Address, id resource.Identity, op string) 
 
 func cloneRecords(in map[string]Record) map[string]Record {
 	out := make(map[string]Record, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func cloneStrings(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
 	for k, v := range in {
 		out[k] = v
 	}
