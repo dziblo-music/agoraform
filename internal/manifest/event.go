@@ -22,58 +22,42 @@ const (
 
 // ApplicationEvent is a provider-neutral application instrumentation contract
 // for a single logical event.
-//
-// Each ApplicationEvent describes what the application must emit so that the
-// managed provider-side conversion infrastructure receives it correctly.
-// Agoraform owns the contract declaration and the provider-side resources;
-// the application owns actual event emission, SDK installation, and transport.
 type ApplicationEvent struct {
-	// Name is the logical application-facing event key declared in the manifest.
-	Name string
-
-	// Matomo is the optional Matomo Data Layer / Tag Manager binding.
-	Matomo *MatomoEventBinding
-
-	// GoogleAds is the optional Google Ads conversion binding.
+	Name      string
+	Matomo    *MatomoEventBinding
 	GoogleAds *GoogleAdsEventBinding
-
-	// Meta is the optional Meta Pixel / Conversions API binding.
-	Meta *MetaEventBinding
+	Meta      *MetaEventBinding
 }
 
 // MatomoEventBinding describes the Matomo Data Layer contract for an event.
 type MatomoEventBinding struct {
-	// Event is the Data Layer event name consumed by a managed customEvent trigger.
-	Event string
+	// Trigger references the managed matomo.trigger customEvent resource. The
+	// application-facing Data Layer event name is derived from that resource so
+	// the contract cannot drift from the managed trigger configuration.
+	Trigger resource.Ref
 
 	// Fields are optional data-layer field names declared as part of the
 	// tracking contract. This is informational; Agoraform does not validate
 	// field values emitted by the application.
 	Fields []string
+
+	// Event is a derived value used by resolved integration output. It is not a
+	// manifest field; parsed contracts derive it from Trigger.
+	Event string
 }
 
 // GoogleAdsEventBinding describes the Google Ads conversion binding for an
 // application event.
 type GoogleAdsEventBinding struct {
-	// Conversion references the managed googleads.conversion_action resource
-	// that records this event on the provider side.
 	Conversion resource.Ref
 }
 
 // MetaEventBinding describes the Meta Pixel / Conversions API binding for an
 // application event.
 type MetaEventBinding struct {
-	// EventSource references the managed meta.pixel resource that receives
-	// this event.
 	EventSource resource.Ref
-
-	// EventName is the standard or custom Meta event name the application must
-	// emit (for example "StartTrial" or "Purchase").
-	EventName string
-
-	// Delivery declares whether the event is expected over browser Pixel,
-	// server-side Conversions API, or both.
-	Delivery Delivery
+	EventName   string
+	Delivery    Delivery
 }
 
 // ApplicationEventNames returns the sorted logical names of all declared
@@ -87,8 +71,6 @@ func ApplicationEventNames(events map[string]ApplicationEvent) []string {
 	return names
 }
 
-// parseApplicationEvents converts a raw YAML map into typed ApplicationEvent
-// values with resolved resource references.
 func parseApplicationEvents(origin string, raw map[string]any) (map[string]ApplicationEvent, error) {
 	if len(raw) == 0 {
 		return nil, nil
@@ -114,7 +96,6 @@ func parseApplicationEvents(origin string, raw map[string]any) (map[string]Appli
 
 func parseApplicationEvent(origin, name string, item map[string]any) (ApplicationEvent, error) {
 	path := fmt.Sprintf("%s: applicationEvents.%s", origin, name)
-
 	evt := ApplicationEvent{Name: name}
 
 	for key := range item {
@@ -164,32 +145,22 @@ func parseApplicationEvent(origin, name string, item map[string]any) (Applicatio
 	if evt.Matomo == nil && evt.GoogleAds == nil && evt.Meta == nil {
 		return ApplicationEvent{}, fmt.Errorf("%s: at least one provider binding (matomo, googleAds, meta) is required", path)
 	}
-
 	return evt, nil
 }
 
 func parseMatomoBinding(path string, raw map[string]any) (*MatomoEventBinding, error) {
 	p := path + ".matomo"
-
 	for key := range raw {
 		switch key {
-		case "event", "fields":
+		case "trigger", "fields":
 		default:
-			return nil, fmt.Errorf("%s: unknown field %q (supported: event, fields)", p, key)
+			return nil, fmt.Errorf("%s: unknown field %q (supported: trigger, fields)", p, key)
 		}
 	}
 
-	eventVal, ok := raw["event"]
-	if !ok || eventVal == nil {
-		return nil, fmt.Errorf("%s: event is required", p)
-	}
-	event, ok := eventVal.(string)
-	if !ok {
-		return nil, fmt.Errorf("%s: event must be a string", p)
-	}
-	event = strings.TrimSpace(event)
-	if event == "" {
-		return nil, fmt.Errorf("%s: event must not be empty", p)
+	trigger, err := parseRequiredResourceRef(p, "trigger", raw["trigger"])
+	if err != nil {
+		return nil, err
 	}
 
 	var fields []string
@@ -211,12 +182,11 @@ func parseMatomoBinding(path string, raw map[string]any) (*MatomoEventBinding, e
 		}
 	}
 
-	return &MatomoEventBinding{Event: event, Fields: fields}, nil
+	return &MatomoEventBinding{Trigger: trigger, Fields: fields}, nil
 }
 
 func parseGoogleAdsBinding(path string, raw map[string]any) (*GoogleAdsEventBinding, error) {
 	p := path + ".googleAds"
-
 	for key := range raw {
 		switch key {
 		case "conversion":
@@ -224,29 +194,15 @@ func parseGoogleAdsBinding(path string, raw map[string]any) (*GoogleAdsEventBind
 			return nil, fmt.Errorf("%s: unknown field %q (supported: conversion)", p, key)
 		}
 	}
-
-	convRaw, ok := raw["conversion"]
-	if !ok || convRaw == nil {
-		return nil, fmt.Errorf("%s: conversion is required", p)
-	}
-	convMap, ok := convRaw.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("%s: conversion must be a resource reference ($ref)", p)
-	}
-	val, err := normalizeValue(convMap)
+	ref, err := parseRequiredResourceRef(p, "conversion", raw["conversion"])
 	if err != nil {
-		return nil, fmt.Errorf("%s: conversion: %w", p, err)
-	}
-	ref, ok := resource.AsRef(val)
-	if !ok {
-		return nil, fmt.Errorf("%s: conversion must be a resource reference ($ref)", p)
+		return nil, err
 	}
 	return &GoogleAdsEventBinding{Conversion: ref}, nil
 }
 
 func parseMetaBinding(path string, raw map[string]any) (*MetaEventBinding, error) {
 	p := path + ".meta"
-
 	for key := range raw {
 		switch key {
 		case "eventSource", "eventName", "delivery":
@@ -255,21 +211,9 @@ func parseMetaBinding(path string, raw map[string]any) (*MetaEventBinding, error
 		}
 	}
 
-	esRaw, ok := raw["eventSource"]
-	if !ok || esRaw == nil {
-		return nil, fmt.Errorf("%s: eventSource is required", p)
-	}
-	esMap, ok := esRaw.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("%s: eventSource must be a resource reference ($ref)", p)
-	}
-	val, err := normalizeValue(esMap)
+	ref, err := parseRequiredResourceRef(p, "eventSource", raw["eventSource"])
 	if err != nil {
-		return nil, fmt.Errorf("%s: eventSource: %w", p, err)
-	}
-	ref, ok := resource.AsRef(val)
-	if !ok {
-		return nil, fmt.Errorf("%s: eventSource must be a resource reference ($ref)", p)
+		return nil, err
 	}
 
 	enRaw, ok := raw["eventName"]
@@ -299,9 +243,24 @@ func parseMetaBinding(path string, raw map[string]any) (*MetaEventBinding, error
 		}
 	}
 
-	return &MetaEventBinding{
-		EventSource: ref,
-		EventName:   eventName,
-		Delivery:    delivery,
-	}, nil
+	return &MetaEventBinding{EventSource: ref, EventName: eventName, Delivery: delivery}, nil
+}
+
+func parseRequiredResourceRef(path, field string, raw any) (resource.Ref, error) {
+	if raw == nil {
+		return resource.Ref{}, fmt.Errorf("%s: %s is required", path, field)
+	}
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return resource.Ref{}, fmt.Errorf("%s: %s must be a resource reference ($ref)", path, field)
+	}
+	val, err := normalizeValue(m)
+	if err != nil {
+		return resource.Ref{}, fmt.Errorf("%s: %s: %w", path, field, err)
+	}
+	ref, ok := resource.AsRef(val)
+	if !ok {
+		return resource.Ref{}, fmt.Errorf("%s: %s must be a resource reference ($ref)", path, field)
+	}
+	return ref, nil
 }
