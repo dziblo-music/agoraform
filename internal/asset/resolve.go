@@ -109,16 +109,15 @@ func (r Root) safeFile(file string) (display, abs string, err error) {
 		return "", "", fmt.Errorf("file path must be relative to the asset root; absolute paths are not portable")
 	}
 
-	cleaned := filepath.Clean(raw)
-	display = slashPath(cleaned)
-	if display == "." || strings.HasSuffix(display, "/") {
+	display = slashPath(raw)
+	if display == "." {
 		return "", "", fmt.Errorf("%q is a directory, not a file", display)
 	}
-	if escapesParent(cleaned) || strings.Contains(display, "/../") || display == ".." {
+	if escapesParent(display) {
 		return "", "", fmt.Errorf("file %q escapes the asset root", display)
 	}
 
-	joined := filepath.Join(r.dir, cleaned)
+	joined := filepath.Join(r.dir, filepath.FromSlash(display))
 	abs, err = filepath.Abs(joined)
 	if err != nil {
 		return "", "", fmt.Errorf("cannot resolve file %q", display)
@@ -196,7 +195,6 @@ func containPath(root, target string) error {
 	if err != nil {
 		return err
 	}
-	rel = filepath.Clean(rel)
 	if escapesParent(rel) {
 		return fmt.Errorf("escapes root")
 	}
