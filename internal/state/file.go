@@ -56,12 +56,6 @@ func (e *DuplicateIdentityError) OwnerOtherThan(addr resource.Address) string {
 }
 
 // Record is the persisted management metadata for one logical resource.
-//
-// Fingerprint is an optional provider-specific content fingerprint. Providers
-// that manage content-addressed resources may persist a locally-computed
-// checksum here alongside the provider-native remote identity, enabling
-// content-change detection in subsequent plans without storing the content
-// itself. The fingerprint must never hold credentials or secrets.
 type Record struct {
 	Provider    string `json:"provider"`
 	RemoteID    string `json:"remoteId"`
@@ -69,8 +63,9 @@ type Record struct {
 }
 
 type file struct {
-	Version   int               `json:"version"`
-	Resources map[string]Record `json:"resources"`
+	Version           int               `json:"version"`
+	Resources         map[string]Record `json:"resources"`
+	ApplicationEvents map[string]string `json:"applicationEvents,omitempty"`
 }
 
 func marshalFile(f file) ([]byte, error) {
@@ -100,8 +95,16 @@ func decodeFile(path string, data []byte) (file, error) {
 	if f.Resources == nil {
 		f.Resources = map[string]Record{}
 	}
+	if f.ApplicationEvents == nil {
+		f.ApplicationEvents = map[string]string{}
+	}
 	if err := validateRecords(f.Resources); err != nil {
 		return file{}, fmt.Errorf("state: invalid %s: %w", path, err)
+	}
+	for name, fingerprint := range f.ApplicationEvents {
+		if strings.TrimSpace(name) == "" || strings.TrimSpace(fingerprint) == "" {
+			return file{}, fmt.Errorf("state: invalid %s: application event fingerprints must have non-empty names and values", path)
+		}
 	}
 	return f, nil
 }
@@ -127,11 +130,6 @@ func validateRecords(records map[string]Record) error {
 		if err := validateRecord(addr, rec); err != nil {
 			return err
 		}
-
-		// Provider IDs are opaque and are not necessarily globally unique
-		// across a provider. Scope duplicate ownership checks to the provider
-		// resource type so, for example, goal ID "1" and tag ID "1" can
-		// coexist safely.
 		dupKey := rec.Provider + "\x00" + addr.Type + "\x00" + rec.RemoteID
 		if other, ok := seenRemote[dupKey]; ok {
 			return &DuplicateIdentityError{

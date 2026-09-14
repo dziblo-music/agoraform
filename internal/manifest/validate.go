@@ -11,15 +11,6 @@ import (
 
 // CheckProviders validates provider configuration and desired resources against
 // a provider registry.
-//
-// Local asset sources are resolved before provider checks so missing files,
-// unsafe paths, and unreadable sources fail without contacting providers.
-// When reg is nil or empty, provider and type checks are skipped because the
-// registry cannot determine known providers. When providers are registered,
-// unknown providers, unsupported provider configuration, ConnectionChecker
-// failures, unknown resource types, provider Validate failures, optional
-// cross-resource ResourceSetValidator failures, and invalid output
-// references are reported.
 func CheckProviders(ctx context.Context, m *Manifest, reg *provider.Registry) error {
 	if m == nil {
 		return fmt.Errorf("manifest is nil")
@@ -28,6 +19,9 @@ func CheckProviders(ctx context.Context, m *Manifest, reg *provider.Registry) er
 		ctx = context.Background()
 	}
 	if err := BindLocalAssets(m); err != nil {
+		return err
+	}
+	if err := CheckApplicationEvents(m); err != nil {
 		return err
 	}
 	if reg == nil || reg.Len() == 0 {

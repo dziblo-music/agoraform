@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/dziblo-music/agoraform/internal/apply"
+	"github.com/dziblo-music/agoraform/internal/integration"
 	"github.com/dziblo-music/agoraform/internal/manifest"
 	"github.com/dziblo-music/agoraform/internal/plan"
 	"github.com/dziblo-music/agoraform/internal/provider"
@@ -24,11 +25,14 @@ func newPlanCommand(reg *provider.Registry) *cobra.Command {
 		Use:   "plan [file]",
 		Short: "Show the changes required to reconcile declared and live configuration",
 		Long: `Read live resources through registered providers and show the
-changes required to reach the desired manifest state.
+changes required to reach the desired manifest state. Application integration
+contract changes are shown separately because they affect external
+instrumentation but are not remote provider resources.
 
 plan only validates configuration and reads remote state. It never creates,
 updates, imports, or performs provider finalization actions. Persisted
-identities are read from agoraform.state.json next to the manifest.
+identities and last-applied integration fingerprints are read from
+agoraform.state.json next to the manifest.
 
 Exit codes:
   0  plan succeeded and no changes are required
@@ -75,8 +79,19 @@ The default manifest path is agoraform.yaml.`,
 				return err
 			}
 
-			fmt.Fprint(cmd.OutOrStdout(), plan.Format(result))
-			if result.HasChanges() {
+			fingerprints, err := integration.ContractFingerprints(m.ApplicationEvents, m.Resources)
+			if err != nil {
+				return err
+			}
+			contractChanges := integration.DiffContractFingerprints(st.ApplicationEventFingerprints(), fingerprints)
+
+			if result.HasChanges() || len(contractChanges) == 0 {
+				fmt.Fprint(cmd.OutOrStdout(), plan.Format(result))
+			}
+			if formatted := integration.FormatContractChanges(contractChanges); formatted != "" {
+				fmt.Fprint(cmd.OutOrStdout(), formatted)
+			}
+			if result.HasChanges() || len(contractChanges) > 0 {
 				return errPlanHasChanges
 			}
 			return nil
