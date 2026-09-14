@@ -1,11 +1,13 @@
 package plan_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	"github.com/dziblo-music/agoraform/internal/asset"
 	"github.com/dziblo-music/agoraform/internal/plan"
+	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/provider/fake"
 	"github.com/dziblo-music/agoraform/internal/resource"
 )
@@ -64,6 +66,50 @@ func TestBuildLocalAssetUpdateWhenBytesChange(t *testing.T) {
 		t.Fatalf("format leaked host path:\n%s", rendered)
 	}
 	assertNoMutations(t, p, 1)
+}
+
+func TestBuildLocalAssetUsesPersistedFingerprintWhenProviderReadOmitsIt(t *testing.T) {
+	t.Parallel()
+
+	res := widgetWithAsset(t, "hero", "hero.jpg", "abc123")
+	st := mustStore(t)
+	if err := st.Bind(res.Address, resource.Identity{ID: "id-hero", Fingerprint: "abc123"}); err != nil {
+		t.Fatal(err)
+	}
+	reader := identityIgnoringReader{returned: resource.Identity{ID: "id-hero"}}
+	got, err := plan.BuildWithState(context.Background(), []resource.Resource{res}, func(resource.Address) (provider.Reader, error) {
+		return reader, nil
+	}, st)
+	if err != nil {
+		t.Fatalf("BuildWithState: %v", err)
+	}
+	if got.HasChanges() {
+		t.Fatalf("persisted matching fingerprint produced drift: %+v", got.Changes)
+	}
+}
+
+func TestBuildLocalAssetDetectsChangedDigestFromPersistedFingerprint(t *testing.T) {
+	t.Parallel()
+
+	res := widgetWithAsset(t, "hero", "hero.jpg", "def456")
+	st := mustStore(t)
+	if err := st.Bind(res.Address, resource.Identity{ID: "id-hero", Fingerprint: "abc123"}); err != nil {
+		t.Fatal(err)
+	}
+	reader := identityIgnoringReader{returned: resource.Identity{ID: "id-hero"}}
+	got, err := plan.BuildWithState(context.Background(), []resource.Resource{res}, func(resource.Address) (provider.Reader, error) {
+		return reader, nil
+	}, st)
+	if err != nil {
+		t.Fatalf("BuildWithState: %v", err)
+	}
+	if len(got.Changes) != 1 || got.Changes[0].Action != plan.ActionUpdate {
+		t.Fatalf("change = %+v, want update", got.Changes)
+	}
+	rendered := plan.Format(got)
+	if !strings.Contains(rendered, "sha256:abc123") || !strings.Contains(rendered, "sha256:def456") {
+		t.Fatalf("format missing persisted digest change:\n%s", rendered)
+	}
 }
 
 func widgetWithAsset(t *testing.T, name, file, digest string) resource.Resource {
