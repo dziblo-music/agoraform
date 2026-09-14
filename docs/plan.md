@@ -149,6 +149,21 @@ No changes. Desired configuration matches live resources.
 Plan: 0 to create, 0 to update, 0 to destroy.
 ```
 
+Local file sources render as a relative path plus content digest. Binary
+data and machine-specific absolute paths are omitted:
+
+```text
++ fake.widget.hero
+
+    source.digest: "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
+    source.file: "hero.jpg"
+    title: "Hero"
+```
+
+Changing the bytes at the same path produces an update even when
+`source.file` is unchanged. Plan remains non-mutating with respect to
+remote providers.
+
 ## Exit codes
 
 | Code | Meaning |

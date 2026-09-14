@@ -121,6 +121,106 @@ func TestLoadFile(t *testing.T) {
 	}
 }
 
+func TestParseAssetsRoot(t *testing.T) {
+	t.Parallel()
+
+	m := loadTestdata(t, "assets-root.yaml")
+	if m.Assets.Root != "./media" {
+		t.Fatalf("Assets.Root = %q, want ./media", m.Assets.Root)
+	}
+}
+
+func TestParseAssetsUnknownField(t *testing.T) {
+	t.Parallel()
+
+	_, err := manifest.Parse(readTestdata(t, "assets-unknown.yaml"), "assets-unknown.yaml")
+	if err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("error = %v, want unknown field", err)
+	}
+}
+
+func TestParseOmitsAssets(t *testing.T) {
+	t.Parallel()
+
+	m := loadTestdata(t, "valid.yaml")
+	if m.Assets.Root != "" {
+		t.Fatalf("Assets.Root = %q, want empty", m.Assets.Root)
+	}
+}
+
+func TestLoadFileResolvesLocalAsset(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "assets"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "assets", "pic.jpg"), []byte("pic"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "agoraform.yaml")
+	src := []byte(`apiVersion: agoraform.io/v1alpha1
+assets:
+  root: ./assets
+resources:
+  - address: fake.widget.hero
+    attributes:
+      title: Hero
+      source:
+        file: pic.jpg
+`)
+	if err := os.WriteFile(path, src, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m, err := manifest.LoadFile(path)
+	if err != nil {
+		t.Fatalf("LoadFile: %v", err)
+	}
+	if m.Resources[0].LocalAsset == nil {
+		t.Fatal("LocalAsset was not resolved")
+	}
+	if m.Resources[0].LocalAsset.Path != "pic.jpg" {
+		t.Fatalf("Path = %q", m.Resources[0].LocalAsset.Path)
+	}
+	if strings.Contains(m.Resources[0].LocalAsset.String(), dir) {
+		t.Fatalf("descriptor leaked host path: %s", m.Resources[0].LocalAsset.String())
+	}
+}
+
+func TestLoadFileNestedManifestRoot(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	site := filepath.Join(dir, "site")
+	if err := os.MkdirAll(filepath.Join(site, "media"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(site, "media", "hero.jpg"), []byte("hero"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(site, "agoraform.yaml")
+	src := []byte(`apiVersion: agoraform.io/v1alpha1
+assets:
+  root: ./media
+resources:
+  - address: fake.widget.hero
+    attributes:
+      title: Hero
+      source:
+        file: hero.jpg
+`)
+	if err := os.WriteFile(path, src, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m, err := manifest.LoadFile(path)
+	if err != nil {
+		t.Fatalf("LoadFile nested: %v", err)
+	}
+	if m.Resources[0].LocalAsset == nil || m.Resources[0].LocalAsset.Path != "hero.jpg" {
+		t.Fatalf("resolved asset = %+v", m.Resources[0].LocalAsset)
+	}
+}
+
 func TestCheckProviders(t *testing.T) {
 	t.Parallel()
 

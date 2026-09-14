@@ -12,6 +12,12 @@ prints the SemVer identifier without the prefix (`0.5.0`).
 
 ### Added
 
+- Provider-neutral local asset sources: optional `assets.root`, explicit
+  `source.file` references, SHA-256 content fingerprints, path/symlink
+  safety, and streamed apply-time reads. File bytes never enter attributes,
+  plans, logs, YAML, or state. Creative generation remains outside
+  Agoraform.
+
 - A complete secret-free Meta Ads website conversion campaign example under
   `examples/meta-website-campaign/`, automatically validated by the test
   suite. The example covers the full supported v0.6.0 graph — Pixel/Dataset

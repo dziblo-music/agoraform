@@ -34,6 +34,13 @@ values do not create false diffs. Computed/read-only fields belong on
 Register implementations with `provider.Registry`. The core never imports
 Matomo, Google Ads, or other vendor API types.
 
+Resources that consume a local file receive a provider-neutral
+`resource.LocalAsset` descriptor from core (`Path`, `Digest`, `Size`,
+`MediaType`, and `Open`). Providers must stream bytes through `Open` during
+apply and must not copy file contents into attributes, plan output, or
+state. Provider-specific upload APIs, format limits, and remote media
+identity stay inside the provider.
+
 ## Local provider configuration
 
 Provider credentials and connection settings remain environment variables,

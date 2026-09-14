@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/dziblo-music/agoraform/internal/asset"
 	"github.com/dziblo-music/agoraform/internal/graph"
 	"github.com/dziblo-music/agoraform/internal/resource"
 	"gopkg.in/yaml.v3"
@@ -39,11 +40,23 @@ type Manifest struct {
 
 	// Resources are the desired resources from configuration.
 	Resources []resource.Resource
+
+	// Assets is optional local-file source configuration. An omitted or
+	// empty block is valid and keeps existing manifests backward compatible.
+	Assets Assets
+}
+
+// Assets is provider-neutral local file source configuration.
+type Assets struct {
+	// Root is a directory relative to the manifest file. When empty, local
+	// source paths resolve against the manifest directory itself.
+	Root string
 }
 
 type rawManifest struct {
 	APIVersion string                    `yaml:"apiVersion"`
 	Providers  map[string]map[string]any `yaml:"providers"`
+	Assets     map[string]any            `yaml:"assets"`
 	Resources  []rawResource             `yaml:"resources"`
 }
 
@@ -71,6 +84,11 @@ func Parse(data []byte, origin string) (*Manifest, error) {
 	}
 	if raw.APIVersion != APIVersion {
 		return nil, fmt.Errorf("%s: unsupported apiVersion %q (want %s)", origin, raw.APIVersion, APIVersion)
+	}
+
+	assets, err := parseAssets(origin, raw.Assets)
+	if err != nil {
+		return nil, err
 	}
 
 	providers := make(map[string]resource.Attributes, len(raw.Providers))
@@ -125,6 +143,7 @@ func Parse(data []byte, origin string) (*Manifest, error) {
 		APIVersion: raw.APIVersion,
 		Providers:  providers,
 		Resources:  resources,
+		Assets:     assets,
 	}, nil
 }
 
@@ -144,10 +163,49 @@ func LoadFile(path string) (*Manifest, error) {
 		return m, err
 	}
 	abs, err := filepath.Abs(filepath.Dir(path))
-	if err == nil {
-		m.BaseDir = abs
+	if err != nil {
+		return m, fmt.Errorf("resolve manifest directory %s: %w", path, err)
+	}
+	m.BaseDir = abs
+	if err := BindLocalAssets(m); err != nil {
+		return m, err
 	}
 	return m, nil
+}
+
+// BindLocalAssets resolves source.file attributes against the manifest
+// directory and optional assets.root. It is safe to call more than once.
+func BindLocalAssets(m *Manifest) error {
+	if m == nil {
+		return fmt.Errorf("manifest is nil")
+	}
+	origin := m.Origin
+	if origin == "" {
+		origin = "manifest"
+	}
+	return asset.Bind(origin, m.BaseDir, m.Assets.Root, m.Resources)
+}
+
+func parseAssets(origin string, raw map[string]any) (Assets, error) {
+	if len(raw) == 0 {
+		return Assets{}, nil
+	}
+	for key := range raw {
+		if key != "root" {
+			return Assets{}, fmt.Errorf("%s: assets: unknown field %q (only root is supported)", origin, key)
+		}
+	}
+	if _, ok := raw["root"]; !ok {
+		return Assets{}, nil
+	}
+	if raw["root"] == nil {
+		return Assets{}, nil
+	}
+	s, ok := raw["root"].(string)
+	if !ok {
+		return Assets{}, fmt.Errorf("%s: assets.root must be a string", origin)
+	}
+	return Assets{Root: strings.TrimSpace(s)}, nil
 }
 
 func isEmptyYAML(data []byte) bool {

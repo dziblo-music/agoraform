@@ -249,21 +249,25 @@ func comparableAttributes(reader provider.Reader, desired resource.Resource, liv
 			want = resource.Attributes{}
 		}
 		if live == nil {
+			want, _ = overlayLocalAsset(desired, want, nil, nil)
 			return want, nil, nil
 		}
 		if got == nil {
 			got = resource.Attributes{}
 		}
+		want, got = overlayLocalAsset(desired, want, got, live)
 		return want, got, nil
 	}
 
 	want = normalizeAttributes(desired.Attributes)
 	if live == nil {
+		want, _ = overlayLocalAsset(desired, want, nil, nil)
 		return want, nil, nil
 	}
 	// Live comparable state is configurable attributes only. Computed
 	// fields stay on RemoteResource.Computed and are never diffed.
 	got = normalizeAttributes(live.Attributes)
+	want, got = overlayLocalAsset(desired, want, got, live)
 	return want, got, nil
 }
 

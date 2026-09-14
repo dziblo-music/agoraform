@@ -23,6 +23,7 @@ resources:
 | --- | --- | --- |
 | `apiVersion` | yes | Must be `agoraform.io/v1alpha1`. |
 | `providers` | no | Non-secret provider-specific desired state. |
+| `assets` | no | Optional local-file source configuration. |
 | `resources` | no | Desired managed resources. Omitted/empty is valid. |
 
 Provider credentials, tokens, passwords, and other secrets must never be put
@@ -124,6 +125,50 @@ provider-native values are not written back into the manifest.
 YAML types and understands `$ref`; providers validate the actual schema.
 Computed/read-only provider fields do not belong in configuration and must not
 produce changes merely because provider-native IDs differ.
+
+## Local assets
+
+Agoraform can take already-produced image and video files from a project
+directory, validate them, fingerprint them, and make them available to
+provider resources during `plan` and `apply`. Creative production — generating,
+editing, transcoding, resizing, or optimizing files — stays outside Agoraform.
+
+`assets.root` is optional and resolved relative to the selected manifest
+directory, including when you pass `-f`. When omitted, `source.file` paths
+resolve against the manifest directory itself. Agoraform never uploads every
+file in that directory; provider resources must name the file they consume.
+
+```yaml
+apiVersion: agoraform.io/v1alpha1
+assets:
+  root: ./assets
+
+resources:
+  - address: fake.widget.hero
+    attributes:
+      title: Hero
+      source:
+        file: meta/product-demo.jpg
+```
+
+`source.file` is the provider-neutral local source convention. The rest of a
+resource schema remains provider-owned. Relative paths are cleaned
+deterministically and stored as forward-slash project paths so the same
+repository layout is portable across machines. Absolute paths are rejected
+because they encode a host-specific location.
+
+`validate` and `plan` fail when a referenced file is missing, unreadable, a
+directory, or escapes the asset root through `..` or a symlink. Content is
+fingerprinted with SHA-256 by streaming the file. Plans show the relative
+path and `sha256:…` digest. File bytes never appear in attributes, plan
+output, logs, YAML, or state.
+
+Providers receive a resolved local-asset descriptor (relative path, digest,
+size, media type, and an `Open` stream) rather than raw bytes in the
+attribute map. Unchanged files produce a stable digest; changing the bytes
+at the same path is visible to plan even when the path does not change.
+
+See [plan.md](plan.md) and [state.md](state.md).
 
 ## Matomo resources
 
