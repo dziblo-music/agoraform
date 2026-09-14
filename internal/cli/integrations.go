@@ -45,13 +45,14 @@ The default manifest path is agoraform.yaml.`,
 			if err != nil {
 				return err
 			}
-
 			if len(m.ApplicationEvents) == 0 {
 				fmt.Fprintln(cmd.OutOrStdout(), "No application events declared.")
 				return nil
 			}
 
-			if err := manifest.CheckProviders(cmd.Context(), m, reg); err != nil {
+			// Validate only the local contract here. Provider credentials are needed
+			// only when Resolve finds a persisted identity and must read live output.
+			if err := manifest.CheckApplicationEvents(m); err != nil {
 				return err
 			}
 
