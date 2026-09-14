@@ -26,6 +26,12 @@ func overlayLocalAsset(desired resource.Resource, want, got resource.Attributes,
 	if liveDigest == "" {
 		liveDigest = nestedString(got, asset.AttrName, asset.AttrDigest)
 	}
+	// A provider may be able to read the remote identity but not reconstruct
+	// Agoraform's locally-computed content digest. In that case the persisted
+	// identity attached to desired is the authoritative prior fingerprint.
+	if liveDigest == "" {
+		liveDigest = strings.TrimSpace(desired.Identity.Fingerprint)
+	}
 	got = overlaySource(got, livePath, digestLabel(liveDigest))
 	return want, got
 }
