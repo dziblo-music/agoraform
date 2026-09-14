@@ -1,36 +1,10 @@
 # Application instrumentation contracts
 
-Agoraform manages the provider-side marketing infrastructure: conversion
-actions, pixels, Tag Manager containers, goals, and publication. It does not
-install browser code, generate application source files, or deliver events.
+Agoraform manages provider-side marketing infrastructure. Application code remains responsible for emitting browser and server events. The `applicationEvents` block connects those two sides with a provider-neutral, machine-readable contract.
 
-The `applicationEvents` block in a manifest declares the provider-neutral
-instrumentation contract between the managed marketing infrastructure and the
-application that must emit events.
+A developer should be able to answer: **What does my application need to emit for this campaign to work?**
 
-A developer reading the contract can answer:
-
-> What does my application need to emit for this campaign to work?
-
-Agoraform **does manage**:
-
-- The declarative `applicationEvents` contract in the manifest.
-- Provider-side conversion and analytics configuration.
-- Logical references between application events and managed provider resources.
-- Non-secret provider identifiers needed for external instrumentation.
-
-Agoraform **does not manage**:
-
-- Application source-code generation or modification.
-- SDK or package installation.
-- Browser Pixel installation.
-- `fbq()`, `window._mtm.push()`, or `gtag()` execution.
-- Meta Conversions API HTTP transport.
-- Server functions, endpoints, or workers used to send events.
-- Storage or transmission of customer PII.
-- Deployment of application changes.
-
----
+Agoraform manages the contract, provider resources, logical references, and non-secret provider identifiers. It does not generate or modify application source, install SDKs, execute `fbq()`, `gtag()`, or `window._mtm.push()`, send Conversions API requests, handle customer PII, or deploy application code.
 
 ## Manifest schema
 
@@ -38,8 +12,9 @@ Agoraform **does not manage**:
 applicationEvents:
   <event-name>:
     matomo:
-      event: <data-layer-event-name>
-      fields:            # optional list of declared data-layer fields
+      trigger:
+        $ref: matomo.trigger.<name>
+      fields:            # optional data-layer fields
         - <field-name>
     googleAds:
       conversion:
@@ -51,52 +26,51 @@ applicationEvents:
       delivery: browser | server | both   # default: browser
 ```
 
-Each top-level key under `applicationEvents` is the **logical application
-event name**. At least one provider binding (`matomo`, `googleAds`, `meta`)
-is required.
-
----
+Each key under `applicationEvents` is a logical application event. At least one provider binding is required.
 
 ## Matomo binding
 
-The Matomo binding describes the Data Layer event contract for a Matomo Tag
-Manager `customEvent` trigger.
+The Matomo binding references a managed `matomo.trigger` resource whose `type` must be `customEvent`. The Data Layer event name is **derived from that trigger's `event` attribute** rather than copied into `applicationEvents`. This prevents the application contract from drifting away from the managed Tag Manager trigger.
 
-| Field | Required | Description |
-| --- | --- | --- |
-| `event` | yes | Data Layer event name consumed by the managed `customEvent` trigger. |
-| `fields` | no | Data-layer field names declared as part of the tracking contract. Informational only; Agoraform does not validate field values. |
+```yaml
+resources:
+  - address: matomo.trigger.trial_started
+    attributes:
+      type: customEvent
+      event: trialStarted
 
-The application must push the declared event to the data layer:
+applicationEvents:
+  trial_started:
+    matomo:
+      trigger:
+        $ref: matomo.trigger.trial_started
+      fields:
+        - userId
+```
+
+The application emits:
 
 ```javascript
 window._mtm = window._mtm || [];
-window._mtm.push({ event: "trialStarted" });
-```
-
-If the contract declares fields, they should be included in the push:
-
-```javascript
 window._mtm.push({
   event: "trialStarted",
   userId: currentUserId,
 });
 ```
 
----
+If the managed trigger changes from `trialStarted` to another event name, validation and integration output follow the referenced trigger automatically.
 
 ## Google Ads binding
 
-The Google Ads binding references the managed conversion action whose
-conversion identifiers are needed for external instrumentation (for example
-`gtag.js`).
+The Google Ads binding references the managed website conversion action:
 
-| Field | Required | Description |
-| --- | --- | --- |
-| `conversion` | yes | `$ref` to the managed `googleads.conversion_action` resource. |
+```yaml
+googleAds:
+  conversion:
+    $ref: googleads.conversion_action.trial_started
+```
 
-After `agoraform apply`, `agoraform integrations` displays the Conversion ID
-and Conversion label required by `gtag.js`:
+After the resource has an identity, `agoraform integrations` reads its live non-secret conversion ID and conversion label. Application instrumentation can then use them with `gtag.js`:
 
 ```javascript
 gtag('event', 'conversion', {
@@ -104,56 +78,43 @@ gtag('event', 'conversion', {
 });
 ```
 
-Where `AW-123456789` is the Conversion ID and `AbCdEfGh` is the Conversion
-label from the managed conversion action.
-
----
+When the resource has not yet been applied, `agoraform integrations` prints `(not yet applied)` and does **not** require Google Ads credentials merely to inspect the declared contract.
 
 ## Meta binding
 
-The Meta binding references the managed Pixel/Dataset event source and declares
-the standard or custom event name and the delivery mechanism.
+The Meta binding references the managed Pixel/Dataset event source and declares the provider event name and delivery mechanism:
 
-| Field | Required | Description |
-| --- | --- | --- |
-| `eventSource` | yes | `$ref` to the managed `meta.pixel` resource. |
-| `eventName` | yes | Standard or custom Meta event name (for example `StartTrial` or `Purchase`). |
-| `delivery` | no | `browser`, `server`, or `both`. Default: `browser`. |
+```yaml
+meta:
+  eventSource:
+    $ref: meta.pixel.main
+  eventName: StartTrial
+  delivery: both
+```
 
-### Browser Pixel delivery
-
-When `delivery` is `browser` or `both`, the application initialises the Meta
-Pixel with the Pixel ID from `agoraform integrations` and emits the event:
+Browser delivery uses the Pixel ID shown by `agoraform integrations`:
 
 ```javascript
-fbq('init', '987654321');   // Pixel ID from agoraform integrations
+fbq('init', '987654321');
 fbq('track', 'StartTrial');
 ```
 
-### Server (Conversions API) delivery
-
-When `delivery` is `server` or `both`, the application sends the event to the
-Meta Conversions API. A conceptual server event:
+Server delivery sends the same logical event through the Meta Conversions API. Conceptually:
 
 ```javascript
-// POST https://graph.facebook.com/v19.0/{pixel-id}/events
 {
   "data": [{
     "event_name": "StartTrial",
     "event_time": 1700000000,
-    "event_id": "trial-abc123",     // deduplication ID
+    "event_id": "trial-abc123",
     "action_source": "website"
   }]
 }
 ```
 
-When `delivery` is `both`, the same logical conversion event is sent through
-both the browser Pixel **and** the Conversions API. Providers require a stable
-`event_id` that matches between the browser and server payloads to deduplicate
-the event. Choose a value derived from the user session or server-generated
-event ID.
+For `delivery: both`, use the same stable `event_id` in browser and server payloads so Meta can deduplicate the conversion.
 
----
+When the Pixel/Dataset resource has not yet been applied, `agoraform integrations` prints `(not yet applied)` without requiring Meta credentials.
 
 ## Complete example
 
@@ -195,7 +156,8 @@ resources:
 applicationEvents:
   trial_started:
     matomo:
-      event: trialStarted
+      trigger:
+        $ref: matomo.trigger.trial_started
       fields:
         - userId
     googleAds:
@@ -208,20 +170,15 @@ applicationEvents:
       delivery: both
 ```
 
----
+## Inspecting the contract
 
-## Inspecting the integration contract
-
-```
+```text
 agoraform integrations
 ```
 
-The `integrations` command reads the manifest and live provider state to
-display the non-secret identifiers that application instrumentation must use.
+Example output:
 
-Example output after `agoraform apply`:
-
-```
+```text
 Application event: trial_started
 
 Matomo
@@ -240,29 +197,34 @@ Meta
   Delivery: both
 ```
 
-For resources that have not yet been applied, the command shows
-`(not yet applied)` instead of provider identifiers.
+`integrations` validates manifest-level references offline first. It contacts a provider only when local state contains an identity for a referenced resource and live provider output must be resolved.
 
----
+## Plan and apply lifecycle
 
-## Lifecycle
+Application contracts are not remote provider resources, but changes to them can change what external application code must emit. Agoraform therefore records a **non-secret fingerprint** of each successfully applied application contract in local state.
+
+`agoraform plan` reports contract changes separately from provider-resource changes:
+
+```text
+Application integration changes:
+  ~ applicationEvents.trial_started
+```
+
+The section can show `+`, `~`, or `-` for added, changed, or removed contracts. A contract-only change makes `plan` return the normal "changes present" exit code (`2`).
+
+`agoraform apply` performs provider mutations first. Only after they succeed does it record the new application-contract fingerprints in local state. The fingerprints contain no credentials, provider secrets, or PII.
 
 | Command | Behaviour |
 | --- | --- |
-| `validate` | Validates event contracts; reports invalid references, wrong resource types, and missing required fields without contacting providers. |
-| `plan` | Makes changes to provider resources visible. Event contracts themselves are not provider resources. |
-| `apply` | Configures only the managed provider resources. Never edits application code. |
-| `integrations` | Reads the manifest and provider state to display the non-secret identifiers application instrumentation must use. |
-| `import` | Preserves existing provider relationships. |
+| `validate` | Validates application-event syntax, references, resource types, and the Matomo trigger relationship without contacting providers. |
+| `plan` | Shows provider-resource changes plus externally consumed application-contract changes. |
+| `apply` | Applies provider resources, then records the successfully applied contract fingerprints locally. Never edits application code. |
+| `integrations` | Shows the current contract and resolves live non-secret IDs only for resources that already have state identities. |
+| `import` | Imports provider identities; those identities can immediately be used by `integrations`. |
 | `destroy` | Removes only provider resources Agoraform owns; never edits application code. |
-
----
 
 ## Security
 
-- The `applicationEvents` block never contains secrets.
-- Access tokens, API secrets, user PII, and other sensitive values must not
-  appear in manifests, `applicationEvents` declarations, or integration output.
-- `agoraform integrations` displays only the provider identifiers (numeric IDs,
-  conversion labels) that are intrinsically public — the same values a
-  developer would find in their provider dashboard.
+- `applicationEvents` must never contain access tokens, API secrets, customer PII, or other sensitive runtime values.
+- Local application-event state stores only SHA-256 fingerprints of the declared external contract.
+- `agoraform integrations` whitelists the specific non-secret provider outputs it needs instead of dumping provider state.
