@@ -69,6 +69,7 @@ func NewRootCommandWithRegistry(streams IOStreams, reg *provider.Registry) *cobr
 	cmd.AddCommand(newApplyCommand(reg))
 	cmd.AddCommand(newDestroyCommand(reg))
 	cmd.AddCommand(newImportCommand(reg))
+	cmd.AddCommand(newIntegrationsCommand(reg))
 
 	return cmd
 }

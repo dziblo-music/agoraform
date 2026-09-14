@@ -44,6 +44,13 @@ type Manifest struct {
 	// Assets is optional local-file source configuration. An omitted or
 	// empty block is valid and keeps existing manifests backward compatible.
 	Assets Assets
+
+	// ApplicationEvents is the optional provider-neutral instrumentation
+	// contract. Each key is a logical application event name; the value
+	// describes the provider-side bindings the application must satisfy to
+	// connect its event emission to the managed marketing infrastructure.
+	// An omitted or empty block is valid.
+	ApplicationEvents map[string]ApplicationEvent
 }
 
 // Assets is provider-neutral local file source configuration.
@@ -54,10 +61,11 @@ type Assets struct {
 }
 
 type rawManifest struct {
-	APIVersion string                    `yaml:"apiVersion"`
-	Providers  map[string]map[string]any `yaml:"providers"`
-	Assets     map[string]any            `yaml:"assets"`
-	Resources  []rawResource             `yaml:"resources"`
+	APIVersion        string                    `yaml:"apiVersion"`
+	Providers         map[string]map[string]any `yaml:"providers"`
+	Assets            map[string]any            `yaml:"assets"`
+	Resources         []rawResource             `yaml:"resources"`
+	ApplicationEvents map[string]any            `yaml:"applicationEvents"`
 }
 
 type rawResource struct {
@@ -138,12 +146,18 @@ func Parse(data []byte, origin string) (*Manifest, error) {
 		return nil, fmt.Errorf("%s: %w", origin, err)
 	}
 
+	appEvents, err := parseApplicationEvents(origin, raw.ApplicationEvents)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Manifest{
-		Origin:     origin,
-		APIVersion: raw.APIVersion,
-		Providers:  providers,
-		Resources:  resources,
-		Assets:     assets,
+		Origin:            origin,
+		APIVersion:        raw.APIVersion,
+		Providers:         providers,
+		Resources:         resources,
+		Assets:            assets,
+		ApplicationEvents: appEvents,
 	}, nil
 }
 

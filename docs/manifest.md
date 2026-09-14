@@ -25,6 +25,7 @@ resources:
 | `providers` | no | Non-secret provider-specific desired state. |
 | `assets` | no | Optional local-file source configuration. |
 | `resources` | no | Desired managed resources. Omitted/empty is valid. |
+| `applicationEvents` | no | Provider-neutral instrumentation contracts. See [Application instrumentation contracts](application-events.md). |
 
 Provider credentials, tokens, passwords, and other secrets must never be put
 in the manifest. They belong in runtime configuration such as environment

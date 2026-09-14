@@ -30,14 +30,22 @@ func CheckProviders(ctx context.Context, m *Manifest, reg *provider.Registry) er
 	if err := BindLocalAssets(m); err != nil {
 		return err
 	}
-	if reg == nil || reg.Len() == 0 {
-		return nil
-	}
 
 	origin := m.Origin
 	if origin == "" {
 		origin = "manifest"
 	}
+
+	// Application event contracts reference manifest resources only; validate
+	// them regardless of whether provider credentials are configured.
+	if err := validateApplicationEvents(origin, m.ApplicationEvents, m.Resources); err != nil {
+		return err
+	}
+
+	if reg == nil || reg.Len() == 0 {
+		return nil
+	}
+
 
 	checked := make(map[string]struct{})
 	providerNames := make([]string, 0, len(m.Providers))
@@ -105,5 +113,6 @@ func CheckProviders(ctx context.Context, m *Manifest, reg *provider.Registry) er
 	}); err != nil {
 		return fmt.Errorf("%s: %w", origin, err)
 	}
+
 	return nil
 }
