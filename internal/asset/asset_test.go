@@ -69,6 +69,38 @@ func TestResolveDeterministicPathAndDigest(t *testing.T) {
 	}
 }
 
+func TestResolveNormalizesManifestSeparators(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "nested", "hero.jpg"), []byte("hero"))
+	root, err := asset.NewRoot(dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := root.Resolve(`nested\hero.jpg`)
+	if err != nil {
+		t.Fatalf("Resolve backslash path: %v", err)
+	}
+	if got.Path != "nested/hero.jpg" {
+		t.Fatalf("Path = %q, want nested/hero.jpg", got.Path)
+	}
+}
+
+func TestResolveRejectsBackslashTraversal(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	root, err := asset.NewRoot(dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = root.Resolve(`..\secret.txt`)
+	if err == nil || !strings.Contains(err.Error(), "escapes the asset root") {
+		t.Fatalf("error = %v, want traversal rejection", err)
+	}
+}
+
 func TestResolveDetectsContentChange(t *testing.T) {
 	t.Parallel()
 
@@ -193,6 +225,50 @@ func TestResolveConfiguredRoot(t *testing.T) {
 	}
 	if !strings.HasPrefix(got.MediaType, "image/jpeg") {
 		t.Fatalf("MediaType = %q, want jpeg", got.MediaType)
+	}
+}
+
+func TestConfiguredRootNormalizesManifestSeparators(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "assets", "media", "hero.jpg"), []byte("hero"))
+	root, err := asset.NewRoot(dir, `assets\media`)
+	if err != nil {
+		t.Fatalf("NewRoot backslash path: %v", err)
+	}
+	if root.Display != "assets/media" {
+		t.Fatalf("Display = %q, want assets/media", root.Display)
+	}
+	if _, err := root.Resolve("hero.jpg"); err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+}
+
+func TestConfiguredRootRejectsBackslashTraversal(t *testing.T) {
+	t.Parallel()
+
+	_, err := asset.NewRoot(t.TempDir(), `..\outside`)
+	if err == nil || !strings.Contains(err.Error(), "escapes the manifest directory") {
+		t.Fatalf("error = %v, want traversal rejection", err)
+	}
+}
+
+func TestConfiguredRootRejectsSymlinkEscape(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	outside := t.TempDir()
+	link := filepath.Join(dir, "assets")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlinks not available: %v", err)
+	}
+	_, err := asset.NewRoot(dir, "assets")
+	if err == nil || !strings.Contains(err.Error(), "escapes the manifest directory through a symlink") {
+		t.Fatalf("error = %v, want configured-root symlink rejection", err)
+	}
+	if strings.Contains(err.Error(), outside) {
+		t.Fatalf("error leaked symlink target path: %v", err)
 	}
 }
 
