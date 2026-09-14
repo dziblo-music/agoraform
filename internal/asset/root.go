@@ -3,6 +3,7 @@ package asset
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -16,9 +17,10 @@ type Root struct {
 
 // NewRoot resolves the asset root against the manifest directory.
 //
-// configured is the optional assets.root value. Relative roots are joined
-// with baseDir, which must be the directory containing the selected
-// manifest. Absolute roots are rejected because they are not portable.
+// configured is the optional assets.root value. Manifest paths always use
+// slash semantics, independent of the host OS. Relative roots are joined with
+// baseDir, which must be the directory containing the selected manifest.
+// Absolute roots are rejected because they are not portable.
 func NewRoot(baseDir, configured string) (Root, error) {
 	baseDir = strings.TrimSpace(baseDir)
 	if baseDir == "" {
@@ -36,34 +38,49 @@ func NewRoot(baseDir, configured string) (Root, error) {
 	configured = strings.TrimSpace(configured)
 	display := "."
 	dir := baseAbs
-	if configured != "" && configured != "." {
+	if configured != "" {
 		if isForbiddenAbsolute(configured) {
 			return Root{}, fmt.Errorf("assets.root must be a path relative to the manifest directory; absolute paths are not portable")
 		}
-		cleaned := filepath.Clean(configured)
-		if escapesParent(cleaned) {
-			return Root{}, fmt.Errorf("assets.root %q escapes the manifest directory", slashPath(configured))
+		cleaned := slashPath(configured)
+		if cleaned == "." {
+			return Root{Display: display, dir: dir}, nil
 		}
-		dir = filepath.Join(baseAbs, cleaned)
+		if escapesParent(cleaned) {
+			return Root{}, fmt.Errorf("assets.root %q escapes the manifest directory", cleaned)
+		}
+		dir = filepath.Join(baseAbs, filepath.FromSlash(cleaned))
 		abs, err := filepath.Abs(dir)
 		if err != nil {
-			return Root{}, fmt.Errorf("cannot resolve assets.root %q", slashPath(cleaned))
+			return Root{}, fmt.Errorf("cannot resolve assets.root %q", cleaned)
 		}
 		if err := containPath(baseAbs, abs); err != nil {
-			return Root{}, fmt.Errorf("assets.root %q escapes the manifest directory", slashPath(cleaned))
+			return Root{}, fmt.Errorf("assets.root %q escapes the manifest directory", cleaned)
 		}
 		info, err := os.Stat(abs)
 		if err != nil {
 			if os.IsNotExist(err) {
-				return Root{}, fmt.Errorf("assets.root %q does not exist", slashPath(cleaned))
+				return Root{}, fmt.Errorf("assets.root %q does not exist", cleaned)
 			}
-			return Root{}, fmt.Errorf("cannot access assets.root %q", slashPath(cleaned))
+			return Root{}, fmt.Errorf("cannot access assets.root %q", cleaned)
 		}
 		if !info.IsDir() {
-			return Root{}, fmt.Errorf("assets.root %q is not a directory", slashPath(cleaned))
+			return Root{}, fmt.Errorf("assets.root %q is not a directory", cleaned)
 		}
-		dir = abs
-		display = slashPath(cleaned)
+
+		resolvedBase, err := evalExisting(baseAbs)
+		if err != nil {
+			return Root{}, fmt.Errorf("cannot resolve manifest directory")
+		}
+		resolvedRoot, err := evalExisting(abs)
+		if err != nil {
+			return Root{}, fmt.Errorf("cannot resolve assets.root %q", cleaned)
+		}
+		if err := containPath(resolvedBase, resolvedRoot); err != nil {
+			return Root{}, fmt.Errorf("assets.root %q escapes the manifest directory through a symlink", cleaned)
+		}
+		dir = resolvedRoot
+		display = cleaned
 	}
 	return Root{Display: display, dir: dir}, nil
 }
@@ -72,23 +89,21 @@ func isForbiddenAbsolute(p string) bool {
 	if filepath.IsAbs(p) {
 		return true
 	}
-	if strings.HasPrefix(p, "/") || strings.HasPrefix(p, "\\") {
+	normalized := strings.ReplaceAll(p, "\\", "/")
+	if strings.HasPrefix(normalized, "/") {
 		return true
 	}
-	if len(p) >= 2 && p[1] == ':' {
+	if len(normalized) >= 2 && normalized[1] == ':' {
 		return true
 	}
 	return false
 }
 
-func escapesParent(cleaned string) bool {
-	if cleaned == ".." {
-		return true
-	}
-	sep := string(filepath.Separator)
-	return strings.HasPrefix(cleaned, ".."+sep)
+func escapesParent(p string) bool {
+	cleaned := slashPath(p)
+	return cleaned == ".." || strings.HasPrefix(cleaned, "../")
 }
 
 func slashPath(p string) string {
-	return filepath.ToSlash(filepath.Clean(p))
+	return path.Clean(strings.ReplaceAll(p, "\\", "/"))
 }
