@@ -9,6 +9,11 @@ import (
 
 const baseManifest = `apiVersion: agoraform.io/v1alpha1
 resources:
+  - address: matomo.trigger.trial_started
+    attributes:
+      type: customEvent
+      event: trialStarted
+      name: Trial started
   - address: googleads.conversion_action.trial_started
     attributes:
       name: Trial Started
@@ -23,12 +28,12 @@ resources:
 
 func TestParseApplicationEvents_Valid(t *testing.T) {
 	t.Parallel()
-
 	yaml := baseManifest + `
 applicationEvents:
   trial_started:
     matomo:
-      event: trialStarted
+      trigger:
+        $ref: matomo.trigger.trial_started
       fields:
         - userId
     googleAds:
@@ -44,80 +49,54 @@ applicationEvents:
 	if err != nil {
 		t.Fatalf("unexpected parse error: %v", err)
 	}
-	if len(m.ApplicationEvents) != 1 {
-		t.Fatalf("applicationEvents count = %d, want 1", len(m.ApplicationEvents))
+	if err := manifest.CheckApplicationEvents(m); err != nil {
+		t.Fatalf("unexpected event validation error: %v", err)
 	}
-	evt, ok := m.ApplicationEvents["trial_started"]
-	if !ok {
-		t.Fatal("expected event trial_started not found")
-	}
-
+	evt := m.ApplicationEvents["trial_started"]
 	if evt.Name != "trial_started" {
 		t.Errorf("Name = %q, want trial_started", evt.Name)
 	}
-
-	// Matomo
-	if evt.Matomo == nil {
-		t.Fatal("Matomo binding is nil")
+	if evt.Matomo == nil || evt.Matomo.Trigger.Address.String() != "matomo.trigger.trial_started" {
+		t.Fatalf("unexpected Matomo binding: %#v", evt.Matomo)
 	}
 	if evt.Matomo.Event != "trialStarted" {
-		t.Errorf("Matomo.Event = %q, want trialStarted", evt.Matomo.Event)
+		t.Errorf("derived Matomo.Event = %q, want trialStarted", evt.Matomo.Event)
 	}
 	if len(evt.Matomo.Fields) != 1 || evt.Matomo.Fields[0] != "userId" {
 		t.Errorf("Matomo.Fields = %v, want [userId]", evt.Matomo.Fields)
 	}
-
-	// Google Ads
-	if evt.GoogleAds == nil {
-		t.Fatal("GoogleAds binding is nil")
+	if evt.GoogleAds == nil || evt.GoogleAds.Conversion.Address.String() != "googleads.conversion_action.trial_started" {
+		t.Fatalf("unexpected Google Ads binding: %#v", evt.GoogleAds)
 	}
-	if evt.GoogleAds.Conversion.Address.String() != "googleads.conversion_action.trial_started" {
-		t.Errorf("GoogleAds.Conversion = %s", evt.GoogleAds.Conversion.Address)
+	if evt.Meta == nil || evt.Meta.EventSource.Address.String() != "meta.pixel.main" {
+		t.Fatalf("unexpected Meta binding: %#v", evt.Meta)
 	}
-
-	// Meta
-	if evt.Meta == nil {
-		t.Fatal("Meta binding is nil")
-	}
-	if evt.Meta.EventSource.Address.String() != "meta.pixel.main" {
-		t.Errorf("Meta.EventSource = %s", evt.Meta.EventSource.Address)
-	}
-	if evt.Meta.EventName != "StartTrial" {
-		t.Errorf("Meta.EventName = %q, want StartTrial", evt.Meta.EventName)
-	}
-	if evt.Meta.Delivery != manifest.DeliveryBoth {
-		t.Errorf("Meta.Delivery = %q, want both", evt.Meta.Delivery)
+	if evt.Meta.EventName != "StartTrial" || evt.Meta.Delivery != manifest.DeliveryBoth {
+		t.Errorf("unexpected Meta contract: %#v", evt.Meta)
 	}
 }
 
 func TestParseApplicationEvents_MatomoOnly(t *testing.T) {
 	t.Parallel()
-
 	yaml := baseManifest + `
 applicationEvents:
   page_view:
     matomo:
-      event: pageView
+      trigger:
+        $ref: matomo.trigger.trial_started
 `
 	m, err := manifest.Parse([]byte(yaml), "test")
 	if err != nil {
 		t.Fatalf("unexpected parse error: %v", err)
 	}
 	evt := m.ApplicationEvents["page_view"]
-	if evt.Matomo == nil {
-		t.Fatal("Matomo binding is nil")
-	}
-	if evt.GoogleAds != nil {
-		t.Error("GoogleAds should be nil for matomo-only event")
-	}
-	if evt.Meta != nil {
-		t.Error("Meta should be nil for matomo-only event")
+	if evt.Matomo == nil || evt.GoogleAds != nil || evt.Meta != nil {
+		t.Fatalf("unexpected bindings: %#v", evt)
 	}
 }
 
 func TestParseApplicationEvents_DefaultDelivery(t *testing.T) {
 	t.Parallel()
-
 	yaml := baseManifest + `
 applicationEvents:
   checkout:
@@ -130,20 +109,14 @@ applicationEvents:
 	if err != nil {
 		t.Fatalf("unexpected parse error: %v", err)
 	}
-	evt := m.ApplicationEvents["checkout"]
-	if evt.Meta == nil {
-		t.Fatal("Meta binding is nil")
-	}
-	if evt.Meta.Delivery != manifest.DeliveryBrowser {
-		t.Errorf("default Delivery = %q, want browser", evt.Meta.Delivery)
+	if got := m.ApplicationEvents["checkout"].Meta.Delivery; got != manifest.DeliveryBrowser {
+		t.Errorf("default Delivery = %q, want browser", got)
 	}
 }
 
 func TestParseApplicationEvents_Empty(t *testing.T) {
 	t.Parallel()
-
-	yaml := baseManifest
-	m, err := manifest.Parse([]byte(yaml), "test")
+	m, err := manifest.Parse([]byte(baseManifest), "test")
 	if err != nil {
 		t.Fatalf("unexpected parse error: %v", err)
 	}
@@ -154,12 +127,12 @@ func TestParseApplicationEvents_Empty(t *testing.T) {
 
 func TestParseApplicationEvents_MultipleEvents(t *testing.T) {
 	t.Parallel()
-
 	yaml := baseManifest + `
 applicationEvents:
   trial_started:
     matomo:
-      event: trialStarted
+      trigger:
+        $ref: matomo.trigger.trial_started
   purchase:
     meta:
       eventSource:
@@ -178,117 +151,28 @@ applicationEvents:
 
 func TestParseApplicationEvents_Errors(t *testing.T) {
 	t.Parallel()
-
 	cases := []struct {
 		name    string
 		yaml    string
 		wantSub string
 	}{
-		{
-			name: "no provider bindings",
-			yaml: baseManifest + `
-applicationEvents:
-  trial_started: {}
-`,
-			wantSub: "at least one provider binding",
-		},
-		{
-			name: "matomo missing event",
-			yaml: baseManifest + `
-applicationEvents:
-  trial_started:
-    matomo:
-      fields:
-        - userId
-`,
-			wantSub: "event is required",
-		},
-		{
-			name: "matomo empty event",
-			yaml: baseManifest + `
-applicationEvents:
-  trial_started:
-    matomo:
-      event: ""
-`,
-			wantSub: "event must not be empty",
-		},
-		{
-			name: "googleAds missing conversion",
-			yaml: baseManifest + `
-applicationEvents:
-  trial_started:
-    googleAds: {}
-`,
-			wantSub: "conversion is required",
-		},
-		{
-			name: "googleAds conversion not a ref",
-			yaml: baseManifest + `
-applicationEvents:
-  trial_started:
-    googleAds:
-      conversion: "not-a-ref"
-`,
-			wantSub: "conversion must be a resource reference",
-		},
-		{
-			name: "meta missing eventSource",
-			yaml: baseManifest + `
-applicationEvents:
-  trial_started:
-    meta:
-      eventName: StartTrial
-`,
-			wantSub: "eventSource is required",
-		},
-		{
-			name: "meta missing eventName",
-			yaml: baseManifest + `
-applicationEvents:
-  trial_started:
-    meta:
-      eventSource:
-        $ref: meta.pixel.main
-`,
-			wantSub: "eventName is required",
-		},
-		{
-			name: "meta invalid delivery",
-			yaml: baseManifest + `
-applicationEvents:
-  trial_started:
-    meta:
-      eventSource:
-        $ref: meta.pixel.main
-      eventName: StartTrial
-      delivery: api
-`,
-			wantSub: "delivery must be browser, server, or both",
-		},
-		{
-			name: "unknown field",
-			yaml: baseManifest + `
-applicationEvents:
-  trial_started:
-    matomo:
-      event: trialStarted
-    unknown: {}
-`,
-			wantSub: "unknown field",
-		},
+		{"no provider bindings", baseManifest + "\napplicationEvents:\n  trial_started: {}\n", "at least one provider binding"},
+		{"matomo missing trigger", baseManifest + "\napplicationEvents:\n  trial_started:\n    matomo:\n      fields: [userId]\n", "trigger is required"},
+		{"matomo trigger not ref", baseManifest + "\napplicationEvents:\n  trial_started:\n    matomo:\n      trigger: nope\n", "trigger must be a resource reference"},
+		{"matomo copied event rejected", baseManifest + "\napplicationEvents:\n  trial_started:\n    matomo:\n      event: trialStarted\n", "unknown field"},
+		{"googleAds missing conversion", baseManifest + "\napplicationEvents:\n  trial_started:\n    googleAds: {}\n", "conversion is required"},
+		{"googleAds conversion not ref", baseManifest + "\napplicationEvents:\n  trial_started:\n    googleAds:\n      conversion: nope\n", "conversion must be a resource reference"},
+		{"meta missing eventSource", baseManifest + "\napplicationEvents:\n  trial_started:\n    meta:\n      eventName: StartTrial\n", "eventSource is required"},
+		{"meta missing eventName", baseManifest + "\napplicationEvents:\n  trial_started:\n    meta:\n      eventSource:\n        $ref: meta.pixel.main\n", "eventName is required"},
+		{"meta invalid delivery", baseManifest + "\napplicationEvents:\n  trial_started:\n    meta:\n      eventSource:\n        $ref: meta.pixel.main\n      eventName: StartTrial\n      delivery: api\n", "delivery must be browser, server, or both"},
 	}
-
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := manifest.Parse([]byte(tc.yaml), "test")
-			if err == nil {
-				t.Fatal("expected error, got nil")
-			}
-			if !strings.Contains(err.Error(), tc.wantSub) {
-				t.Errorf("error = %q, want substring %q", err.Error(), tc.wantSub)
+			if err == nil || !strings.Contains(err.Error(), tc.wantSub) {
+				t.Fatalf("error = %v, want substring %q", err, tc.wantSub)
 			}
 		})
 	}
@@ -296,20 +180,16 @@ applicationEvents:
 
 func TestApplicationEventNames_Sorted(t *testing.T) {
 	t.Parallel()
-
 	events := map[string]manifest.ApplicationEvent{
 		"z_event": {Name: "z_event"},
 		"a_event": {Name: "a_event"},
 		"m_event": {Name: "m_event"},
 	}
-	names := manifest.ApplicationEventNames(events)
+	got := manifest.ApplicationEventNames(events)
 	want := []string{"a_event", "m_event", "z_event"}
-	if len(names) != len(want) {
-		t.Fatalf("len = %d, want %d", len(names), len(want))
-	}
-	for i, n := range names {
-		if n != want[i] {
-			t.Errorf("names[%d] = %q, want %q", i, n, want[i])
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("names[%d] = %q, want %q", i, got[i], want[i])
 		}
 	}
 }
