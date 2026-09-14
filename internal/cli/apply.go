@@ -26,7 +26,8 @@ and the application integration contract before any mutation. Creates and
 updates run sequentially in prerequisite-first order. Provider finalization
 actions that were visible in the plan run only after every resource mutation
 succeeds. Application integration contracts are recorded locally only after a
-successful apply so subsequent plans can show contract-only changes.
+successful apply so subsequent plans can show contract-only changes. apply never
+deletes remote resources; removal remains an explicit destroy operation.
 
 Provider identities and application-contract fingerprints are persisted in
 agoraform.state.json next to the manifest.
