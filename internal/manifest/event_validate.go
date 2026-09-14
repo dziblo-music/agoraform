@@ -8,9 +8,9 @@ import (
 )
 
 const (
-	knownMatomoTriggerType              = "trigger"
+	knownMatomoTriggerType             = "trigger"
 	knownGoogleAdsConversionActionType = "conversion_action"
-	knownMetaPixelType                  = "pixel"
+	knownMetaPixelType                 = "pixel"
 )
 
 // CheckApplicationEvents validates only the provider-neutral application event
