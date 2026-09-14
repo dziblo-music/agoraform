@@ -59,6 +59,7 @@ and history are out of scope.
 | `resources` | Map of logical addresses to identity records. |
 | `provider` | Provider name. Must match the address provider segment. |
 | `remoteId` | Opaque provider-native identity. |
+| `fingerprint` | Optional non-secret content fingerprint. |
 
 Provider-native IDs are not assumed to be globally unique across all resource
 types. Duplicate ownership is rejected within the same provider and resource
@@ -69,6 +70,17 @@ Serialization is deterministic. Writes create and sync a private temporary
 file beside the destination, then atomically replace the prior state. A failed
 replacement leaves the previous valid state untouched; Agoraform never uses a
 delete-then-rename fallback.
+
+Providers that upload local files may persist a SHA-256 content fingerprint
+when a remote read cannot reconstruct equivalent content identity. State
+never stores file bytes or absolute local paths. A project-relative path
+lives in the manifest, not in state. Resources that do not use local assets
+keep the same identity records as before.
+
+If a provider's remote media object is immutable and a changed local file
+would require a different remote identity, that provider must not silently
+rebind identity through an ordinary update. It may fail planning with
+guidance to declare a new logical media resource.
 
 ## Plan
 

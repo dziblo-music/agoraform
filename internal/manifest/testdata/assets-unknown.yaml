@@ -1,0 +1,5 @@
+apiVersion: agoraform.io/v1alpha1
+assets:
+  root: ./media
+  extra: nope
+resources: []

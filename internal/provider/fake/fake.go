@@ -7,9 +7,11 @@ package fake
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 
+	"github.com/dziblo-music/agoraform/internal/asset"
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/resource"
 )
@@ -212,12 +214,27 @@ func (p *Provider) Validate(_ context.Context, res resource.Resource) error {
 			return err
 		}
 	}
+	if src, exists := res.Attributes[asset.AttrName]; exists {
+		if err := validateSource(res, src); err != nil {
+			return err
+		}
+	}
 	for key := range res.Attributes {
 		switch key {
-		case AttrTitle, AttrColor, AttrParent, AttrAlso, AttrLabel:
+		case AttrTitle, AttrColor, AttrParent, AttrAlso, AttrLabel, asset.AttrName:
 		default:
 			return fmt.Errorf("resource %s: unknown attribute %q", res.Address, key)
 		}
+	}
+	return nil
+}
+
+func validateSource(res resource.Resource, src any) error {
+	if _, _, err := asset.SourceFile(resource.Attributes{asset.AttrName: src}); err != nil {
+		return fmt.Errorf("resource %s: %w", res.Address, err)
+	}
+	if res.LocalAsset == nil {
+		return fmt.Errorf("resource %s: local source was not resolved", res.Address)
 	}
 	return nil
 }
@@ -250,6 +267,10 @@ func (p *Provider) Create(ctx context.Context, res resource.Resource) (resource.
 	if err := p.Validate(ctx, res); err != nil {
 		return resource.RemoteResource{}, err
 	}
+	attrs, fingerprint, err := storeLocalAsset(res)
+	if err != nil {
+		return resource.RemoteResource{}, err
+	}
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -263,9 +284,12 @@ func (p *Provider) Create(ctx context.Context, res resource.Resource) (resource.
 	p.nextSerial++
 	id := fmt.Sprintf("widget-%d", p.nextID)
 	remote := resource.RemoteResource{
-		Address:    res.Address,
-		Identity:   resource.Identity{ID: id},
-		Attributes: logicalAttributes(res.Attributes),
+		Address: res.Address,
+		Identity: resource.Identity{
+			ID:          id,
+			Fingerprint: fingerprint,
+		},
+		Attributes: attrs,
 		Computed: resource.Attributes{
 			AttrSerial:  p.nextSerial,
 			OutputToken: "tok-" + res.Address.Name,
@@ -282,6 +306,10 @@ func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual
 	}
 	if desired.Address.String() != actual.Address.String() {
 		return resource.RemoteResource{}, fmt.Errorf("update address mismatch: desired %s, actual %s", desired.Address, actual.Address)
+	}
+	attrs, fingerprint, err := storeLocalAsset(desired)
+	if err != nil {
+		return resource.RemoteResource{}, err
 	}
 
 	p.mu.Lock()
@@ -302,7 +330,8 @@ func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual
 	}
 
 	p.nextSerial++
-	existing.Attributes = logicalAttributes(desired.Attributes)
+	existing.Attributes = attrs
+	existing.Identity.Fingerprint = fingerprint
 	if existing.Computed == nil {
 		existing.Computed = resource.Attributes{}
 	}
@@ -386,6 +415,30 @@ func validateReference(addr resource.Address, attr string, v any) error {
 // logicalAttributes stores comparable configuration, converting runtime
 // Resolved bindings back to logical Refs so later plans do not treat
 // identities as attribute drift.
+func storeLocalAsset(res resource.Resource) (resource.Attributes, string, error) {
+	attrs := logicalAttributes(res.Attributes)
+	if res.LocalAsset == nil {
+		return attrs, "", nil
+	}
+	rc, err := res.LocalAsset.Open()
+	if err != nil {
+		return nil, "", fmt.Errorf("resource %s: cannot open local asset %q: %w", res.Address, res.LocalAsset.Path, err)
+	}
+	n, err := io.Copy(io.Discard, rc)
+	closeErr := rc.Close()
+	if err != nil {
+		return nil, "", fmt.Errorf("resource %s: cannot stream local asset %q: %w", res.Address, res.LocalAsset.Path, err)
+	}
+	if closeErr != nil {
+		return nil, "", fmt.Errorf("resource %s: cannot close local asset %q: %w", res.Address, res.LocalAsset.Path, closeErr)
+	}
+	if n != res.LocalAsset.Size {
+		return nil, "", fmt.Errorf("resource %s: streamed %d bytes from %q, want %d", res.Address, n, res.LocalAsset.Path, res.LocalAsset.Size)
+	}
+	attrs[asset.AttrName] = map[string]any{asset.AttrFile: res.LocalAsset.Path}
+	return attrs, res.LocalAsset.Digest, nil
+}
+
 func logicalAttributes(attrs resource.Attributes) resource.Attributes {
 	return replaceResolvedWithRef(attrs.Clone()).(resource.Attributes)
 }

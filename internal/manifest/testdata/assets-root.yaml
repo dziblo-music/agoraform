@@ -1,0 +1,7 @@
+apiVersion: agoraform.io/v1alpha1
+assets:
+  root: ./media
+resources:
+  - address: fake.widget.homepage
+    attributes:
+      title: Homepage banner

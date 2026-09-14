@@ -3,7 +3,9 @@
 //
 // Desired resources come from configuration. Remote resources are reported by
 // providers and may include a provider-native identity plus computed
-// (read-only) attributes that are not set in configuration.
+// (read-only) attributes that are not set in configuration. LocalAsset is a
+// resolved local file descriptor attached by core; it is not configuration
+// and never carries file bytes.
 //
 // Ref is a first-class reference to another logical resource address. It is
 // configuration, not a provider-native identity. An optional Output selector

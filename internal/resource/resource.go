@@ -26,10 +26,15 @@ func (a Attributes) Clone() Attributes {
 // Identity is not configuration. Core code may attach a persisted
 // provider-native identity from local state before calling a provider.
 // Manifests must not declare identity fields.
+//
+// LocalAsset is a resolved local file source attached by core. It is not
+// configuration, is never serialized into YAML or state, and must not carry
+// file bytes. Providers stream content through LocalAsset.Open during apply.
 type Resource struct {
 	Address    Address
 	Identity   Identity
 	Attributes Attributes
+	LocalAsset *LocalAsset
 }
 
 // RemoteResource is a provider-reported live resource.
