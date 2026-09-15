@@ -88,7 +88,7 @@ func (c *Client) UploadVideoResumable(ctx context.Context, path, filename string
 			transferred = videoUploadOffsets{}
 			transferErr = c.postVideoMultipartStream(ctx, path, url.Values{
 				"upload_phase":      {"transfer"},
-				"start_offset":     {strconv.FormatInt(start, 10)},
+				"start_offset":      {strconv.FormatInt(start, 10)},
 				"upload_session_id": {sessionID},
 			}, "video_file_chunk", filename, io.LimitReader(rc, chunkSize), chunkSize, &transferred)
 			_ = rc.Close()
