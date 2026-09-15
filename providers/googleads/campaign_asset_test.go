@@ -456,7 +456,7 @@ func TestUpdateCampaignAssetStatus(t *testing.T) {
 	}
 }
 
-func TestDestroyCampaignAssetThenAsset(t *testing.T) {
+func TestDestroyCampaignAssetAndPreserveAsset(t *testing.T) {
 	t.Parallel()
 
 	fake := newAssetFake()
@@ -471,9 +471,12 @@ func TestDestroyCampaignAssetThenAsset(t *testing.T) {
 
 	assetRes := imageAssetResource(t, "product_image", localPNG(t, "pic.png", 128, 128))
 	assetRes.Identity = resource.Identity{ID: "81", Fingerprint: "abc"}
-	_, err := p.Destroy(context.Background(), assetRes)
-	if err == nil || !strings.Contains(err.Error(), "campaign_asset") {
-		t.Fatalf("Destroy asset = %v, want attached relationship refusal", err)
+	capability, err := p.DestroyCapability(assetRes)
+	if err != nil {
+		t.Fatalf("DestroyCapability asset: %v", err)
+	}
+	if capability != provider.DestroyUnsupported {
+		t.Fatalf("asset capability = %q, want unsupported", capability)
 	}
 
 	link := campaignAssetResource(t, "product_image", resource.Attributes{
@@ -490,11 +493,11 @@ func TestDestroyCampaignAssetThenAsset(t *testing.T) {
 		t.Fatalf("status = %q", result.Status)
 	}
 
-	again, err := p.Destroy(context.Background(), assetRes)
-	if err != nil {
-		t.Fatalf("Destroy asset after detach: %v", err)
+	if _, err := p.Destroy(context.Background(), assetRes); err == nil || !strings.Contains(err.Error(), "unsupported") {
+		t.Fatalf("Destroy asset after detach = %v, want unsupported refusal", err)
 	}
-	if again.Status != provider.DestroyStatusRemoved {
-		t.Fatalf("asset status = %q", again.Status)
+	ops := fake.operations()
+	if len(ops) != 1 || ops[0].collection != "campaignAssets" || ops[0].kind != "remove" {
+		t.Fatalf("operations = %+v, want only campaignAssets remove", ops)
 	}
 }
