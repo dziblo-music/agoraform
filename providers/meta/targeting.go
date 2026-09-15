@@ -34,7 +34,7 @@ type targetingEntity struct {
 // the audience can be used in campaigns; this avoids rejecting shared or newly
 // introduced targetable audience types solely because of a hard-coded enum.
 var unsupportedCustomAudienceSubtypes = map[string]struct{}{
-	"MEASUREMENT":        {},
+	"MEASUREMENT":         {},
 	"STUDY_RULE_AUDIENCE": {},
 }
 
