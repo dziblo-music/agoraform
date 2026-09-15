@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dziblo-music/agoraform/internal/resource"
 	"github.com/dziblo-music/agoraform/providers/meta"
 )
 
@@ -143,5 +142,3 @@ func seedTargetingReferenceDependencies(srv *graphServer) {
 		"event_source_type": "pixel",
 	})
 }
-
-var _ = resource.Attributes{}
