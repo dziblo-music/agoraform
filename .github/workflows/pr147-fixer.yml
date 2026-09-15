@@ -1,0 +1,341 @@
+name: PR 147 fixer
+
+on:
+  push:
+    branches:
+      - issue-114-googleads-image-assets
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: ${{ !contains(github.event.head_commit.message, '[skip pr147-fixer]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply review fixes
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              if old not in text:
+                  raise SystemExit(f"missing expected text for {label}")
+              return text.replace(old, new, 1)
+
+          # Asset lifecycle: exact Google Ads byte limit, no post-create Asset mutation,
+          # and friendly names are create-time metadata only because Google may dedupe
+          # identical assets and retain an existing name.
+          path = Path("providers/googleads/asset.go")
+          s = path.read_text()
+          s = replace_once(
+              s,
+              'maxImageBytes         = 5120 * 1024 // 5,120 KiB Google Ads image limit',
+              'maxImageBytes         = 5_120_000 // 5,120 KB Google Ads image limit',
+              'asset byte limit',
+          )
+          s = s.replace('Google Ads 5,120 KiB image size limit', 'Google Ads 5,120 KB image size limit')
+
+          update_start = s.index('func (p *Provider) updateAsset(')
+          update_end = s.index('func (p *Provider) importAsset(', update_start)
+          new_update = '''func (p *Provider) updateAsset(ctx context.Context, desired resource.Resource, actual resource.RemoteResource) (resource.RemoteResource, error) {
+          \tif err := p.validateAsset(desired); err != nil {
+          \t\treturn resource.RemoteResource{}, err
+          \t}
+          \tif actual.Identity.IsZero() {
+          \t\treturn resource.RemoteResource{}, fmt.Errorf("googleads: update %s: missing remote identity", desired.Address)
+          \t}
+          \tif id, bound, err := boundAssetIdentity(desired); err != nil {
+          \t\treturn resource.RemoteResource{}, err
+          \t} else if bound && id != actual.Identity.ID {
+          \t\treturn resource.RemoteResource{}, fmt.Errorf("googleads: update %s: persisted identity %q does not match planned remote identity %q", desired.Address, id, actual.Identity.ID)
+          \t}
+
+          \t// Google Ads assets are immutable after creation. normalizeAssetComparable
+          \t// rejects content/type changes and intentionally excludes the friendly name
+          \t// from post-create reconciliation because Google may deduplicate identical
+          \t// assets and retain the existing remote name.
+          \tif _, _, err := p.normalizeAssetComparable(desired, &actual); err != nil {
+          \t\treturn resource.RemoteResource{}, fmt.Errorf("googleads: update %s: %w", desired.Address, err)
+          \t}
+
+          \tlive, err := p.readAssetByID(ctx, desired.Address, actual.Identity.ID, desired)
+          \tif err != nil {
+          \t\treturn resource.RemoteResource{}, fmt.Errorf("googleads: update %s: %w", desired.Address, err)
+          \t}
+          \treturn p.rememberLive(live), nil
+          }
+
+          '''
+          s = s[:update_start] + new_update + s[update_end:]
+
+          normalize_start = s.index('func (p *Provider) normalizeAssetComparable(')
+          normalize_end = s.index('func (p *Provider) readAssetByID(', normalize_start)
+          new_normalize = '''func (p *Provider) normalizeAssetComparable(desired resource.Resource, live *resource.RemoteResource) (resource.Attributes, resource.Attributes, error) {
+          \tif err := p.validateAsset(desired); err != nil {
+          \t\treturn nil, nil, err
+          \t}
+          \twant, err := comparableAsset(desired)
+          \tif err != nil {
+          \t\treturn nil, nil, fmt.Errorf("resource %s: %w", desired.Address, err)
+          \t}
+          \tif live == nil {
+          \t\treturn want, nil, nil
+          \t}
+
+          \t// Asset.name is a create-time hint, not a declaratively mutable field.
+          \t// Google can deduplicate identical assets and keep the pre-existing name,
+          \t// so reconciling it after create would cause permanent drift.
+          \tdelete(want, AttrName)
+
+          \tif id, bound, err := boundAssetIdentity(desired); err != nil {
+          \t\treturn nil, nil, err
+          \t} else if bound {
+          \t\tif live.Identity.IsZero() || live.Identity.ID != id {
+          \t\t\treturn nil, nil, fmt.Errorf("resource %s: persisted identity %q does not match remote identity %q", desired.Address, id, live.Identity.ID)
+          \t\t}
+          \t}
+          \tgot, err := comparableAssetFromLive(desired, live)
+          \tif err != nil {
+          \t\treturn nil, nil, fmt.Errorf("resource %s: %w", desired.Address, err)
+          \t}
+          \tdelete(got, AttrName)
+          \tif err := rejectImmutableAssetChanges(desired, live, want, got); err != nil {
+          \t\treturn nil, nil, err
+          \t}
+          \treturn want, got, nil
+          }
+
+          '''
+          s = s[:normalize_start] + new_normalize + s[normalize_end:]
+          path.write_text(s)
+
+          # Asset tests: enforce the exact decimal-byte API limit and verify that
+          # a provider-retained name does not become permanent plan drift.
+          path = Path("providers/googleads/asset_test.go")
+          s = path.read_text()
+          marker = '''\t\t{
+          \t\t\tname: "computed id",'''
+          too_large = '''\t\t{
+          \t\t\tname: "image too large",
+          \t\t\tres: func() resource.Resource {
+          \t\t\t\tlocal := resource.NewLocalAsset("large.png", "sha256:large", 5_120_001, "image/png", func() (io.ReadCloser, error) {
+          \t\t\t\t\treturn io.NopCloser(strings.NewReader("")), nil
+          \t\t\t\t})
+          \t\t\t\treturn resource.Resource{
+          \t\t\t\t\tAddress:    addr,
+          \t\t\t\t\tAttributes: resource.Attributes{googleads.AttrType: "IMAGE", asset.AttrName: map[string]any{asset.AttrFile: local.Path}},
+          \t\t\t\t\tLocalAsset: &local,
+          \t\t\t\t}
+          \t\t\t}(),
+          \t\t\twant: "5,120 KB",
+          \t\t},
+          '''
+          s = replace_once(s, marker, too_large + marker, 'asset size validation test')
+
+          marker = 'func TestCreateAndReadTextAsset(t *testing.T) {'
+          name_test = '''func TestPlanImageAssetTreatsNameAsCreateTimeOnly(t *testing.T) {
+          \tt.Parallel()
+
+          \tfake := newAssetFake()
+          \tfake.seedAsset(sampleImageAsset("81", "Existing Google Name"))
+          \tp := testAssetProvider(t, fake)
+          \tlocal := localPNG(t, "google/product-ui.png", 128, 128)
+          \tres := imageAssetResource(t, "product_image", local)
+          \tres.Attributes[googleads.AttrName] = "Requested Create Name"
+          \tres.Identity = resource.Identity{ID: "81", Fingerprint: local.Digest}
+
+          \tst := mustGoogleAdsImportStore(t)
+          \tif err := st.Bind(res.Address, res.Identity); err != nil {
+          \t\tt.Fatal(err)
+          \t}
+          \tgot, err := plan.BuildWithState(context.Background(), []resource.Resource{res}, func(resource.Address) (provider.Reader, error) {
+          \t\treturn p, nil
+          \t}, st)
+          \tif err != nil {
+          \t\tt.Fatalf("plan.Build: %v", err)
+          \t}
+          \tif got.HasChanges() {
+          \t\tt.Fatalf("create-time asset name produced drift: %+v", got.Changes)
+          \t}
+          }
+
+          '''
+          s = replace_once(s, marker, name_test + marker, 'asset create-time name test')
+          path.write_text(s)
+
+          # Google Ads AssetService has no remove operation. CampaignAsset links
+          # remain removable, but the underlying Asset is explicitly unsupported.
+          path = Path("providers/googleads/destroy.go")
+          s = path.read_text()
+          old = '''\tTypeAsset: {
+          \t\tCapability:      provider.DestroyRemove,
+          \t\tCollection:      assetsCollection,
+          \t\tMutateOperation: "remove",
+          \t\tTerminalState:   "status=REMOVED",
+          \t\tAlreadyTerminal: "status=REMOVED or not found",
+          \t\tPrecondition:    "refuse remove while campaign_asset attachments still exist; detach googleads.campaign_asset resources first; mutate remove only",
+          \t},'''
+          new = '''\tTypeAsset: {
+          \t\tCapability:      provider.DestroyUnsupported,
+          \t\tAlreadyTerminal: "not applicable; object remains",
+          \t\tPrecondition:    "Google Ads AssetService does not expose remove/delete for assets; detach googleads.campaign_asset relationships instead and preserve the asset binding in state",
+          \t},'''
+          s = replace_once(s, old, new, 'asset destroy lifecycle')
+          s = replace_once(
+              s,
+              '''\tcase TypeAsset:
+          \t\treturn p.destroyAsset(ctx, res, spec)
+          \tcase TypeCampaignAsset:''',
+              '''\tcase TypeCampaignAsset:''',
+              'asset destroy dispatch',
+          )
+          start = s.index('func (p *Provider) destroyAsset(')
+          end = s.index('func (p *Provider) destroyCampaignAsset(', start)
+          s = s[:start] + s[end:]
+          path.write_text(s)
+
+          path = Path("providers/googleads/destroy_test.go")
+          s = path.read_text()
+          start_marker = '''\t\t{
+          \t\t\tname:       "asset",'''
+          end_marker = '''\t\t{
+          \t\t\tname:       "campaign_asset",'''
+          start = s.index(start_marker)
+          end = s.index(end_marker, start)
+          s = s[:start] + s[end:]
+
+          marker = 'func TestDestroyAlreadyAbsentAndAlreadyRemoved(t *testing.T) {'
+          unsupported_test = '''func TestDestroyAssetUnsupported(t *testing.T) {
+          \tt.Parallel()
+
+          \tfake := newDestroyFake()
+          \tp := testDestroyProvider(t, fake)
+          \tres := imageAssetResource(t, "product_image", localPNG(t, "pic.png", 128, 128))
+          \tres.Identity = resource.Identity{ID: "81"}
+
+          \tcapability, err := p.DestroyCapability(res)
+          \tif err != nil {
+          \t\tt.Fatalf("DestroyCapability: %v", err)
+          \t}
+          \tif capability != provider.DestroyUnsupported {
+          \t\tt.Fatalf("capability = %q, want unsupported", capability)
+          \t}
+
+          \tif _, err := p.Destroy(context.Background(), res); err == nil || !strings.Contains(err.Error(), "unsupported") {
+          \t\tt.Fatalf("Destroy = %v, want unsupported refusal", err)
+          \t}
+          \tif got := fake.operations(); len(got) != 0 {
+          \t\tt.Fatalf("unsupported asset destroy issued mutate: %+v", got)
+          \t}
+          }
+
+          '''
+          s = replace_once(s, marker, unsupported_test + marker, 'asset unsupported destroy test')
+          path.write_text(s)
+
+          # Documentation: correct lifecycle/limit semantics and normalize LF so
+          # the PR no longer rewrites whole Markdown files as CRLF churn.
+          path = Path("docs/destroy.md")
+          s = path.read_text()
+          s = replace_once(
+              s,
+              '''For Google Ads Search that
+          means ads and keywords, then campaign assets, then campaign criteria, then
+          the ad group, then the campaign, then the budget. Image assets are removed
+          only after their campaign-asset attachments are detached.''',
+              '''For Google Ads Search that
+          means ads and keywords, then campaign assets, then campaign criteria, then
+          the ad group, then the campaign, then the budget. Campaign-asset relationships
+          are detached before campaign teardown. Underlying `googleads.asset` objects
+          cannot be removed through AssetService and remain in state.''',
+              'destroy ordering docs',
+          )
+          s = replace_once(
+              s,
+              '| `googleads.asset` | remove | `assets:mutate` `remove` | `status=REMOVED` | `REMOVED` or not found | refuse while campaign-asset attachments still exist; detach first |',
+              '| `googleads.asset` | unsupported | none | object remains | not applicable | AssetService has no remove/delete operation; detach campaign-asset relationships instead |',
+              'destroy table asset row',
+          )
+          path.write_text(s, newline='\n')
+
+          path = Path("providers/googleads/README.md")
+          s = path.read_text()
+          s = s.replace('5,120 KiB', '5,120 KB')
+          s = replace_once(
+              s,
+              '| `name` | no | Optional Google Ads friendly name. Omitted names are not forced onto the remote asset. |',
+              '| `name` | no | Optional create-time Google Ads friendly name. Google may deduplicate identical assets and retain an existing remote name, so Agoraform does not reconcile `name` after creation. |',
+              'asset name docs',
+          )
+          s = replace_once(
+              s,
+              '''Unsupported asset types fail import with guidance. Destroy refuses to
+          remove an asset while `googleads.campaign_asset` attachments still
+          reference it.''',
+              '''Unsupported asset types fail import with guidance. Google Ads AssetService
+          does not expose remove/delete for assets, so `agoraform destroy` reports
+          `googleads.asset` as unsupported and preserves its state binding. Managed
+          `googleads.campaign_asset` relationships are still detached normally.''',
+              'asset import/destroy docs',
+          )
+          s = replace_once(
+              s,
+              '''Destroy detaches the campaign relationship with mutate `remove` before
+          the underlying asset is removed.''',
+              '''Destroy detaches the campaign relationship with mutate `remove`. The
+          underlying `googleads.asset` remains because AssetService has no remove/delete
+          operation.''',
+              'campaign asset destroy docs',
+          )
+          s = replace_once(
+              s,
+              '''`biddable`. Budgets are refused while `referenceCount > 0`. Campaign
+          assets are detached before the underlying `googleads.asset` is removed.''',
+              '''`biddable`. Budgets are refused while `referenceCount > 0`. Campaign
+          assets are detached normally; underlying `googleads.asset` resources are
+          unsupported for destroy and remain bound in state.''',
+              'provider destroy summary docs',
+          )
+          s = replace_once(
+              s,
+              '''- Campaign-asset attachments are detached before the underlying asset is
+          -  removed.''',
+              '''- Campaign-asset attachments are detached with mutate `remove`; the
+          -  underlying `googleads.asset` is unsupported for destroy because AssetService
+          -  exposes no remove/delete operation.''',
+              'provider safety docs',
+          ) if '''- Campaign-asset attachments are detached before the underlying asset is
+          -  removed.''' in s else s
+          # The actual bullet has no Markdown continuation dash on its second line.
+          s = s.replace(
+              '- Campaign-asset attachments are detached before the underlying asset is\n  removed.',
+              '- Campaign-asset attachments are detached with mutate `remove`; the\n  underlying `googleads.asset` is unsupported for destroy because AssetService\n  exposes no remove/delete operation.',
+          )
+          path.write_text(s, newline='\n')
+
+          # Catch any remaining old limit wording in related docs without rewriting
+          # files that do not actually contain it.
+          for filename in ["docs/manifest.md", "docs/import.md", "CHANGELOG.md", "providers/README.md"]:
+              p = Path(filename)
+              text = p.read_text()
+              updated = text.replace('5,120 KiB', '5,120 KB')
+              if updated != text:
+                  p.write_text(updated, newline='\n')
+          PY
+
+          gofmt -w providers/googleads/asset.go providers/googleads/asset_test.go providers/googleads/destroy.go providers/googleads/destroy_test.go
+          go test ./...
+          go vet ./...
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add providers/googleads/asset.go providers/googleads/asset_test.go providers/googleads/destroy.go providers/googleads/destroy_test.go docs/destroy.md providers/googleads/README.md docs/manifest.md docs/import.md CHANGELOG.md providers/README.md
+          git diff --cached --check
+          git commit -m "Fix Google Ads asset lifecycle review findings [skip pr147-fixer]"
+          git push origin HEAD:${GITHUB_REF_NAME}
