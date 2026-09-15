@@ -181,6 +181,12 @@ Instagram Feed, Stories, and Reels in the United States:
       publisherPlatforms: [INSTAGRAM]
       instagramPositions: [FEED, STORIES, REELS]
       devicePlatforms: [MOBILE]
+      interests:
+        - id: "6003139266461"
+          name: Music production
+      excludedCustomAudiences:
+        - id: "111000222333444"
+          name: Existing customers
 ```
 
 `status` defaults to `PAUSED`; enabling delivery requires an explicit
@@ -211,15 +217,28 @@ The intentionally bounded targeting object supports:
 - positive numeric Meta `locales` identifiers;
 - `publisherPlatforms: [INSTAGRAM]` and the Instagram positions `FEED`,
   `STORIES`, and `REELS`;
-- `devicePlatforms` values `MOBILE` and `DESKTOP`.
+- `devicePlatforms` values `MOBILE` and `DESKTOP`;
+- `customAudiences` and `excludedCustomAudiences` lists of existing Custom
+  Audience objects identified by numeric `id`, with optional `name` display
+  metadata;
+- `interests` as a single OR-group of detailed-targeting entities identified
+  by numeric `id`, with optional `name` display metadata.
 
 At least one country or region is required. Instagram positions require the
 Instagram publisher platform. Omitting both placement fields leaves placement
-selection to Meta. Arbitrary targeting JSON, interests, custom audiences,
-lookalikes, and additional publishers are rejected rather than silently
-discarded. Attribution settings are not managed by this initial schema and
-remain provider-owned. In the API payload, Agoraform maps the three documented
-position names to Meta's `stream`, `story`, and `reels` values.
+selection to Meta. Audience references are validated against a non-mutating
+Graph read before create or targeting update: missing IDs, inaccessible IDs,
+authorization failures, and unsupported Custom Audience subtypes are distinct
+errors. Name-only inputs are rejected rather than fuzzy-matched. Equivalent
+ID sets, including omitted names and provider ordering, produce a no-op plan.
+Arbitrary targeting JSON, behaviors, lookalike generation, Advantage+
+audience models, and additional publishers are rejected rather than silently
+discarded. Destroying an ad set never deletes referenced Custom Audiences.
+Attribution settings are not managed by this initial schema and remain
+provider-owned. In the API payload, Agoraform maps the three documented
+position names to Meta's `stream`, `story`, and `reels` values, Custom
+Audience references to `custom_audiences` / `excluded_custom_audiences`, and
+interests to a single `flexible_spec` interests group.
 
 Updates support name, serving status, the existing budget value, end time,
 targeting, and compatible bid values. Campaign, billing/optimization goal,

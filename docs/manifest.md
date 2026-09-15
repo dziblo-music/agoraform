@@ -784,6 +784,12 @@ conversion configuration:
       countries: [US]
       publisherPlatforms: [INSTAGRAM]
       instagramPositions: [FEED, STORIES, REELS]
+      interests:
+        - id: "6003139266461"
+          name: Music production
+      excludedCustomAudiences:
+        - id: "111000222333444"
+          name: Existing customers
 ```
 
 | Attribute | Required | Description |
@@ -801,10 +807,15 @@ conversion configuration:
 | `pixel` / `customConversion` | conditional | Required `$ref` values for `OFFSITE_CONVERSIONS`; forbidden for `LINK_CLICKS`. |
 
 Targeting supports countries, Meta region IDs, ages 18–65, genders, Meta
-locale IDs, Instagram placements, and mobile/desktop device platforms.
-Arbitrary targeting JSON and audience objects are rejected. For website
-conversions, the custom conversion and ad set must reference the same pixel,
-and the campaign objective must be `OUTCOME_SALES`.
+locale IDs, Instagram placements, mobile/desktop device platforms, existing
+Custom Audience inclusion/exclusion references, and a single OR-group of
+detailed-targeting interest IDs. Optional `name` values are display metadata
+only; stable numeric IDs are the identity. Name-only audience matching is
+rejected. Arbitrary targeting JSON, lookalike generation, and additional
+publishers are rejected. Agoraform never stores audience membership or PII,
+and destroying an ad set does not delete referenced Custom Audiences. For
+website conversions, the custom conversion and ad set must reference the same
+pixel, and the campaign objective must be `OUTCOME_SALES`.
 
 ### `meta.ad_creative`
 

@@ -2,7 +2,9 @@ package meta_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -52,7 +54,19 @@ func TestValidateAdSetRejectsInvalidCombinations(t *testing.T) {
 		{"bid cap without amount", "requires bidAmount", func(a resource.Attributes) { a[meta.AttrBidStrategy] = "LOWEST_COST_WITH_BID_CAP" }},
 		{"amount without cap", "valid only", func(a resource.Attributes) { a[meta.AttrBidAmount] = 1 }},
 		{"placement without platform", "requires publisherPlatforms", func(a resource.Attributes) { a[meta.AttrTargeting].(map[string]any)["publisherPlatforms"] = []any{} }},
-		{"raw targeting", "unsupported targeting field", func(a resource.Attributes) { a[meta.AttrTargeting].(map[string]any)["interests"] = []any{"music"} }},
+		{"raw targeting", "unsupported targeting field", func(a resource.Attributes) {
+			a[meta.AttrTargeting].(map[string]any)["behaviors"] = []any{"frequent_travelers"}
+		}},
+		{"name-only interest", "name-only matching is not supported", func(a resource.Attributes) {
+			a[meta.AttrTargeting].(map[string]any)["interests"] = []any{map[string]any{"name": "Music production"}}
+		}},
+		{"string interest", "must be a numeric Meta identifier", func(a resource.Attributes) {
+			a[meta.AttrTargeting].(map[string]any)["interests"] = []any{"music"}
+		}},
+		{"include and exclude overlap", "cannot include and exclude", func(a resource.Attributes) {
+			a[meta.AttrTargeting].(map[string]any)["customAudiences"] = []any{map[string]any{"id": testAudienceIncludeID}}
+			a[meta.AttrTargeting].(map[string]any)["excludedCustomAudiences"] = []any{map[string]any{"id": testAudienceIncludeID}}
+		}},
 		{"clicks with conversion", "valid only", func(a resource.Attributes) { a[meta.AttrOptimizationGoal] = "LINK_CLICKS" }},
 	}
 	for _, tc := range tests {
@@ -350,6 +364,318 @@ func TestDestroyAdSetIsIdempotent(t *testing.T) {
 	if _, err := p.Read(context.Background(), res); !errors.Is(err, provider.ErrNotFound) {
 		t.Fatalf("read=%v", err)
 	}
+}
+
+func TestValidateAdSetNormalizesAudienceTargeting(t *testing.T) {
+	t.Parallel()
+	p := meta.New(meta.Config{AccessToken: testToken, AdAccountID: testAccountID})
+	attrs := standardAdSetAttrs(t)
+	attrs[meta.AttrTargeting].(map[string]any)["customAudiences"] = []any{map[string]any{"id": testAudienceExcludeID}, map[string]any{"id": testAudienceIncludeID, "name": "Prospects"}}
+	attrs[meta.AttrTargeting].(map[string]any)["excludedCustomAudiences"] = []any{map[string]any{"id": "999888777666555"}}
+	attrs[meta.AttrTargeting].(map[string]any)["interests"] = []any{map[string]any{"id": testInterestID, "name": "Music production"}, map[string]any{"id": "6003020834693"}}
+	if err := p.Validate(context.Background(), adSetResource(t, "instagram", attrs)); err != nil {
+		t.Fatal(err)
+	}
+	want, _, err := p.NormalizeComparable(adSetResource(t, "instagram", attrs), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targeting := want[meta.AttrTargeting].(map[string]any)
+	includes := targeting["customAudiences"].([]any)
+	if len(includes) != 2 {
+		t.Fatalf("customAudiences = %#v", includes)
+	}
+	if includes[0].(map[string]any)["id"] != testAudienceExcludeID || includes[1].(map[string]any)["id"] != testAudienceIncludeID {
+		t.Fatalf("customAudiences order = %#v", includes)
+	}
+	if _, ok := includes[1].(map[string]any)["name"]; ok {
+		t.Fatalf("comparable targeting must omit display names: %#v", includes)
+	}
+}
+
+func TestCreateAdSetAudienceAndInterestTargeting(t *testing.T) {
+	t.Parallel()
+	srv := newGraphServer(t)
+	srv.seedCampaign(testCampaignID, graphObject{"name": "Acquisition", "objective": "OUTCOME_SALES"})
+	srv.seedPixel(testPixelID, "Website")
+	srv.seedConversion(testConvID, graphObject{"name": "Trial Started", "custom_event_type": "START_TRIAL", "rule": `{"and":[{"event":{"eq":"StartTrial"}}]}`, "pixel": graphObject{"id": testPixelID}, "event_source_type": "pixel"})
+	srv.seedAudience(testAudienceIncludeID, graphObject{"name": "Lookalike prospects", "subtype": "LOOKALIKE"})
+	srv.seedAudience(testAudienceExcludeID, graphObject{"name": "Existing customers", "subtype": "WEBSITE"})
+	srv.seedInterest(testInterestID, "Music production", true)
+	httpSrv := srv.start()
+	defer httpSrv.Close()
+	p := testProvider(t, httpSrv)
+	p.SetIdentityCatalog(adSetCatalog(t))
+	rememberAdSetDependencies(t, p)
+	attrs := audienceAdSetAttrs(t)
+	created, err := p.Create(context.Background(), adSetResource(t, "instagram", attrs))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := srv.adSetField(testAdSetID, "targeting").(graphObject)
+	custom, _ := json.Marshal(got["custom_audiences"])
+	excluded, _ := json.Marshal(got["excluded_custom_audiences"])
+	flexible, _ := json.Marshal(got["flexible_spec"])
+	if !strings.Contains(string(custom), testAudienceIncludeID) {
+		t.Fatalf("custom_audiences = %s", custom)
+	}
+	if !strings.Contains(string(excluded), testAudienceExcludeID) {
+		t.Fatalf("excluded_custom_audiences = %s", excluded)
+	}
+	if !strings.Contains(string(flexible), testInterestID) {
+		t.Fatalf("flexible_spec = %s", flexible)
+	}
+	targeting := created.Attributes[meta.AttrTargeting].(map[string]any)
+	if got := targeting["customAudiences"].([]any)[0].(map[string]any)["id"]; got != testAudienceIncludeID {
+		t.Fatalf("custom audience id = %v", got)
+	}
+	if got := targeting["excludedCustomAudiences"].([]any)[0].(map[string]any)["id"]; got != testAudienceExcludeID {
+		t.Fatalf("excluded custom audience id = %v", got)
+	}
+	if got := targeting["interests"].([]any)[0].(map[string]any)["id"]; got != testInterestID {
+		t.Fatalf("interest id = %v", got)
+	}
+	desired := adSetResource(t, "instagram", attrs.Clone())
+	desired.Identity = created.Identity
+	if _, err := p.Update(context.Background(), desired, created); err != nil {
+		t.Fatal(err)
+	}
+	posts, _ := srv.mutationCounts()
+	if posts != 1 {
+		t.Fatalf("name-only no-op posts=%d", posts)
+	}
+}
+
+func TestAdSetPlanShowsAudienceTargetingUpdate(t *testing.T) {
+	t.Parallel()
+	srv := newGraphServer(t)
+	srv.seedCampaign(testCampaignID, graphObject{"name": "Acquisition", "objective": "OUTCOME_SALES"})
+	srv.seedPixel(testPixelID, "Website")
+	srv.seedConversion(testConvID, graphObject{"name": "Trial Started", "custom_event_type": "START_TRIAL", "rule": `{"and":[{"event":{"eq":"StartTrial"}}]}`, "pixel": graphObject{"id": testPixelID}, "event_source_type": "pixel"})
+	srv.seedAdSet(testAdSetID, graphObject{"name": "Instagram US", "lifetime_budget": "50000", "start_time": "2026-09-01T05:00:00+0000", "end_time": "2026-10-01T05:00:00+0000", "targeting": audienceTargetingAPI()})
+	httpSrv := srv.start()
+	defer httpSrv.Close()
+	p := testProvider(t, httpSrv)
+	p.SetIdentityCatalog(adSetCatalog(t))
+	st, err := state.Load(filepath.Join(t.TempDir(), "agoraform.state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for addr, id := range map[resource.Address]string{campaignAddress(t, "acquisition"): testCampaignID, pixelAddress(t, "website"): testPixelID, conversionAddress(t, "trial_started"): testConvID, adSetAddress(t, "instagram"): testAdSetID} {
+		if err := st.Bind(addr, resource.Identity{ID: id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	resources := append(standardAdSetResources(t)[:3], adSetResource(t, "instagram", audienceAdSetAttrs(t)))
+	cleanPlan, err := plan.BuildWithState(context.Background(), resources, func(resource.Address) (provider.Reader, error) { return p, nil }, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range cleanPlan.Changes {
+		if change.Address.Type == meta.TypeAdSet && change.Action != plan.ActionUnchanged {
+			t.Fatalf("equivalent audience targeting plan = %#v", change)
+		}
+	}
+	resources[len(resources)-1].Attributes = audienceAdSetAttrs(t)
+	resources[len(resources)-1].Attributes[meta.AttrTargeting].(map[string]any)["excludedCustomAudiences"] = []any{map[string]any{"id": "999888777666555"}}
+	updatedPlan, err := plan.BuildWithState(context.Background(), resources, func(resource.Address) (provider.Reader, error) { return p, nil }, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range updatedPlan.Changes {
+		if change.Address.Type == meta.TypeAdSet {
+			if change.Action != plan.ActionUpdate {
+				t.Fatalf("targeting update action = %#v", change)
+			}
+			before := change.Before[meta.AttrTargeting].(map[string]any)["excludedCustomAudiences"].([]any)[0].(map[string]any)["id"]
+			after := change.After[meta.AttrTargeting].(map[string]any)["excludedCustomAudiences"].([]any)[0].(map[string]any)["id"]
+			if before != testAudienceExcludeID || after != "999888777666555" {
+				t.Fatalf("targeting diff before=%v after=%v", before, after)
+			}
+		}
+	}
+}
+
+func TestImportAdSetPreservesAudienceIdentifiers(t *testing.T) {
+	t.Parallel()
+	srv := newGraphServer(t)
+	srv.seedAdSet(testAdSetID, graphObject{"lifetime_budget": "50000", "start_time": "2026-09-01T00:00:00-0500", "end_time": "2026-10-01T00:00:00-0500", "targeting": audienceTargetingAPI()})
+	httpSrv := srv.start()
+	defer httpSrv.Close()
+	p := testProvider(t, httpSrv)
+	p.SetIdentityCatalog(adSetCatalog(t))
+	st, err := state.Load(filepath.Join(t.TempDir(), "agoraform.state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := importer.Run(context.Background(), adSetAddress(t, "instagram"), testAdSetID, func(resource.Address) (provider.Provider, error) { return p, nil }, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"customAudiences:", "- id: \"" + testAudienceIncludeID + "\"", "excludedCustomAudiences:", "- id: \"" + testAudienceExcludeID + "\"", "name: Existing customers", "interests:", "- id: \"" + testInterestID + "\"", "name: Music production"} {
+		if !strings.Contains(result.YAML, want) {
+			t.Fatalf("YAML missing %q:\n%s", want, result.YAML)
+		}
+	}
+}
+
+func TestImportAdSetRejectsUnsupportedFlexibleSpec(t *testing.T) {
+	t.Parallel()
+	srv := newGraphServer(t)
+	targeting := instagramTargetingAPI()
+	targeting["flexible_spec"] = []any{graphObject{"behaviors": []any{graphObject{"id": "6002714895372"}}}}
+	srv.seedAdSet(testAdSetID, graphObject{"lifetime_budget": "50000", "start_time": "2026-09-01T00:00:00Z", "end_time": "2026-10-01T00:00:00Z", "targeting": targeting})
+	httpSrv := srv.start()
+	defer httpSrv.Close()
+	p := testProvider(t, httpSrv)
+	p.SetIdentityCatalog(adSetCatalog(t))
+	_, err := p.Import(context.Background(), adSetAddress(t, "instagram"), testAdSetID)
+	if err == nil || !strings.Contains(err.Error(), "unsupported flexible_spec field") {
+		t.Fatalf("error=%v", err)
+	}
+}
+
+func TestCreateAdSetRejectsMissingAndInaccessibleAudiences(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name, contains string
+		setup          func(*graphServer)
+		mutate         func(resource.Attributes)
+	}{
+		{
+			name:     "missing custom audience",
+			contains: "custom audience 555666777888999 was not found",
+			setup:    func(*graphServer) {},
+			mutate: func(a resource.Attributes) {
+				a[meta.AttrTargeting].(map[string]any)["customAudiences"] = []any{map[string]any{"id": testAudienceIncludeID}}
+			},
+		},
+		{
+			name:     "inaccessible custom audience",
+			contains: "is not accessible with the configured token",
+			setup: func(s *graphServer) {
+				s.seedAudienceFailure(testAudienceIncludeID, http.StatusForbidden, `{"error":{"message":"permission denied","code":200}}`)
+			},
+			mutate: func(a resource.Attributes) {
+				a[meta.AttrTargeting].(map[string]any)["customAudiences"] = []any{map[string]any{"id": testAudienceIncludeID}}
+			},
+		},
+		{
+			name:     "authorization failure",
+			contains: "authorization failed",
+			setup: func(s *graphServer) {
+				s.seedAudienceFailure(testAudienceIncludeID, http.StatusUnauthorized, `{"error":{"message":"invalid token `+testToken+`","type":"OAuthException","code":190}}`)
+			},
+			mutate: func(a resource.Attributes) {
+				a[meta.AttrTargeting].(map[string]any)["customAudiences"] = []any{map[string]any{"id": testAudienceIncludeID}}
+			},
+		},
+		{
+			name:     "unsupported audience type",
+			contains: "unsupported subtype MEASUREMENT",
+			setup: func(s *graphServer) {
+				s.seedAudience(testAudienceIncludeID, graphObject{"subtype": "MEASUREMENT"})
+			},
+			mutate: func(a resource.Attributes) {
+				a[meta.AttrTargeting].(map[string]any)["customAudiences"] = []any{map[string]any{"id": testAudienceIncludeID}}
+			},
+		},
+		{
+			name:     "not a custom audience",
+			contains: "is not a Custom Audience",
+			setup: func(s *graphServer) {
+				s.seedAudience(testAudienceIncludeID, graphObject{"name": "A Page", "subtype": ""})
+				delete(s.audiences[testAudienceIncludeID], "subtype")
+			},
+			mutate: func(a resource.Attributes) {
+				a[meta.AttrTargeting].(map[string]any)["customAudiences"] = []any{map[string]any{"id": testAudienceIncludeID}}
+			},
+		},
+		{
+			name:     "missing interest",
+			contains: "interest 6003139266461 was not found",
+			setup:    func(*graphServer) {},
+			mutate: func(a resource.Attributes) {
+				a[meta.AttrTargeting].(map[string]any)["interests"] = []any{map[string]any{"id": testInterestID}}
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := newGraphServer(t)
+			srv.seedCampaign(testCampaignID, graphObject{"name": "Acquisition", "objective": "OUTCOME_SALES"})
+			srv.seedPixel(testPixelID, "Website")
+			srv.seedConversion(testConvID, graphObject{"name": "Trial Started", "custom_event_type": "START_TRIAL", "rule": `{"and":[{"event":{"eq":"StartTrial"}}]}`, "pixel": graphObject{"id": testPixelID}, "event_source_type": "pixel"})
+			tc.setup(srv)
+			httpSrv := srv.start()
+			defer httpSrv.Close()
+			p := testProvider(t, httpSrv)
+			p.SetIdentityCatalog(adSetCatalog(t))
+			rememberAdSetDependencies(t, p)
+			attrs := standardAdSetAttrs(t)
+			tc.mutate(attrs)
+			_, err := p.Create(context.Background(), adSetResource(t, "instagram", attrs))
+			if err == nil || !strings.Contains(err.Error(), tc.contains) {
+				t.Fatalf("error=%v, want %q", err, tc.contains)
+			}
+			if strings.Contains(err.Error(), testToken) {
+				t.Fatalf("token leaked: %v", err)
+			}
+			posts, deletes := srv.mutationCounts()
+			if posts != 0 || deletes != 0 {
+				t.Fatalf("mutated posts=%d deletes=%d", posts, deletes)
+			}
+		})
+	}
+}
+
+func TestDestroyAdSetLeavesCustomAudiencesUntouched(t *testing.T) {
+	t.Parallel()
+	srv := newGraphServer(t)
+	srv.seedAudience(testAudienceExcludeID, graphObject{"name": "Existing customers", "subtype": "WEBSITE"})
+	srv.seedAdSet(testAdSetID, graphObject{"lifetime_budget": "50000", "start_time": "2026-09-01T00:00:00Z", "end_time": "2026-10-01T00:00:00Z", "targeting": audienceTargetingAPI()})
+	httpSrv := srv.start()
+	defer httpSrv.Close()
+	p := testProvider(t, httpSrv)
+	p.SetIdentityCatalog(adSetCatalog(t))
+	res := adSetResource(t, "instagram", audienceAdSetAttrs(t))
+	res.Identity = resource.Identity{ID: testAdSetID}
+	got, err := p.Destroy(context.Background(), res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != provider.DestroyStatusRemoved {
+		t.Fatalf("status=%q", got.Status)
+	}
+	if srv.audience(testAudienceExcludeID) == nil {
+		t.Fatal("excluded custom audience was deleted with the ad set")
+	}
+	if srv.audience(testAudienceIncludeID) != nil {
+		t.Fatal("destroy seeded an included audience")
+	}
+	for _, req := range srv.recordedRequests() {
+		if strings.Contains(req, "DELETE") && (strings.Contains(req, testAudienceExcludeID) || strings.Contains(req, testAudienceIncludeID)) {
+			t.Fatalf("destroy issued audience mutation %q", req)
+		}
+	}
+}
+
+func audienceAdSetAttrs(t *testing.T) resource.Attributes {
+	t.Helper()
+	attrs := standardAdSetAttrs(t)
+	targeting := attrs[meta.AttrTargeting].(map[string]any)
+	targeting["customAudiences"] = []any{map[string]any{"id": testAudienceIncludeID}}
+	targeting["excludedCustomAudiences"] = []any{map[string]any{"id": testAudienceExcludeID, "name": "Existing customers"}}
+	targeting["interests"] = []any{map[string]any{"id": testInterestID, "name": "Music production"}}
+	return attrs
+}
+
+func audienceTargetingAPI() graphObject {
+	targeting := instagramTargetingAPI()
+	targeting["custom_audiences"] = []any{graphObject{"id": testAudienceIncludeID}}
+	targeting["excluded_custom_audiences"] = []any{graphObject{"id": testAudienceExcludeID, "name": "Existing customers"}}
+	targeting["flexible_spec"] = []any{graphObject{"interests": []any{graphObject{"id": testInterestID, "name": "Music production"}}}}
+	return targeting
 }
 
 func standardAdSetAttrs(t *testing.T) resource.Attributes {

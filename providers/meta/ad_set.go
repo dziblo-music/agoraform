@@ -110,15 +110,18 @@ type normalizedAdSet struct {
 }
 
 type normalizedTargeting struct {
-	Countries          []string
-	Regions            []string
-	AgeMin             int64
-	AgeMax             int64
-	Genders            []string
-	Locales            []int64
-	PublisherPlatforms []string
-	InstagramPositions []string
-	DevicePlatforms    []string
+	Countries               []string
+	Regions                 []string
+	AgeMin                  int64
+	AgeMax                  int64
+	Genders                 []string
+	Locales                 []int64
+	PublisherPlatforms      []string
+	InstagramPositions      []string
+	DevicePlatforms         []string
+	CustomAudiences         []targetingEntity
+	ExcludedCustomAudiences []targetingEntity
+	Interests               []targetingEntity
 }
 
 func (p *Provider) validateAdSet(res resource.Resource) error {
@@ -175,6 +178,9 @@ func (p *Provider) createAdSet(ctx context.Context, res resource.Resource) (reso
 		return resource.RemoteResource{}, fmt.Errorf("meta: create %s: resource already has persisted identity %q", res.Address, res.Identity.ID)
 	}
 	normalized, _ := normalizeAdSet(res)
+	if err := p.ensureTargetingReferences(ctx, res.Address, normalized.Targeting); err != nil {
+		return resource.RemoteResource{}, fmt.Errorf("meta: create %s: %w", res.Address, err)
+	}
 	form, err := p.adSetForm(ctx, normalized)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("meta: create %s: %w", res.Address, err)
@@ -252,7 +258,10 @@ func (p *Provider) updateAdSet(ctx context.Context, desired resource.Resource, a
 			return resource.RemoteResource{}, fmt.Errorf("meta: update %s: %w", desired.Address, err)
 		}
 	}
-	if !reflect.DeepEqual(want.Targeting, got.Targeting) {
+	if !want.Targeting.sameIDs(got.Targeting) {
+		if err := p.ensureTargetingReferences(ctx, desired.Address, want.Targeting); err != nil {
+			return resource.RemoteResource{}, fmt.Errorf("meta: update %s: %w", desired.Address, err)
+		}
 		raw, _ := json.Marshal(targetingAPIObject(want.Targeting))
 		form.Set("targeting", string(raw))
 	}
@@ -399,7 +408,7 @@ func (p *Provider) remoteAdSet(ctx context.Context, desired resource.Resource, i
 		AttrBillingEvent:     strings.ToUpper(strings.TrimSpace(item.BillingEvent)),
 		AttrOptimizationGoal: optimization,
 		AttrDestinationType:  strings.ToUpper(strings.TrimSpace(item.DestinationType)),
-		AttrTargeting:        targetingAttributes(targeting),
+		AttrTargeting:        targetingLiveAttributes(targeting),
 	}
 	if !pixel.IsZero() {
 		attrs[AttrPixel] = pixel
@@ -593,7 +602,7 @@ func normalizeTargeting(res resource.Resource) (normalizedTargeting, error) {
 	if !ok {
 		return normalizedTargeting{}, fmt.Errorf("resource %s: attribute %q must be an object", res.Address, AttrTargeting)
 	}
-	allowed := map[string]struct{}{targetCountries: {}, targetRegions: {}, targetAgeMin: {}, targetAgeMax: {}, targetGenders: {}, targetLocales: {}, targetPublisherPlatforms: {}, targetInstagramPositions: {}, targetDevicePlatforms: {}}
+	allowed := map[string]struct{}{targetCountries: {}, targetRegions: {}, targetAgeMin: {}, targetAgeMax: {}, targetGenders: {}, targetLocales: {}, targetPublisherPlatforms: {}, targetInstagramPositions: {}, targetDevicePlatforms: {}, targetCustomAudiences: {}, targetExcludedCustomAudiences: {}, targetInterests: {}}
 	for key := range m {
 		if _, ok := allowed[key]; !ok {
 			return normalizedTargeting{}, fmt.Errorf("resource %s: unsupported targeting field %q", res.Address, key)
@@ -647,7 +656,22 @@ func normalizeTargeting(res resource.Resource) (normalizedTargeting, error) {
 	if err != nil {
 		return normalizedTargeting{}, err
 	}
-	return normalizedTargeting{Countries: countries, Regions: regions, AgeMin: ageMin, AgeMax: ageMax, Genders: genders, Locales: locales, PublisherPlatforms: platforms, InstagramPositions: positions, DevicePlatforms: devices}, nil
+	customAudiences, err := normalizeTargetingEntities(res.Address, AttrTargeting+"."+targetCustomAudiences, m[targetCustomAudiences], false)
+	if err != nil {
+		return normalizedTargeting{}, err
+	}
+	excluded, err := normalizeTargetingEntities(res.Address, AttrTargeting+"."+targetExcludedCustomAudiences, m[targetExcludedCustomAudiences], false)
+	if err != nil {
+		return normalizedTargeting{}, err
+	}
+	if overlap := overlappingEntityIDs(customAudiences, excluded); len(overlap) > 0 {
+		return normalizedTargeting{}, fmt.Errorf("resource %s: targeting cannot include and exclude the same custom audience %s", res.Address, strings.Join(overlap, ", "))
+	}
+	interests, err := normalizeTargetingEntities(res.Address, AttrTargeting+"."+targetInterests, m[targetInterests], false)
+	if err != nil {
+		return normalizedTargeting{}, err
+	}
+	return normalizedTargeting{Countries: countries, Regions: regions, AgeMin: ageMin, AgeMax: ageMax, Genders: genders, Locales: locales, PublisherPlatforms: platforms, InstagramPositions: positions, DevicePlatforms: devices, CustomAudiences: customAudiences, ExcludedCustomAudiences: excluded, Interests: interests}, nil
 }
 
 func normalizeRemoteTargeting(addr resource.Address, raw json.RawMessage) (normalizedTargeting, error) {
@@ -655,11 +679,14 @@ func normalizeRemoteTargeting(addr resource.Address, raw json.RawMessage) (norma
 	if err != nil {
 		return normalizedTargeting{}, err
 	}
-	allowed := map[string]struct{}{"geo_locations": {}, "age_min": {}, "age_max": {}, "genders": {}, "locales": {}, "publisher_platforms": {}, "instagram_positions": {}, "device_platforms": {}}
+	allowed := map[string]struct{}{"geo_locations": {}, "age_min": {}, "age_max": {}, "genders": {}, "locales": {}, "publisher_platforms": {}, "instagram_positions": {}, "device_platforms": {}, "custom_audiences": {}, "excluded_custom_audiences": {}, "flexible_spec": {}, "interests": {}, "exclusions": {}}
 	for key := range m {
 		if _, ok := allowed[key]; !ok {
 			return normalizedTargeting{}, fmt.Errorf("unsupported provider field %q", key)
 		}
+	}
+	if exclusions, ok := m["exclusions"]; ok && !isEmptyTargetingValue(exclusions) {
+		return normalizedTargeting{}, fmt.Errorf("unsupported provider field %q", "exclusions")
 	}
 	geo, ok := stringMap(m["geo_locations"])
 	if !ok {
@@ -744,13 +771,28 @@ func normalizeRemoteTargeting(addr resource.Address, raw json.RawMessage) (norma
 		}
 		devices = append(devices, value)
 	}
-	attrs := resource.Attributes{AttrTargeting: map[string]any{targetCountries: stringsToAny(countries), targetRegions: stringsToAny(regions), targetAgeMin: m["age_min"], targetAgeMax: m["age_max"], targetGenders: stringsToAny(genders), targetLocales: int64sToAny(locales), targetPublisherPlatforms: stringsToAny(platforms), targetInstagramPositions: stringsToAny(positions), targetDevicePlatforms: stringsToAny(devices)}}
-	for k, v := range attrs[AttrTargeting].(map[string]any) {
-		if v == nil {
-			delete(attrs[AttrTargeting].(map[string]any), k)
-		}
+	customAudiences, err := normalizeTargetingEntities(addr, AttrTargeting+"."+targetCustomAudiences, m["custom_audiences"], true)
+	if err != nil {
+		return normalizedTargeting{}, fmt.Errorf("custom_audiences: %w", err)
 	}
-	return normalizeTargeting(resource.Resource{Address: addr, Attributes: attrs})
+	excluded, err := normalizeTargetingEntities(addr, AttrTargeting+"."+targetExcludedCustomAudiences, m["excluded_custom_audiences"], true)
+	if err != nil {
+		return normalizedTargeting{}, fmt.Errorf("excluded_custom_audiences: %w", err)
+	}
+	interests, err := parseRemoteInterests(addr, m)
+	if err != nil {
+		return normalizedTargeting{}, err
+	}
+	targeting := targetingLiveAttributes(normalizedTargeting{Countries: countries, Regions: regions, Genders: genders, Locales: locales, PublisherPlatforms: platforms, InstagramPositions: positions, DevicePlatforms: devices, CustomAudiences: customAudiences, ExcludedCustomAudiences: excluded, Interests: interests})
+	delete(targeting, targetAgeMin)
+	delete(targeting, targetAgeMax)
+	if v := m["age_min"]; v != nil {
+		targeting[targetAgeMin] = v
+	}
+	if v := m["age_max"]; v != nil {
+		targeting[targetAgeMax] = v
+	}
+	return normalizeTargeting(resource.Resource{Address: addr, Attributes: resource.Attributes{AttrTargeting: targeting}})
 }
 
 func adSetAttributes(a normalizedAdSet) resource.Attributes {
@@ -780,6 +822,14 @@ func adSetAttributes(a normalizedAdSet) resource.Attributes {
 }
 
 func targetingAttributes(t normalizedTargeting) map[string]any {
+	return targetingAttributeMap(t, false)
+}
+
+func targetingLiveAttributes(t normalizedTargeting) map[string]any {
+	return targetingAttributeMap(t, true)
+}
+
+func targetingAttributeMap(t normalizedTargeting, includeNames bool) map[string]any {
 	out := map[string]any{targetCountries: stringsToAny(t.Countries), targetAgeMin: t.AgeMin, targetAgeMax: t.AgeMax}
 	if len(t.Regions) > 0 {
 		out[targetRegions] = stringsToAny(t.Regions)
@@ -798,6 +848,15 @@ func targetingAttributes(t normalizedTargeting) map[string]any {
 	}
 	if len(t.DevicePlatforms) > 0 {
 		out[targetDevicePlatforms] = stringsToAny(t.DevicePlatforms)
+	}
+	if len(t.CustomAudiences) > 0 {
+		out[targetCustomAudiences] = entityAttrs(t.CustomAudiences, includeNames)
+	}
+	if len(t.ExcludedCustomAudiences) > 0 {
+		out[targetExcludedCustomAudiences] = entityAttrs(t.ExcludedCustomAudiences, includeNames)
+	}
+	if len(t.Interests) > 0 {
+		out[targetInterests] = entityAttrs(t.Interests, includeNames)
 	}
 	return out
 }
@@ -845,6 +904,15 @@ func targetingAPIObject(t normalizedTargeting) map[string]any {
 			values[i] = strings.ToLower(v)
 		}
 		out["device_platforms"] = values
+	}
+	if len(t.CustomAudiences) > 0 {
+		out["custom_audiences"] = entityAPIObjects(t.CustomAudiences)
+	}
+	if len(t.ExcludedCustomAudiences) > 0 {
+		out["excluded_custom_audiences"] = entityAPIObjects(t.ExcludedCustomAudiences)
+	}
+	if len(t.Interests) > 0 {
+		out["flexible_spec"] = []map[string]any{{"interests": entityAPIObjects(t.Interests)}}
 	}
 	return out
 }

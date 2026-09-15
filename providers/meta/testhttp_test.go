@@ -18,54 +18,70 @@ import (
 )
 
 const (
-	testToken      = "EAAB-secret-conversion-token"
-	testAccountID  = "123456789012345"
-	testPixelID    = "111222333444555"
-	testConvID     = "998877665544332"
-	testCampaignID = "777888999000111"
-	testAdSetID    = "222333444555666"
-	testCreativeID = "333444555666777"
-	testAdID       = "444555666777888"
+	testToken             = "EAAB-secret-conversion-token"
+	testAccountID         = "123456789012345"
+	testPixelID           = "111222333444555"
+	testConvID            = "998877665544332"
+	testCampaignID        = "777888999000111"
+	testAdSetID           = "222333444555666"
+	testCreativeID        = "333444555666777"
+	testAdID              = "444555666777888"
+	testAudienceIncludeID = "555666777888999"
+	testAudienceExcludeID = "111000222333444"
+	testInterestID        = "6003139266461"
 )
 
 type graphObject map[string]any
 
+type audienceFailure struct {
+	status int
+	body   string
+}
+
 type graphServer struct {
 	t *testing.T
 
-	mu                    sync.Mutex
-	currency              string
-	pixels                map[string]graphObject
-	accountPixels         map[string]bool
-	convs                 map[string]graphObject
-	campaigns             map[string]graphObject
-	adSets                map[string]graphObject
-	creatives             map[string]graphObject
-	ads                   map[string]graphObject
-	images                map[string]graphObject // keyed by Meta image hash
-	posts                 int
-	deletes               int
-	requests              []string
-	adSetCreateFailure    bool
-	creativeCreateFailure bool
-	adCreateFailure       bool
-	adRefreshFailures     int
-	imageUploadFailure    bool
+	mu                      sync.Mutex
+	currency                string
+	pixels                  map[string]graphObject
+	accountPixels           map[string]bool
+	convs                   map[string]graphObject
+	campaigns               map[string]graphObject
+	adSets                  map[string]graphObject
+	creatives               map[string]graphObject
+	ads                     map[string]graphObject
+	images                  map[string]graphObject // keyed by Meta image hash
+	audiences               map[string]graphObject
+	audienceFailures        map[string]audienceFailure
+	interests               map[string]graphObject
+	searchAuthFailure       bool
+	searchPermissionFailure bool
+	posts                   int
+	deletes                 int
+	requests                []string
+	adSetCreateFailure      bool
+	creativeCreateFailure   bool
+	adCreateFailure         bool
+	adRefreshFailures       int
+	imageUploadFailure      bool
 }
 
 func newGraphServer(t *testing.T) *graphServer {
 	t.Helper()
 	return &graphServer{
-		t:             t,
-		currency:      "USD",
-		pixels:        map[string]graphObject{},
-		accountPixels: map[string]bool{},
-		convs:         map[string]graphObject{},
-		campaigns:     map[string]graphObject{},
-		adSets:        map[string]graphObject{},
-		creatives:     map[string]graphObject{},
-		ads:           map[string]graphObject{},
-		images:        map[string]graphObject{},
+		t:                t,
+		currency:         "USD",
+		pixels:           map[string]graphObject{},
+		accountPixels:    map[string]bool{},
+		convs:            map[string]graphObject{},
+		campaigns:        map[string]graphObject{},
+		adSets:           map[string]graphObject{},
+		creatives:        map[string]graphObject{},
+		ads:              map[string]graphObject{},
+		images:           map[string]graphObject{},
+		audiences:        map[string]graphObject{},
+		audienceFailures: map[string]audienceFailure{},
+		interests:        map[string]graphObject{},
 	}
 }
 
@@ -165,6 +181,34 @@ func (s *graphServer) seedConversion(id string, fields graphObject) {
 	s.convs[id] = item
 }
 
+func (s *graphServer) seedAudience(id string, fields graphObject) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	item := graphObject{"id": id, "account_id": testAccountID, "name": "Audience " + id, "subtype": "CUSTOM"}
+	for k, v := range fields {
+		item[k] = v
+	}
+	s.audiences[id] = item
+}
+
+func (s *graphServer) seedAudienceFailure(id string, status int, body string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.audienceFailures[id] = audienceFailure{status: status, body: body}
+}
+
+func (s *graphServer) seedInterest(id, name string, valid bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.interests[id] = graphObject{"id": id, "name": name, "valid": valid}
+}
+
+func (s *graphServer) audience(id string) graphObject {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.audiences[id]
+}
+
 func (s *graphServer) start() *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(s.serve))
 }
@@ -191,6 +235,37 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 		s.writeList(w, []graphObject{{"permission": "ads_management", "status": "granted"}})
 	case r.Method == http.MethodGet && path == "act_"+testAccountID:
 		writeJSON(w, graphObject{"id": testAccountID, "account_status": 1, "currency": s.currency})
+	case r.Method == http.MethodGet && path == "search":
+		if s.searchAuthFailure {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = io.WriteString(w, `{"error":{"message":"invalid token `+testToken+`","type":"OAuthException","code":190}}`)
+			return
+		}
+		if s.searchPermissionFailure {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = io.WriteString(w, `{"error":{"message":"permission denied","code":200}}`)
+			return
+		}
+		if r.URL.Query().Get("type") != "adinterestvalid" {
+			http.Error(w, "unsupported search type", http.StatusBadRequest)
+			return
+		}
+		var ids []string
+		if raw := r.URL.Query().Get("interest_fbid_list"); raw != "" {
+			if err := json.Unmarshal([]byte(raw), &ids); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+		data := make([]graphObject, 0, len(ids))
+		for _, id := range ids {
+			if interest, ok := s.interests[id]; ok {
+				data = append(data, interest)
+				continue
+			}
+			data = append(data, graphObject{"id": id, "valid": false})
+		}
+		s.writeList(w, data)
 	case r.Method == http.MethodGet && path == "act_"+testAccountID+"/adspixels":
 		s.writeList(w, s.accountPixelValues())
 	case r.Method == http.MethodGet && path == "act_"+testAccountID+"/customconversions":
@@ -361,6 +436,12 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, s.ads[path])
+	case r.Method == http.MethodGet && s.audienceFailures[path].status != 0:
+		failure := s.audienceFailures[path]
+		w.WriteHeader(failure.status)
+		_, _ = io.WriteString(w, failure.body)
+	case r.Method == http.MethodGet && s.audiences[path] != nil:
+		writeJSON(w, s.audiences[path])
 	case r.Method == http.MethodPost && s.convs[path] != nil:
 		s.posts++
 		if err := r.ParseForm(); err != nil {
@@ -557,6 +638,14 @@ func (s *graphServer) mutationCounts() (posts, deletes int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.posts, s.deletes
+}
+
+func (s *graphServer) recordedRequests() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]string, len(s.requests))
+	copy(out, s.requests)
+	return out
 }
 
 func mapsValues(in map[string]graphObject) []graphObject {

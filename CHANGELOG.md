@@ -12,6 +12,12 @@ prints the SemVer identifier without the prefix (`0.5.0`).
 
 ### Added
 
+- `meta.ad_set` targeting can reference existing Custom Audiences for
+  inclusion and exclusion and a single OR-group of detailed-targeting
+  interest IDs. Optional names are display metadata only; Agoraform never
+  stores audience membership or PII, never fuzzy-matches names, and never
+  deletes referenced audiences when the ad set is destroyed.
+
 - Provider-neutral local asset sources: optional `assets.root`, explicit
   `source.file` references, SHA-256 content fingerprints, path/symlink
   safety, and streamed apply-time reads. File bytes never enter attributes,
