@@ -14,7 +14,7 @@ func TestValidateAdSetRejectsNumericStringTargetingEntity(t *testing.T) {
 	attrs := standardAdSetAttrs(t)
 	attrs[meta.AttrTargeting].(map[string]any)["interests"] = []any{testInterestID}
 
-	err := p.Validate(context.Background(), adSetResource(t, "string-interest", attrs))
+	err := p.Validate(context.Background(), adSetResource(t, "string_interest", attrs))
 	if err == nil || !strings.Contains(err.Error(), "must be an object with a numeric id") {
 		t.Fatalf("error=%v", err)
 	}
@@ -39,7 +39,7 @@ func TestCreateAdSetAllowsSharedCustomAudience(t *testing.T) {
 	attrs := standardAdSetAttrs(t)
 	attrs[meta.AttrTargeting].(map[string]any)["customAudiences"] = []any{map[string]any{"id": testAudienceIncludeID}}
 
-	created, err := p.Create(context.Background(), adSetResource(t, "shared-audience", attrs))
+	created, err := p.Create(context.Background(), adSetResource(t, "shared_audience", attrs))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestCreateAdSetRejectsExclusionOnlyAudienceForInclusion(t *testing.T) {
 	attrs := standardAdSetAttrs(t)
 	attrs[meta.AttrTargeting].(map[string]any)["customAudiences"] = []any{map[string]any{"id": testAudienceIncludeID}}
 
-	_, err := p.Create(context.Background(), adSetResource(t, "exclusion-only-include", attrs))
+	_, err := p.Create(context.Background(), adSetResource(t, "exclusion_only_include", attrs))
 	if err == nil || !strings.Contains(err.Error(), "restricted to exclusions") {
 		t.Fatalf("error=%v", err)
 	}
@@ -94,7 +94,7 @@ func TestCreateAdSetAllowsExclusionOnlyAudienceForExclusion(t *testing.T) {
 	attrs := standardAdSetAttrs(t)
 	attrs[meta.AttrTargeting].(map[string]any)["excludedCustomAudiences"] = []any{map[string]any{"id": testAudienceExcludeID}}
 
-	created, err := p.Create(context.Background(), adSetResource(t, "exclusion-only-exclude", attrs))
+	created, err := p.Create(context.Background(), adSetResource(t, "exclusion_only_exclude", attrs))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestCreateAdSetRejectsAudienceDisabledForCampaigns(t *testing.T) {
 	attrs := standardAdSetAttrs(t)
 	attrs[meta.AttrTargeting].(map[string]any)["customAudiences"] = []any{map[string]any{"id": testAudienceIncludeID}}
 
-	_, err := p.Create(context.Background(), adSetResource(t, "disabled-audience", attrs))
+	_, err := p.Create(context.Background(), adSetResource(t, "disabled_audience", attrs))
 	if err == nil || !strings.Contains(err.Error(), "cannot be used in campaigns") {
 		t.Fatalf("error=%v", err)
 	}
