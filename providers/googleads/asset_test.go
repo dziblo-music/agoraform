@@ -79,6 +79,20 @@ func TestValidateImageAssetErrors(t *testing.T) {
 			want: "JPEG, PNG, or GIF",
 		},
 		{
+			name: "image too large",
+			res: func() resource.Resource {
+				local := resource.NewLocalAsset("large.png", "sha256:large", 5_120_001, "image/png", func() (io.ReadCloser, error) {
+					return io.NopCloser(strings.NewReader("")), nil
+				})
+				return resource.Resource{
+					Address:    addr,
+					Attributes: resource.Attributes{googleads.AttrType: "IMAGE", asset.AttrName: map[string]any{asset.AttrFile: local.Path}},
+					LocalAsset: &local,
+				}
+			}(),
+			want: "5,120 KB",
+		},
+		{
 			name: "computed id",
 			res: resource.Resource{
 				Address:    addr,
@@ -281,6 +295,32 @@ func TestUpdateImageAssetRefusesContentChange(t *testing.T) {
 		t.Fatalf("Update = %v, want immutable guidance", err)
 	}
 	assertNoProviderSecret(t, err.Error())
+}
+
+func TestPlanImageAssetTreatsNameAsCreateTimeOnly(t *testing.T) {
+	t.Parallel()
+
+	fake := newAssetFake()
+	fake.seedAsset(sampleImageAsset("81", "Existing Google Name"))
+	p := testAssetProvider(t, fake)
+	local := localPNG(t, "google/product-ui.png", 128, 128)
+	res := imageAssetResource(t, "product_image", local)
+	res.Attributes[googleads.AttrName] = "Requested Create Name"
+	res.Identity = resource.Identity{ID: "81", Fingerprint: local.Digest}
+
+	st := mustGoogleAdsImportStore(t)
+	if err := st.Bind(res.Address, res.Identity); err != nil {
+		t.Fatal(err)
+	}
+	got, err := plan.BuildWithState(context.Background(), []resource.Resource{res}, func(resource.Address) (provider.Reader, error) {
+		return p, nil
+	}, st)
+	if err != nil {
+		t.Fatalf("plan.Build: %v", err)
+	}
+	if got.HasChanges() {
+		t.Fatalf("create-time asset name produced drift: %+v", got.Changes)
+	}
 }
 
 func TestCreateAndReadTextAsset(t *testing.T) {
