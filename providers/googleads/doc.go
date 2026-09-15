@@ -10,8 +10,10 @@
 // Search ad groups (googleads.ad_group), Search keyword criteria
 // (googleads.keyword), Responsive Search Ads
 // (googleads.responsive_search_ad), campaign location criteria
-// (googleads.campaign_location), and campaign language criteria
-// (googleads.campaign_language). Other Google Ads resources remain
+// (googleads.campaign_location), campaign language criteria
+// (googleads.campaign_language), Search image and business-name assets
+// (googleads.asset), and campaign-asset attachments
+// (googleads.campaign_asset). Other Google Ads resources remain
 // follow-up work. Destroy uses Google Ads mutate remove operations for
 // supported types and reports customer/campaign conversion goals as
 // provider-owned.

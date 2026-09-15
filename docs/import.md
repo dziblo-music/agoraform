@@ -136,8 +136,9 @@ Import v0.4 Search resources one at a time. Parent resources must already
 be bound so Agoraform can reconstruct logical `$ref` values:
 
 ```text
-campaign_budget -> campaign -> ad_group | campaign_conversion_goal | campaign_location | campaign_language
+campaign_budget -> campaign -> ad_group | campaign_conversion_goal | campaign_location | campaign_language | campaign_asset
 ad_group -> keyword | responsive_search_ad
+asset -> campaign_asset
 ```
 
 Import never mutates Google Ads and does not rewrite the manifest.
@@ -273,6 +274,41 @@ agoraform import googleads.campaign_language.english 987654321~888999001
 
 Non-language criteria fail with guidance instead of emitting a lossy
 language manifest.
+
+## Google Ads assets
+
+Import an IMAGE or TEXT asset by its numeric asset ID, or by the Google Ads
+resource name `customers/{customerId}/assets/{id}`. Agoraform stores the
+numeric ID in local state as `remoteId`. Import does not invent a local
+`source.file` for remotely created images.
+
+```bash
+agoraform import googleads.asset.product_image 123456789
+```
+
+Unsupported asset types fail with guidance instead of emitting a lossy
+IMAGE/TEXT configuration.
+
+## Google Ads campaign assets
+
+Import a campaign-asset attachment by its
+`campaignId~assetId~FIELD_TYPE` identity, or by the Google Ads resource
+name
+`customers/{customerId}/campaignAssets/{campaignId}~{assetId}~{fieldType}`.
+Agoraform stores `campaignId~assetId~FIELD_TYPE` in local state as
+`remoteId`.
+
+Import the campaign and asset first so Agoraform can reconstruct both
+logical `$ref` values:
+
+```bash
+agoraform import googleads.campaign.brand 987654321
+agoraform import googleads.asset.product_image 123456789
+agoraform import googleads.campaign_asset.product_image 987654321~123456789~AD_IMAGE
+```
+
+Unsupported field types fail with guidance. Supported Search attachments
+are `AD_IMAGE`, `BUSINESS_LOGO`, and `BUSINESS_NAME`.
 
 ## Google Ads campaign conversion goals
 

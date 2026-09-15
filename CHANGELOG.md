@@ -12,6 +12,13 @@ prints the SemVer identifier without the prefix (`0.5.0`).
 
 ### Added
 
+- Google Ads Search image and business-identity assets: `googleads.asset`
+  uploads local JPEG/PNG/GIF files through `source.file` and manages
+  business-name `TEXT` copy; `googleads.campaign_asset` attaches them to a
+  Search campaign with `AD_IMAGE`, `BUSINESS_LOGO`, or `BUSINESS_NAME`.
+  Unchanged images are not re-uploaded. Image bytes never enter YAML, plan,
+  or state. Content replacement requires a new logical asset.
+
 - `meta.ad_set` targeting can reference existing Custom Audiences for
   inclusion and exclusion and a single OR-group of detailed-targeting
   interest IDs. Optional names are display metadata only; Agoraform never

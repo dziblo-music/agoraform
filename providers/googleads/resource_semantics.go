@@ -177,5 +177,41 @@ func (p *Provider) ValidateResourceSet(ctx context.Context, resources []resource
 		}
 		seenRSAs[key] = res.Address
 	}
+
+	seenCampaignAssets := map[string]resource.Address{}
+	for _, res := range resources {
+		if res.Address.Provider != Name || res.Address.Type != TypeCampaignAsset {
+			continue
+		}
+		fieldType, err := requiredCampaignAssetFieldType(res)
+		if err != nil {
+			return err
+		}
+		assetRef, err := requiredAssetRef(res)
+		if err != nil {
+			return err
+		}
+		campaignRef, err := requiredCampaignRef(res)
+		if err != nil {
+			return err
+		}
+		assetRes, ok := byAddress[assetRef.Address.String()]
+		if !ok {
+			return fmt.Errorf("resource %s: attribute %q references %s, which is not declared", res.Address, AttrAsset, assetRef.Address)
+		}
+		assetType, err := requiredAssetType(assetRes)
+		if err != nil {
+			return err
+		}
+		wantType := campaignAssetFieldTypeAssetTypes[fieldType]
+		if wantType != "" && assetType != wantType {
+			return fmt.Errorf("resource %s: fieldType %s requires a %s googleads.asset, but %s has type %s", res.Address, fieldType, wantType, assetRef.Address, assetType)
+		}
+		key := campaignRef.Address.String() + "\x00" + assetRef.Address.String() + "\x00" + fieldType
+		if other, ok := seenCampaignAssets[key]; ok {
+			return fmt.Errorf("resource %s: duplicates %s; asset %s with field type %s is already attached to campaign %s", res.Address, other, assetRef.Address, fieldType, campaignRef.Address)
+		}
+		seenCampaignAssets[key] = res.Address
+	}
 	return nil
 }

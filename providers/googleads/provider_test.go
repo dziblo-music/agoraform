@@ -37,8 +37,8 @@ func TestProviderRegisterAndLookup(t *testing.T) {
 	if got.Name() != googleads.Name {
 		t.Fatalf("Name = %q", got.Name())
 	}
-	if len(got.ResourceTypes()) != 10 || got.ResourceTypes()[0] != googleads.TypeConversionAction || got.ResourceTypes()[1] != googleads.TypeCustomerConversionGoal || got.ResourceTypes()[2] != googleads.TypeCampaignBudget || got.ResourceTypes()[3] != googleads.TypeCampaign || got.ResourceTypes()[4] != googleads.TypeCampaignConversionGoal || got.ResourceTypes()[5] != googleads.TypeAdGroup || got.ResourceTypes()[6] != googleads.TypeKeyword || got.ResourceTypes()[7] != googleads.TypeResponsiveSearchAd || got.ResourceTypes()[8] != googleads.TypeCampaignLocation || got.ResourceTypes()[9] != googleads.TypeCampaignLanguage {
-		t.Fatalf("ResourceTypes = %v, want [%s %s %s %s %s %s %s %s %s %s]", got.ResourceTypes(), googleads.TypeConversionAction, googleads.TypeCustomerConversionGoal, googleads.TypeCampaignBudget, googleads.TypeCampaign, googleads.TypeCampaignConversionGoal, googleads.TypeAdGroup, googleads.TypeKeyword, googleads.TypeResponsiveSearchAd, googleads.TypeCampaignLocation, googleads.TypeCampaignLanguage)
+	if len(got.ResourceTypes()) != 12 || got.ResourceTypes()[0] != googleads.TypeConversionAction || got.ResourceTypes()[1] != googleads.TypeCustomerConversionGoal || got.ResourceTypes()[2] != googleads.TypeCampaignBudget || got.ResourceTypes()[3] != googleads.TypeCampaign || got.ResourceTypes()[4] != googleads.TypeCampaignConversionGoal || got.ResourceTypes()[5] != googleads.TypeAdGroup || got.ResourceTypes()[6] != googleads.TypeKeyword || got.ResourceTypes()[7] != googleads.TypeResponsiveSearchAd || got.ResourceTypes()[8] != googleads.TypeCampaignLocation || got.ResourceTypes()[9] != googleads.TypeCampaignLanguage || got.ResourceTypes()[10] != googleads.TypeAsset || got.ResourceTypes()[11] != googleads.TypeCampaignAsset {
+		t.Fatalf("ResourceTypes = %v, want [%s %s %s %s %s %s %s %s %s %s %s %s]", got.ResourceTypes(), googleads.TypeConversionAction, googleads.TypeCustomerConversionGoal, googleads.TypeCampaignBudget, googleads.TypeCampaign, googleads.TypeCampaignConversionGoal, googleads.TypeAdGroup, googleads.TypeKeyword, googleads.TypeResponsiveSearchAd, googleads.TypeCampaignLocation, googleads.TypeCampaignLanguage, googleads.TypeAsset, googleads.TypeCampaignAsset)
 	}
 
 	addr, err := resource.ParseAddress("googleads.conversion_action.trial_started")
@@ -119,6 +119,22 @@ func TestProviderRegisterAndLookup(t *testing.T) {
 	}
 	if _, err := reg.LookupFor(languageAddr); err != nil {
 		t.Fatalf("LookupFor campaign_language: %v", err)
+	}
+
+	assetAddr, err := resource.ParseAddress("googleads.asset.product_image")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.LookupFor(assetAddr); err != nil {
+		t.Fatalf("LookupFor asset: %v", err)
+	}
+
+	campaignAssetAddr, err := resource.ParseAddress("googleads.campaign_asset.product_image")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.LookupFor(campaignAssetAddr); err != nil {
+		t.Fatalf("LookupFor campaign_asset: %v", err)
 	}
 
 	unknown, err := resource.ParseAddress("googleads.ad.brand")
