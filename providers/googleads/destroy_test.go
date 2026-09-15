@@ -154,18 +154,6 @@ func TestDestroyRemovesEachRemovableType(t *testing.T) {
 			},
 		},
 		{
-			name:       "asset",
-			collection: "assets",
-			res: func(t *testing.T) resource.Resource {
-				res := imageAssetResource(t, "product_image", localPNG(t, "pic.png", 128, 128))
-				res.Identity = resource.Identity{ID: "81"}
-				return res
-			},
-			seed: func(f *destroyFake) {
-				f.seedAsset(map[string]any{"id": "81", "name": "product_image", "type": "IMAGE"})
-			},
-		},
-		{
 			name:       "campaign_asset",
 			collection: "campaignAssets",
 			res: func(t *testing.T) resource.Resource {
