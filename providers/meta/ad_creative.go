@@ -26,7 +26,7 @@ var (
 	supportedAdCreativeAttrs = map[string]struct{}{
 		AttrName: {}, AttrPageID: {}, AttrInstagramUserID: {}, AttrDestinationURL: {},
 		AttrPrimaryText: {}, AttrHeadline: {}, AttrDescription: {}, AttrCallToAction: {},
-		AttrImageHash: {}, AttrImageRef: {}, AttrVideoID: {}, AttrURLTags: {},
+		AttrImageHash: {}, AttrImageRef: {}, AttrVideoID: {}, AttrVideoRef: {}, AttrURLTags: {},
 	}
 	computedAdCreativeAttrs = map[string]struct{}{
 		"id": {}, "adCreativeId": {}, "account_id": {}, "accountId": {}, "status": {},
@@ -62,6 +62,8 @@ type normalizedAdCreative struct {
 	ManagedImage       resource.Ref // set when image: {$ref: meta.image.*} is declared
 	HasManagedImage    bool         // true when image: ref is used instead of imageHash:
 	VideoID            string
+	ManagedVideo       resource.Ref // set when video: {$ref: meta.video.*} is declared
+	HasManagedVideo    bool         // true when video: ref is used instead of videoId:
 	Mode               string
 	URLTags            string
 	HasURLTags         bool
@@ -220,6 +222,11 @@ func (p *Provider) normalizeAdCreativeComparable(desired resource.Resource, live
 	if want.HasManagedImage && want.ImageHash == "" {
 		if hash := p.lookupImageHash(want.ManagedImage.Address); hash != "" {
 			want.ImageHash = hash
+		}
+	}
+	if want.HasManagedVideo && want.VideoID == "" {
+		if id := p.lookupVideoID(want.ManagedVideo.Address); id != "" {
+			want.VideoID = id
 		}
 	}
 	wantAttrs := adCreativeAttributes(want)
@@ -406,7 +413,6 @@ func normalizeAdCreative(res resource.Resource) (normalizedAdCreative, error) {
 			return normalizedAdCreative{}, err
 		}
 		hasManagedImage = true
-		// At apply time the ref is resolved and outputs are available.
 		if resolved, ok := resource.AsResolved(imageRefRaw); ok {
 			if hash, e := coerceString(resolved.Outputs[OutputImageHash]); e == nil && strings.TrimSpace(hash) != "" {
 				imageHash = strings.TrimSpace(hash)
@@ -418,12 +424,35 @@ func normalizeAdCreative(res resource.Resource) (normalizedAdCreative, error) {
 	if err != nil {
 		return normalizedAdCreative{}, err
 	}
-	hasAnyImage := hasImage || hasManagedImage
-	if hasAnyImage == hasVideo {
-		if hasAnyImage {
-			return normalizedAdCreative{}, fmt.Errorf("resource %s: %q and %q cannot both be set; exactly one image source or videoId is required", res.Address, AttrVideoID, AttrImageRef)
+	videoRefRaw, hasVideoRefKey := res.Attributes[AttrVideoRef]
+	var managedVideo resource.Ref
+	hasManagedVideo := false
+	if hasVideoRefKey {
+		if hasVideo {
+			return normalizedAdCreative{}, fmt.Errorf("resource %s: attributes %q and %q are mutually exclusive; use one or the other", res.Address, AttrVideoID, AttrVideoRef)
 		}
-		return normalizedAdCreative{}, fmt.Errorf("resource %s: exactly one of %q, %q, or %q is required", res.Address, AttrImageHash, AttrImageRef, AttrVideoID)
+		managedVideo, err = requiredTypedRef(res, AttrVideoRef, TypeVideo)
+		if err != nil {
+			return normalizedAdCreative{}, err
+		}
+		hasManagedVideo = true
+		if resolved, ok := resource.AsResolved(videoRefRaw); ok {
+			if id, e := coerceString(resolved.Outputs[OutputVideoID]); e == nil && strings.TrimSpace(id) != "" {
+				videoID, err = normalizeObjectID(id)
+				if err != nil {
+					return normalizedAdCreative{}, fmt.Errorf("resource %s: resolved %s output is not a numeric Meta video id", res.Address, OutputVideoID)
+				}
+				hasVideo = true
+			}
+		}
+	}
+	hasAnyImage := hasImage || hasManagedImage
+	hasAnyVideo := hasVideo || hasManagedVideo
+	if hasAnyImage && hasAnyVideo {
+		return normalizedAdCreative{}, fmt.Errorf("resource %s: image and video sources cannot both be set; exactly one media source is required", res.Address)
+	}
+	if !hasAnyImage && !hasAnyVideo {
+		return normalizedAdCreative{}, fmt.Errorf("resource %s: exactly one of %q, %q, %q, or %q is required", res.Address, AttrImageHash, AttrImageRef, AttrVideoID, AttrVideoRef)
 	}
 	if hasImage && strings.IndexFunc(imageHash, unicode.IsSpace) >= 0 {
 		return normalizedAdCreative{}, fmt.Errorf("resource %s: attribute %q must be one external Meta image hash without whitespace", res.Address, AttrImageHash)
@@ -438,7 +467,7 @@ func normalizeAdCreative(res resource.Resource) (normalizedAdCreative, error) {
 		}
 	}
 	mode := creativeModeImage
-	if hasVideo {
+	if hasAnyVideo {
 		mode = creativeModeVideo
 	}
 	return normalizedAdCreative{
@@ -446,7 +475,8 @@ func normalizeAdCreative(res resource.Resource) (normalizedAdCreative, error) {
 		DestinationURL: destination, PrimaryText: primary, Headline: headline,
 		Description: description, HasDescription: hasDescription, CallToAction: cta,
 		ImageHash: imageHash, ManagedImage: managedImage, HasManagedImage: hasManagedImage,
-		VideoID: videoID, Mode: mode, URLTags: tags, HasURLTags: hasTags,
+		VideoID: videoID, ManagedVideo: managedVideo, HasManagedVideo: hasManagedVideo,
+		Mode: mode, URLTags: tags, HasURLTags: hasTags,
 	}, nil
 }
 
@@ -463,14 +493,16 @@ func adCreativeAttributes(c normalizedAdCreative) resource.Attributes {
 	}
 	if c.Mode == creativeModeImage {
 		if c.HasManagedImage {
-			// Preserve the logical managed-image reference for plan output
-			// instead of the resolved hash; the hash is a computed detail.
 			out[AttrImageRef] = c.ManagedImage
 		} else {
 			out[AttrImageHash] = c.ImageHash
 		}
 	} else {
-		out[AttrVideoID] = c.VideoID
+		if c.HasManagedVideo {
+			out[AttrVideoRef] = c.ManagedVideo
+		} else {
+			out[AttrVideoID] = c.VideoID
+		}
 	}
 	if c.HasURLTags {
 		out[AttrURLTags] = c.URLTags
@@ -506,10 +538,10 @@ func adCreativeComparableAttributes(c normalizedAdCreative) resource.Attributes 
 
 func adCreativeForm(c normalizedAdCreative) (url.Values, error) {
 	if c.Mode == creativeModeImage && c.ImageHash == "" {
-		// This should not happen at apply time because normalizeAdCreative
-		// resolves the managed image ref at apply time (Resolved outputs
-		// are available). Surface a clear error if the ref was not resolved.
 		return nil, fmt.Errorf("image hash is not available; ensure the meta.image resource was applied before this ad creative")
+	}
+	if c.Mode == creativeModeVideo && c.VideoID == "" {
+		return nil, fmt.Errorf("video id is not available; ensure the meta.video resource finished processing before this ad creative")
 	}
 	cta := map[string]any{"type": c.CallToAction, "value": map[string]any{"link": c.DestinationURL}}
 	story := map[string]any{"page_id": c.PageID}
@@ -551,6 +583,10 @@ func validateAdCreativeTransition(addr resource.Address, want, got normalizedAdC
 	wantContent.ManagedImage = resource.Ref{}
 	gotContent.HasManagedImage = false
 	gotContent.ManagedImage = resource.Ref{}
+	wantContent.HasManagedVideo = false
+	wantContent.ManagedVideo = resource.Ref{}
+	gotContent.HasManagedVideo = false
+	gotContent.ManagedVideo = resource.Ref{}
 	if reflect.DeepEqual(wantContent, gotContent) {
 		return nil
 	}

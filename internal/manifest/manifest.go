@@ -22,13 +22,13 @@ const (
 
 // Manifest is a parsed Agoraform configuration document.
 type Manifest struct {
-	// Origin is the source path or label used in diagnostics.
+	// 	Origin is the source path or label used in diagnostics.
 	Origin string
 
 	// BaseDir is the directory containing the manifest file. It is populated
-	// by LoadFile and used to resolve relative file paths in resource
-	// attributes (such as file: in meta.image). Empty when the manifest is
-	// parsed from an in-memory source.
+	// by LoadFile and used to resolve source.file paths against the manifest
+	// directory and optional assets.root. Empty when the manifest is parsed
+	// from an in-memory source.
 	BaseDir string
 
 	// APIVersion is the schema version declared in the file.

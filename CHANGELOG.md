@@ -12,6 +12,14 @@ prints the SemVer identifier without the prefix (`0.5.0`).
 
 ### Added
 
+- Meta Ads local image and video upload: `meta.image` and `meta.video`
+  stream finished files through the provider-neutral `source.file` model,
+  persist SHA-256 fingerprints, and expose the Meta image hash or video id
+  only when the Marketing API reports the asset usable. `meta.ad_creative`
+  can `$ref` those resources or keep external `imageHash` / `videoId`
+  literals. Unchanged files are not re-uploaded; changed immutable media
+  fails planning instead of silently replacing identity.
+
 - Google Ads Search image and business-identity assets: `googleads.asset`
   uploads local JPEG/PNG/GIF files through `source.file` and manages
   business-name `TEXT` copy; `googleads.campaign_asset` attaches them to a
@@ -36,7 +44,7 @@ prints the SemVer identifier without the prefix (`0.5.0`).
   suite. The example covers the full supported v0.6.0 graph — Pixel/Dataset
   binding, website Custom Conversion, `OUTCOME_SALES` campaign, ad set with
   an ad-set-owned daily budget, typed targeting and website conversion
-  optimization, external-media ad creative, and the serving ad — with every
+  optimization, managed `meta.image` ad creative, and the serving ad — with every
   serving resource `PAUSED`, logical `$ref` relationships throughout, and
   placeholder Page, Instagram, media, and landing-page values. Its README
   documents the Agoraform/external configuration boundary, the

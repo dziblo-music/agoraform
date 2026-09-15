@@ -30,8 +30,8 @@ func TestProviderRegisterAndLookup(t *testing.T) {
 	if !ok || got.Name() != meta.Name {
 		t.Fatalf("Lookup(meta) = %v, %v", got, ok)
 	}
-	if got := got.ResourceTypes(); len(got) != 7 || got[0] != meta.TypeImage || got[1] != meta.TypePixel || got[2] != meta.TypeCustomConversion || got[3] != meta.TypeCampaign || got[4] != meta.TypeAdSet || got[5] != meta.TypeAdCreative || got[6] != meta.TypeAd {
-		t.Fatalf("resource types = %v, want image, pixel, custom_conversion, campaign, ad_set, ad_creative, and ad", got)
+	if got := got.ResourceTypes(); len(got) != 8 || got[0] != meta.TypeImage || got[1] != meta.TypeVideo || got[2] != meta.TypePixel || got[3] != meta.TypeCustomConversion || got[4] != meta.TypeCampaign || got[5] != meta.TypeAdSet || got[6] != meta.TypeAdCreative || got[7] != meta.TypeAd {
+		t.Fatalf("resource types = %v, want image, video, pixel, custom_conversion, campaign, ad_set, ad_creative, and ad", got)
 	}
 }
 

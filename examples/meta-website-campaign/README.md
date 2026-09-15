@@ -12,8 +12,8 @@ Ads, from the event source through the serving ad:
 - `meta.ad_set.instagram_trial` is a paused ad set with a daily budget,
   `OFFSITE_CONVERSIONS` optimization against the managed Custom Conversion,
   and typed United States / Instagram placement targeting;
-- `meta.ad_creative.instagram_trial` is a link creative that references an
-  externally prepared image and placeholder Page and Instagram identities;
+- `meta.ad_creative.instagram_trial` is a link creative that references a
+  managed `meta.image` upload and placeholder Page and Instagram identities;
 - `meta.ad.instagram_trial` is the paused ad that binds the ad set to the
   creative.
 
@@ -28,6 +28,7 @@ meta.ad.instagram_trial
 │   │   └── meta.pixel.website
 │   └── meta.pixel.website
 └── meta.ad_creative.instagram_trial
+    └── meta.image.instagram_trial_hero
 ```
 
 The ad set references the pixel directly as well as through its Custom
@@ -36,11 +37,11 @@ disagree.
 
 Provider-native IDs for Agoraform-managed resources and access tokens do not
 belong in the manifest. External values that the creative must reference —
-the Page ID, optional Instagram user ID, and image hash or video ID — remain
-literal manifest attributes because Agoraform does not manage those objects.
-Replace the placeholder landing page, copy, budget, targeting, Page ID,
-Instagram user ID, and image hash with values for your own account before
-enabling delivery.
+the Page ID and optional Instagram user ID — remain literal manifest
+attributes because Agoraform does not manage those objects. Replace the
+placeholder landing page, copy, budget, targeting, Page ID, Instagram user
+ID, and `assets/hero.jpg` with values for your own account before enabling
+delivery.
 
 ## What Agoraform manages here
 
@@ -59,12 +60,13 @@ Everything else stays outside Agoraform:
 | Pixel/Dataset creation and ownership | Events Manager |
 | Browser Pixel code and `fbq('track', 'StartTrial')` | Your website |
 | Conversions API server events | Your backend |
-| Image and video asset production and upload | Your creative pipeline and Meta media upload |
+| Image and video creative production | Your creative pipeline; Agoraform uploads the finished file |
 | Enabling delivery and spend | A deliberate, reviewed manifest change |
 
-Agoraform never uploads media bytes. `imageHash` is an identifier for an
-image that already exists in the ad account, and `pageId` /
-`instagramUserId` name accounts you already administer. The event name in
+Agoraform uploads `assets/hero.jpg` through `meta.image.instagram_trial_hero`
+and resolves `image: { $ref: meta.image.instagram_trial_hero }` to the Meta
+image hash at apply time. `pageId` / `instagramUserId` name accounts you
+already administer. The event name in
 the Custom Conversion `rule` (`StartTrial` here) is the contract your
 external instrumentation must emit; the declared `pixelId` output is the
 event-source identifier those tags initialize.
@@ -73,8 +75,8 @@ event-source identifier those tags initialize.
 
 You need a Meta ad account the Marketing API can manage, an access token
 with `ads_management`, a Pixel/Dataset in that account, a Facebook Page (and
-optionally an Instagram account) you administer, and an image already
-uploaded to the ad account's image library. Prefer a Business system-user
+optionally an Instagram account) you administer, and a finished JPEG, PNG, or
+GIF in `assets/hero.jpg`. Prefer a Business system-user
 token for automation. Agoraform consumes the token; it does not create apps,
 businesses, system users, or tokens.
 

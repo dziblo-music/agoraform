@@ -14,6 +14,11 @@ const (
 	// DefaultTimeout bounds each API request when Config.Timeout is unset.
 	DefaultTimeout = 30 * time.Second
 
+	// DefaultUploadTimeout bounds multipart image/video uploads when
+	// Config.UploadTimeout is unset. Large video files routinely exceed the
+	// ordinary request timeout.
+	DefaultUploadTimeout = 10 * time.Minute
+
 	maxResponseBody = 4 << 20
 	maxPages        = 100
 	userAgent       = "agoraform"

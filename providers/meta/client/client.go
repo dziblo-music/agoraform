@@ -69,16 +69,33 @@ func (c *Client) Delete(ctx context.Context, path string, form url.Values, out a
 // PostMultipart performs a versioned multipart/form-data POST and decodes its
 // JSON response. fields contains additional form fields. fileField names the
 // file part; filename is the declared file name included in the part header.
-// content is the raw file bytes. The Meta Marketing API uses multipart
-// uploads for ad images and video thumbnails.
+// content is the raw file bytes. Prefer PostMultipartStream for large files.
 func (c *Client) PostMultipart(ctx context.Context, path string, fields url.Values, fileField, filename string, content []byte, out any) error {
+	return c.PostMultipartStream(ctx, path, fields, fileField, filename, bytes.NewReader(content), int64(len(content)), out)
+}
+
+// PostMultipartStream uploads a file by streaming r without buffering the
+// whole payload in memory. size must equal the number of bytes that r will
+// yield so the request can set Content-Length; Meta's Graph API does not
+// reliably accept chunked multipart bodies.
+func (c *Client) PostMultipartStream(ctx context.Context, path string, fields url.Values, fileField, filename string, r io.Reader, size int64, out any) error {
 	if c == nil {
 		return fmt.Errorf("meta: client is nil")
+	}
+	if r == nil {
+		return fmt.Errorf("meta: upload body is required")
+	}
+	if size < 0 {
+		return fmt.Errorf("meta: upload size is invalid")
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
+	timeout := c.cfg.UploadTimeout
+	if timeout <= 0 {
+		timeout = c.cfg.Timeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	cleanPath, err := normalizePath(path)
@@ -88,8 +105,8 @@ func (c *Client) PostMultipart(ctx context.Context, path string, fields url.Valu
 	endpoint := c.baseURL + "/" + Version + "/" + cleanPath
 	operation := Redact("POST "+cleanPath, c.cfg.AccessToken)
 
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
+	var prefix bytes.Buffer
+	writer := multipart.NewWriter(&prefix)
 	for key, values := range fields {
 		for _, val := range values {
 			if err := writer.WriteField(key, val); err != nil {
@@ -97,21 +114,17 @@ func (c *Client) PostMultipart(ctx context.Context, path string, fields url.Valu
 			}
 		}
 	}
-	part, err := writer.CreateFormFile(fileField, filename)
-	if err != nil {
+	if _, err := writer.CreateFormFile(fileField, filename); err != nil {
 		return transportError(operation, err, c.cfg.AccessToken)
 	}
-	if _, err := part.Write(content); err != nil {
-		return transportError(operation, err, c.cfg.AccessToken)
-	}
-	if err := writer.Close(); err != nil {
-		return transportError(operation, err, c.cfg.AccessToken)
-	}
+	suffix := "\r\n--" + writer.Boundary() + "--\r\n"
+	body := io.MultiReader(&prefix, io.LimitReader(r, size), strings.NewReader(suffix))
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, &body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, body)
 	if err != nil {
 		return transportError(operation, err, c.cfg.AccessToken)
 	}
+	req.ContentLength = int64(prefix.Len()) + size + int64(len(suffix))
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.cfg.AccessToken)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -122,31 +135,7 @@ func (c *Client) PostMultipart(ctx context.Context, path string, fields url.Valu
 		return transportError(operation, err, c.cfg.AccessToken)
 	}
 	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody+1))
-	if err != nil {
-		return &Error{Operation: operation, StatusCode: resp.StatusCode, Message: "response could not be read", Transient: true}
-	}
-	if len(raw) > maxResponseBody {
-		return &Error{Operation: operation, StatusCode: resp.StatusCode, Message: "response exceeded size limit"}
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		requestID := firstHeader(resp.Header, "x-fb-request-id")
-		traceID := firstHeader(resp.Header, "x-fb-trace-id")
-		return parseAPIError(operation, resp.StatusCode, requestID, traceID, raw, c.cfg.AccessToken)
-	}
-	if len(bytes.TrimSpace(raw)) == 0 {
-		raw = []byte("{}")
-	}
-	if !json.Valid(raw) {
-		return &Error{Operation: operation, StatusCode: resp.StatusCode, Message: "malformed JSON response"}
-	}
-	if out == nil {
-		return nil
-	}
-	if err := json.Unmarshal(raw, out); err != nil {
-		return &Error{Operation: operation, StatusCode: resp.StatusCode, Message: "could not decode JSON response"}
-	}
-	return nil
+	return c.decodeJSONResponse(resp, operation, out)
 }
 
 // List follows Meta cursor pagination and returns each element of every data
@@ -221,6 +210,10 @@ func (c *Client) do(ctx context.Context, method, path string, query, form url.Va
 		return transportError(operation, err, c.cfg.AccessToken)
 	}
 	defer resp.Body.Close()
+	return c.decodeJSONResponse(resp, operation, out)
+}
+
+func (c *Client) decodeJSONResponse(resp *http.Response, operation string, out any) error {
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody+1))
 	if err != nil {
 		return &Error{Operation: operation, StatusCode: resp.StatusCode, Message: "response could not be read", Transient: true}
