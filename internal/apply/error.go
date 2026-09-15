@@ -68,7 +68,7 @@ func (e *PartialApplyError) mutationMessage() string {
 		if e.RemoteIdentity.IsZero() {
 			return fmt.Sprintf("%s was created remotely, but Agoraform could not safely accept the provider result: %v\nRemote state may already have changed; it was not rolled back. Identify the created remote resource before retrying, then bind it with agoraform import.", e.Address, cause)
 		}
-		return fmt.Sprintf("%s was created remotely with id %s, but Agoraform could not safely accept the provider result: %v\nRemote state may already have changed; it was not rolled back. Fix the provider issue, then inspect the remote resource and re-bind it with agoraform import if needed.", e.Address, e.RemoteIdentity.ID, cause)
+		return fmt.Sprintf("%s was created remotely with id %s, but convergence did not complete: %v\nAgoraform preserved that remote identity in local state for recovery. Do not create or import another object at this address. Fix or wait for the provider-side condition, then rerun agoraform plan/apply; Agoraform will read the same remote resource instead of creating a duplicate.", e.Address, e.RemoteIdentity.ID, cause)
 	case "update":
 		return fmt.Sprintf("%s was updated remotely, but Agoraform could not safely accept the provider result: %v\nThe existing identity binding remains unchanged. Inspect the remote resource and fix the provider issue before rerunning agoraform plan and agoraform apply.", e.Address, cause)
 	default:
