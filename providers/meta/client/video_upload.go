@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -86,8 +87,8 @@ func (c *Client) UploadVideoResumable(ctx context.Context, path, filename string
 			chunkSize := end - start
 			transferred = videoUploadOffsets{}
 			transferErr = c.postVideoMultipartStream(ctx, path, url.Values{
-				"upload_phase":     {"transfer"},
-				"start_offset":    {strconv.FormatInt(start, 10)},
+				"upload_phase":      {"transfer"},
+				"start_offset":     {strconv.FormatInt(start, 10)},
 				"upload_session_id": {sessionID},
 			}, "video_file_chunk", filename, io.LimitReader(rc, chunkSize), chunkSize, &transferred)
 			_ = rc.Close()
@@ -95,7 +96,7 @@ func (c *Client) UploadVideoResumable(ctx context.Context, path, filename string
 				break
 			}
 			var apiErr *Error
-			if !errorAs(transferErr, &apiErr) || !apiErr.IsTransient() || attempt+1 >= maxVideoChunkRetries {
+			if !errors.As(transferErr, &apiErr) || !apiErr.IsTransient() || attempt+1 >= maxVideoChunkRetries {
 				return videoID, fmt.Errorf("transfer resumable upload at offset %d: %w", start, transferErr)
 			}
 		}
@@ -212,10 +213,4 @@ func (c *Client) doVideo(ctx context.Context, path string, body io.Reader, conte
 	}
 	defer resp.Body.Close()
 	return c.decodeJSONResponse(resp, operation, out)
-}
-
-// errorAs is kept local so resumable upload can inspect transient Meta errors
-// without exporting another helper from this package.
-func errorAs(err error, target any) bool {
-	return errorsAs(err, target)
 }
