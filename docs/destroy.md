@@ -93,8 +93,9 @@ Destroy uses the apply dependency graph in reverse: dependents are removed
 before prerequisites. For Matomo Tag Manager that means tags, then
 variables/triggers, then a managed container. For Google Ads Search that
 means ads and keywords, then campaign assets, then campaign criteria, then
-the ad group, then the campaign, then the budget. Image assets are removed
-only after their campaign-asset attachments are detached.
+the ad group, then the campaign, then the budget. Campaign-asset relationships
+are detached before campaign teardown. Underlying `googleads.asset` objects
+cannot be removed through AssetService and remain in state.
 
 ## Already absent and failures
 
@@ -167,7 +168,7 @@ still exits non-zero while those bindings remain.
 | `googleads.responsive_search_ad` | remove | `adGroupAds:mutate` `remove` | `status=REMOVED` | `REMOVED` or not found | remove the ad-group-ad relationship only |
 | `googleads.campaign_location` | remove | `campaignCriteria:mutate` `remove` | `status=REMOVED` | `REMOVED` or not found | mutate `remove` only |
 | `googleads.campaign_language` | remove | `campaignCriteria:mutate` `remove` | `status=REMOVED` | `REMOVED` or not found | mutate `remove` only |
-| `googleads.asset` | remove | `assets:mutate` `remove` | `status=REMOVED` | `REMOVED` or not found | refuse while campaign-asset attachments still exist; detach first |
+| `googleads.asset` | unsupported | none | object remains | not applicable | AssetService has no remove/delete operation; detach campaign-asset relationships instead |
 | `googleads.campaign_asset` | remove | `campaignAssets:mutate` `remove` | `status=REMOVED` | `REMOVED` or not found | detach the campaign relationship only |
 
 ### Meta Ads
