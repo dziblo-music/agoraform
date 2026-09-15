@@ -45,8 +45,15 @@ func TestDestroyLifecycleMatrixCoversResourceTypes(t *testing.T) {
 			if spec.Precondition == "" {
 				t.Errorf("%s provider-owned lifecycle missing guidance", typ)
 			}
+		case provider.DestroyUnsupported:
+			if spec.Collection != "" || spec.MutateOperation != "" {
+				t.Errorf("%s unsupported lifecycle must not declare a mutate operation", typ)
+			}
+			if spec.Precondition == "" {
+				t.Errorf("%s unsupported lifecycle missing guidance", typ)
+			}
 		default:
-			t.Errorf("%s capability %q is not remove or provider-owned", typ, spec.Capability)
+			t.Errorf("%s capability %q is not remove, provider-owned, or unsupported", typ, spec.Capability)
 		}
 	}
 	for typ := range destroyLifecycleByType {
