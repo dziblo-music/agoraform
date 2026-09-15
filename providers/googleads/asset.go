@@ -36,8 +36,8 @@ const (
 
 	assetsCollection = "assets"
 
-	maxImageBytes         = 5120 * 1024 // 5,120 KiB Google Ads image limit
-	minImageEdgePixels    = 128         // smallest documented logo edge
+	maxImageBytes         = 5_120_000 // 5,120 KB Google Ads image limit
+	minImageEdgePixels    = 128       // smallest documented logo edge
 	maxBusinessNameRunes  = 25
 	imageReplaceGuidance  = "image content is immutable after create; declare a new googleads.asset and repoint googleads.campaign_asset attachments instead of updating this resource"
 	textReplaceGuidance   = "text content is immutable after create; declare a new googleads.asset and repoint googleads.campaign_asset attachments instead of updating this resource"
@@ -207,7 +207,7 @@ func validateImageLocalAsset(res resource.Resource) error {
 		return fmt.Errorf("resource %s: local file %q is empty", res.Address, res.LocalAsset.Path)
 	}
 	if res.LocalAsset.Size > maxImageBytes {
-		return fmt.Errorf("resource %s: local file %q exceeds the Google Ads 5,120 KiB image size limit", res.Address, res.LocalAsset.Path)
+		return fmt.Errorf("resource %s: local file %q exceeds the Google Ads 5,120 KB image size limit", res.Address, res.LocalAsset.Path)
 	}
 
 	rc, err := res.LocalAsset.Open()
@@ -306,43 +306,15 @@ func (p *Provider) updateAsset(ctx context.Context, desired resource.Resource, a
 		return resource.RemoteResource{}, fmt.Errorf("googleads: update %s: persisted identity %q does not match planned remote identity %q", desired.Address, id, actual.Identity.ID)
 	}
 
-	want, got, err := p.normalizeAssetComparable(desired, &actual)
-	if err != nil {
-		return resource.RemoteResource{}, fmt.Errorf("googleads: update %s: %w", desired.Address, err)
-	}
-	if err := rejectImmutableAssetChanges(desired, &actual, want, got); err != nil {
+	// Google Ads assets are immutable after creation. Normalization rejects
+	// content/type changes and intentionally ignores the create-time name.
+	if _, _, err := p.normalizeAssetComparable(desired, &actual); err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("googleads: update %s: %w", desired.Address, err)
 	}
 
-	c, err := p.Client()
-	if err != nil {
-		return resource.RemoteResource{}, err
-	}
-	resourceName := assetResourceName(c.CustomerID(), actual.Identity.ID)
-	name, nameSet, _ := optionalString(desired, AttrName)
-	if !nameSet {
-		live, err := p.readAssetByID(ctx, desired.Address, actual.Identity.ID, desired)
-		if err != nil {
-			return resource.RemoteResource{}, fmt.Errorf("googleads: update %s: %w", desired.Address, err)
-		}
-		return p.rememberLive(live), nil
-	}
-
-	_, err = c.Mutate(ctx, assetsCollection, []map[string]any{
-		{
-			"update": map[string]any{
-				"resourceName": resourceName,
-				"name":         name,
-			},
-			"updateMask": "name",
-		},
-	})
-	if err != nil {
-		return resource.RemoteResource{}, fmt.Errorf("googleads: update %s: %w", desired.Address, err)
-	}
 	live, err := p.readAssetByID(ctx, desired.Address, actual.Identity.ID, desired)
 	if err != nil {
-		return resource.RemoteResource{}, fmt.Errorf("googleads: update %s: refreshing current asset: %w", desired.Address, err)
+		return resource.RemoteResource{}, fmt.Errorf("googleads: update %s: %w", desired.Address, err)
 	}
 	return p.rememberLive(live), nil
 }
@@ -380,6 +352,12 @@ func (p *Provider) normalizeAssetComparable(desired resource.Resource, live *res
 	if live == nil {
 		return want, nil, nil
 	}
+
+	// Asset.name is create-time metadata only. Google Ads can deduplicate
+	// identical assets and retain a pre-existing name, so reconciling it after
+	// creation can cause permanent drift and unsupported update attempts.
+	delete(want, AttrName)
+
 	if id, bound, err := boundAssetIdentity(desired); err != nil {
 		return nil, nil, err
 	} else if bound {
@@ -391,6 +369,7 @@ func (p *Provider) normalizeAssetComparable(desired resource.Resource, live *res
 	if err != nil {
 		return nil, nil, fmt.Errorf("resource %s: %w", desired.Address, err)
 	}
+	delete(got, AttrName)
 	if err := rejectImmutableAssetChanges(desired, live, want, got); err != nil {
 		return nil, nil, err
 	}
@@ -746,7 +725,7 @@ func readLocalImageBytes(res resource.Resource) ([]byte, error) {
 		return nil, fmt.Errorf("cannot stream local file %q: %w", res.LocalAsset.Path, err)
 	}
 	if int64(len(data)) > maxImageBytes {
-		return nil, fmt.Errorf("local file %q exceeds the Google Ads 5,120 KiB image size limit", res.LocalAsset.Path)
+		return nil, fmt.Errorf("local file %q exceeds the Google Ads 5,120 KB image size limit", res.LocalAsset.Path)
 	}
 	if len(data) == 0 {
 		return nil, fmt.Errorf("local file %q is empty", res.LocalAsset.Path)
