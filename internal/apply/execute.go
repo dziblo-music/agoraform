@@ -15,9 +15,10 @@ import (
 // Lookup resolves the mutating provider for a resource address.
 type Lookup func(addr resource.Address) (provider.Provider, error)
 
-// Store persists provider-native identities after successful mutations.
-//
-// Implementations must not write a new identity for a failed mutation.
+// Store persists provider-native identities after successful mutations and
+// recoverable creates where the provider reports a definite remote identity
+// together with a post-create convergence error. Persisting that identity is
+// what prevents a retry from silently creating a second remote object.
 type Store interface {
 	RecordCreate(addr resource.Address, live resource.RemoteResource) error
 	RecordUpdate(addr resource.Address, live resource.RemoteResource) error
@@ -379,7 +380,13 @@ func executeCreate(ctx context.Context, change plan.Change, desired resource.Res
 	desired.Identity = resource.Identity{}
 	live, err := p.Create(ctx, desired)
 	if err != nil {
-		return resource.RemoteResource{}, applyError(addr, "create", err)
+		if live.Identity.IsZero() {
+			return resource.RemoteResource{}, applyError(addr, "create", err)
+		}
+		if persistErr := st.RecordCreate(addr, live); persistErr != nil {
+			return resource.RemoteResource{}, persistCreateError(addr, live.Identity, fmt.Errorf("provider reported a post-create convergence failure (%v), and the recovery identity could not be saved: %w", err, persistErr))
+		}
+		return live, postMutationError(addr, "create", live.Identity, err)
 	}
 	if live.Identity.IsZero() {
 		return resource.RemoteResource{}, postMutationError(addr, "create", live.Identity, fmt.Errorf("provider returned no identity"))
