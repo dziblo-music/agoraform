@@ -65,8 +65,8 @@ const (
 	AttrCallToAction = "callToAction"
 	// AttrImageHash and AttrVideoID are mutually exclusive external media
 	// identifiers for ad creatives that reference externally managed assets.
-	// For managed local-file assets, use AttrImageRef on the creative and
-	// declare a meta.image resource with AttrFile.
+	// For managed local-file assets, use AttrImageRef / AttrVideoRef and
+	// declare a meta.image or meta.video resource with source.file.
 	AttrImageHash = "imageHash"
 	AttrVideoID   = "videoId"
 	// AttrImageRef is the managed image reference attribute on meta.ad_creative.
@@ -74,10 +74,11 @@ const (
 	// AttrImageHash. The plan engine resolves the reference at apply time and
 	// sends the provider-native image hash to the Meta API.
 	AttrImageRef = "image"
-	// AttrFile is the local file path attribute on meta.image resources.
-	// The path is resolved relative to the working directory (run agoraform
-	// from the same directory as the manifest for relative paths to work).
-	AttrFile = "file"
+	// AttrVideoRef is the managed video reference attribute on meta.ad_creative.
+	// It accepts a $ref to a meta.video resource and is mutually exclusive with
+	// AttrVideoID. The plan engine resolves the reference at apply time and
+	// sends the provider-native video id only after Meta reports the video ready.
+	AttrVideoRef = "video"
 	// AttrURLTags is Meta's provider-native destination URL parameter string.
 	AttrURLTags = "urlTags"
 	// AttrAdSet and AttrCreative are logical references from an ad to its
@@ -89,6 +90,11 @@ const (
 	// A meta.image resource uploads a local file during apply and captures the
 	// provider-native image hash for use by meta.ad_creative resources.
 	TypeImage = "image"
+	// TypeVideo is used in addresses such as meta.video.product_demo.
+	// A meta.video resource uploads a local file during apply, waits until
+	// Meta reports the video ready, and captures the numeric video id for
+	// use by meta.ad_creative resources.
+	TypeVideo = "video"
 	// TypeCustomConversion is used in addresses such as
 	// meta.custom_conversion.trial_started.
 	TypeCustomConversion = "custom_conversion"
@@ -105,6 +111,11 @@ const (
 	// meta.image after a successful upload. meta.ad_creative resources resolve
 	// image: {$ref: meta.image.name} to this output at apply time.
 	OutputImageHash = "imageHash"
+	// OutputVideoID is the declared non-secret Meta video id produced by
+	// meta.video after upload and processing complete. meta.ad_creative
+	// resources resolve video: {$ref: meta.video.name} to this output at
+	// apply time only when the video is ready to serve.
+	OutputVideoID = "videoId"
 	// OutputCustomConversionID is the declared non-secret Custom Conversion id.
 	OutputCustomConversionID = "customConversionId"
 	// OutputCampaignID is the declared non-secret Meta campaign id.

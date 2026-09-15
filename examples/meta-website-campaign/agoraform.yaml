@@ -11,13 +11,16 @@
 apiVersion: agoraform.io/v1alpha1
 providers:
   meta: {}
+assets:
+  root: ./assets
 resources:
   # ── Image assets ────────────────────────────────────────────────────────────
   # Agoraform uploads the local file and stores the Meta image hash in state.
   # Replace assets/hero.jpg with your actual creative file.
   - address: meta.image.instagram_trial_hero
     attributes:
-      file: assets/hero.jpg
+      source:
+        file: hero.jpg
 
   # ── Tracking ─────────────────────────────────────────────────────────────────
   - address: meta.pixel.website

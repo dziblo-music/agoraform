@@ -55,9 +55,11 @@ paused-by-default ODAX campaigns and optional campaign-level budgets.
 `meta.ad_set` manages budget ownership, schedules, a typed targeting subset
 with Custom Audience and interest references, Instagram Feed/Stories/Reels
 placements, and website-conversion
-optimization. `meta.ad_creative` manages typed external-image and
-external-video website creatives, Instagram identity, and attribution URL
-tags without uploading binary assets. `meta.ad` binds an ad set to a creative,
+optimization. `meta.image` and `meta.video` upload finished local files
+through `source.file`. `meta.ad_creative` manages typed image and
+video website creatives via those managed resources or external media ids,
+Instagram identity, and attribution URL
+tags. `meta.ad` binds an ad set to a creative,
 defaults new ads to `PAUSED`, supports explicit creative repointing, and
 completes the initial serving-resource graph.
 

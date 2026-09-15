@@ -24,6 +24,7 @@ func TestEveryResourceTypeRejectsUnknownAttributes(t *testing.T) {
 	p := meta.New(meta.Config{AccessToken: testToken, AdAccountID: testAccountID})
 	valid := map[string]resource.Resource{
 		meta.TypeImage:            imageResource(t, "trial_ad"),
+		meta.TypeVideo:            videoResourceFrom(t, "product_demo", localMP4(t, "product-demo.mp4")),
 		meta.TypePixel:            pixelResource(t, "website"),
 		meta.TypeCustomConversion: conversionResource(t, "trial_started", websiteConversionAttrs(t)),
 		meta.TypeCampaign:         campaignResource(t, "acquisition", standardCampaignAttrs()),

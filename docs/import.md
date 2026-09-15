@@ -457,10 +457,16 @@ Import serving resources from parent to child so every remote relationship can
 be reconstructed as a logical reference:
 
 ```bash
+agoraform import meta.image.instagram_trial_hero 0123456789abcdef0123456789abcdef
+agoraform import meta.video.product_demo 345678901234567
 agoraform import meta.ad_set.instagram 222333444555666
 agoraform import meta.ad_creative.instagram 333444555666777
 agoraform import meta.ad.instagram 444555666777888
 ```
+
+`meta.image` and `meta.video` import bind the provider-native hash or video id
+without inventing a local `source.file` or content digest. Image destroy stays
+provider-owned; video destroy uses `DELETE`.
 
 An ad import preserves its configured `ACTIVE` or `PAUSED` status and emits
 logical `adSet` and `creative` references only when each remote id has one

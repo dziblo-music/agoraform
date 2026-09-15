@@ -709,18 +709,22 @@ meta.ad
 │   │   └── meta.pixel
 │   └── meta.pixel
 └── meta.ad_creative
+    ├── meta.image
+    └── meta.video
 ```
 
 Managed relationships use logical `$ref` values. Provider-native IDs for
-managed pixels, conversions, campaigns, ad sets, creatives, and ads are kept
-in local state. External Page, Instagram, image, and video identifiers are
-different: Agoraform does not manage those objects, so an ad creative declares
-their IDs as literal attributes.
+managed pixels, conversions, campaigns, ad sets, creatives, ads, images, and
+videos are kept in local state. External Page and Instagram identifiers remain
+literal attributes because Agoraform does not manage those objects. Creatives
+may also keep external `imageHash` / `videoId` values when media is not
+managed locally.
 
 New campaigns, ad sets, and ads default to `PAUSED`. Setting all three to
 `ACTIVE` is an explicit manifest change that appears in `plan`. Agoraform does
-not install browser Pixel code, send Conversions API events, generate creative
-assets, or upload binary media.
+not install browser Pixel code, send Conversions API events, or generate
+creative assets. Finished local image and video files can be uploaded through
+`meta.image` and `meta.video`.
 
 Meta money attributes — `dailyBudget`, `lifetimeBudget`, and `bidAmount` — are
 declared in ad account currency units with at most two decimal places, so `20`
@@ -867,9 +871,51 @@ and destroying an ad set does not delete referenced Custom Audiences. For
 website conversions, the custom conversion and ad set must reference the same
 pixel, and the campaign objective must be `OUTCOME_SALES`.
 
+### `meta.image`
+
+Uploads a finished local image and exposes the Meta image hash:
+
+```yaml
+assets:
+  root: ./assets
+
+resources:
+  - address: meta.image.instagram_trial_hero
+    attributes:
+      source:
+        file: hero.jpg
+```
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `source.file` | create | Project-relative JPEG, PNG, or GIF under `assets.root` (or the manifest directory). At most 30 MB. |
+
+The declared output is `imageHash`. Content is immutable after upload.
+Import binds an existing hash and does not invent a local filename.
+
+### `meta.video`
+
+Uploads a finished local video, waits until Meta reports it ready, and
+exposes the numeric video id:
+
+```yaml
+- address: meta.video.product_demo
+  attributes:
+    source:
+      file: meta/product-demo.mp4
+```
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `source.file` | create | Project-relative MP4 or MOV. At most 4 GB. |
+
+The declared output is `videoId`, and only after `status.video_status` is
+`ready`. Changed bytes fail planning instead of silently re-uploading.
+
 ### `meta.ad_creative`
 
-Ad creatives use media already uploaded to Meta:
+Ad creatives use either an existing Meta media identifier or a `$ref` to a
+managed `meta.image` / `meta.video`:
 
 ```yaml
 - address: meta.ad_creative.instagram_trial
@@ -881,7 +927,8 @@ Ad creatives use media already uploaded to Meta:
     primaryText: Start organizing your catalog today.
     headline: Start Your Free Trial
     callToAction: LEARN_MORE
-    imageHash: "0123456789abcdef0123456789abcdef"
+    image:
+      $ref: meta.image.instagram_trial_hero
 ```
 
 | Attribute | Required | Description |
@@ -894,7 +941,7 @@ Ad creatives use media already uploaded to Meta:
 | `headline` | yes | Creative headline. |
 | `description` | no | Optional description. |
 | `callToAction` | yes | `GET_STARTED`, `LEARN_MORE`, or `SIGN_UP`. |
-| `imageHash` / `videoId` | yes | Exactly one externally prepared Meta media identifier. |
+| `imageHash` / `image` / `videoId` / `video` | yes | Exactly one media source: an external Meta identifier or a `$ref` to `meta.image` / `meta.video`. |
 | `urlTags` | no | Query-string parameters without a leading `?`. |
 
 Only `name` is mutable. To change identity, copy, destination, CTA, media, or

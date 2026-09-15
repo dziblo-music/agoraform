@@ -97,8 +97,9 @@ Graph and Marketing API v26.0. The provider manages website
 resources with ODAX objectives and optional campaign-level budgets, and
 `meta.ad_set` resources with typed targeting including Custom Audience and
 interest references, Instagram placements, schedules,
-and website-conversion optimization. External-media `meta.ad_creative`
-resources and paused-by-default `meta.ad` serving relationships complete the
+and website-conversion optimization. `meta.image` and `meta.video` upload
+finished local files; `meta.ad_creative` can `$ref` them or keep external
+media identifiers. Paused-by-default `meta.ad` serving relationships complete the
 initial campaign graph. See the
 [Meta provider reference](meta/README.md), the
 [complete website conversion campaign example](../examples/meta-website-campaign/README.md),

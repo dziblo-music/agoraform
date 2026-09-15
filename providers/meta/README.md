@@ -3,8 +3,8 @@
 The `meta` provider is the Meta Marketing API provider for Agoraform v0.6.0.
 It is registered with the same provider-neutral lifecycle used by the existing
 providers. Website conversion measurement and campaign management are
-implemented here together with ad-set and external-media ad-creative
-management, including the final ad serving relationship.
+implemented here together with local image/video upload, ad-set and
+ad-creative management, including the final ad serving relationship.
 
 The [website conversion campaign example](../../examples/meta-website-campaign/README.md)
 runs the complete supported graph through validate, plan, apply, import, and
@@ -23,6 +23,8 @@ contract tests.
 | `meta.custom_conversion` | numeric custom conversion id | supported | `name`, `defaultValue` | `pixel`, `rule`, `eventType` | numeric id; requires Pixel ref | remove/archive with `DELETE` |
 | `meta.campaign` | numeric campaign id | supported | `name`, `status`, categories, existing budget value, bid strategy, budget sharing | objective, buying type, budget ownership/type | numeric id; preserves campaign/ad-set budget ownership | remove with `DELETE` |
 | `meta.ad_set` | numeric ad-set id | supported | `name`, `status`, existing budget value, end time, targeting, compatible bid values | campaign, billing/optimization/destination, conversion object, start time, budget ownership/type | numeric id; requires campaign and applicable conversion refs | remove with `DELETE` |
+| `meta.image` | Meta image hash | supported | none | local source content | image hash; no fabricated `source.file` | provider-owned; remains bound |
+| `meta.video` | numeric video id | supported | none | local source content | numeric id; no fabricated `source.file` | delete with `DELETE` |
 | `meta.ad_creative` | numeric creative id | supported | `name` | page/account, destination, copy, CTA, media, URL tags | numeric id; external media ids remain lossless literals | delete with `DELETE` |
 | `meta.ad` | numeric ad id | supported | `name`, `status`, `creative` | `adSet` | numeric id; requires ad-set and creative refs | remove with `DELETE` |
 
@@ -31,16 +33,18 @@ catalog and the declared id outputs (`pixelId`, `customConversionId`,
 `campaignId`, `adSetId`, and `adCreativeId`). A unique output match emits the
 logical `$ref`. A missing or ambiguous match fails before state is written;
 none of these relationship fields permits an external literal. Import
-dependencies first.
+dependencies first. Creative `imageHash` / `videoId` values remain lossless
+external identifiers unless configuration already uses a managed `$ref`.
 
 The manifest reference graph is also the destroy graph. Its reverse order
 removes ads before ad sets and creatives, ad sets before campaigns and custom
-conversions, and custom conversions before their Pixel/Dataset. Every remote
-destroy mutation is a `DELETE`; it never activates delivery or
+conversions, custom conversions before their Pixel/Dataset, and videos before
+dependents that referenced them. Images are provider-owned and stay bound.
+Every remote destroy mutation is a `DELETE`; it never activates delivery or
 increases a budget. Confirmed terminal resources are unbound immediately,
 while a failed operation and all not-yet-attempted resources remain bound for
-a deterministic retry. Provider-owned pixels remain bound and make teardown
-explicitly incomplete.
+a deterministic retry. Provider-owned pixels and images remain bound and make
+teardown explicitly incomplete.
 
 ## Money values
 
@@ -103,11 +107,82 @@ creating a duplicate ad. Destroy calls `DELETE /{ad_id}` and treats `DELETED`,
 `ARCHIVED`, or absence as terminal and idempotent. Dependency ordering creates
 the ad after its ad set and creative and destroys it before either dependency.
 
+## `meta.image`
+
+`meta.image` uploads an already-produced local file through
+`POST /act_{ad-account-id}/adimages` and exposes the provider-native image
+hash as the `imageHash` output. Creative production stays outside Agoraform.
+
+```yaml
+assets:
+  root: ./assets
+
+resources:
+  - address: meta.image.instagram_trial_hero
+    attributes:
+      source:
+        file: hero.jpg
+```
+
+`source.file` uses the provider-neutral local-asset model. JPEG, PNG, and GIF
+are accepted, up to 30 MB. Bytes are streamed at apply time and never appear
+in YAML, plan output, logs, or state. Plans show the relative path and
+`sha256:…` digest. Unchanged files are not uploaded again. Meta may
+deduplicate identical image bytes and return an existing hash; Agoraform
+treats that as a successful create.
+
+Image content is immutable after upload. Changing the bytes at the same
+logical address fails planning with guidance to declare a new `meta.image`
+and repoint the creative. `agoraform destroy` unbinds local state only; Meta
+does not get a delete because the same hash can be shared across creatives
+Agoraform does not manage.
+
+Import binds an existing account image by hash and does not invent a local
+filename or content digest:
+
+```bash
+agoraform import meta.image.instagram_trial_hero 0123456789abcdef0123456789abcdef
+```
+
+## `meta.video`
+
+`meta.video` uploads an already-produced local file through
+`POST /act_{ad-account-id}/advideos` with multipart field `source`, then polls
+`GET /{video-id}?fields=id,title,length,status` until
+`status.video_status` is `ready`. Upload acceptance is not treated as
+ready-to-serve. Creatives that `$ref` the video are created only after that
+output exists.
+
+```yaml
+- address: meta.video.product_demo
+  attributes:
+    source:
+      file: meta/product-demo.mp4
+```
+
+MP4 and MOV files are accepted, up to 4 GB. Bytes are streamed. Polling is
+bounded (five minutes by default); a timeout after a successful upload reports
+the returned video id so you can retry apply or `agoraform import` that id
+instead of assuming the file is usable. A Meta `error` processing status fails
+without exposing `videoId`.
+
+Video content is immutable after create. Changed bytes at the same logical
+address fail planning. Destroy calls `DELETE /{video_id}` and treats absence
+as terminal. Meta may reject deletion while a creative still references the
+video.
+
+Import binds a numeric video id without fabricating `source.file`:
+
+```bash
+agoraform import meta.video.product_demo 345678901234567
+```
+
 ## `meta.ad_creative`
 
-The initial creative surface manages deterministic website/link creatives
-whose media has already been prepared in Meta. It never reads local files or
-uploads image/video bytes. Use exactly one external `imageHash` or `videoId`:
+The creative surface manages deterministic website/link creatives. Media may
+be an existing external Meta identifier **or** a logical `$ref` to a managed
+`meta.image` / `meta.video` resource. Use exactly one of `imageHash`, `image`,
+`videoId`, or `video`:
 
 ```yaml
 - address: meta.ad_creative.instagram_video
@@ -120,15 +195,17 @@ uploads image/video bytes. Use exactly one external `imageHash` or `videoId`:
     headline: Start Your Free Trial
     description: Keep every pitch and placement organized.
     callToAction: LEARN_MORE
-    videoId: "345678901234567"
+    video:
+      $ref: meta.video.product_demo
     urlTags: utm_source=meta&utm_medium=paid_social&utm_campaign={{campaign.name}}&utm_content={{ad.name}}
 ```
 
-For a static creative, replace `videoId` with the existing account image's
-`imageHash`. The supported v26.0 `object_story_spec` mapping is intentionally
+For a static creative, use `image: { $ref: meta.image.NAME }` or an existing
+account `imageHash`. The supported v26.0 `object_story_spec` mapping is intentionally
 narrow: `page_id`, optional `instagram_user_id`, and exactly one `link_data`
 or `video_data` object. Existing posts, catalogs, dynamic creative, templates,
-playables, arbitrary `object_story_spec` JSON, and binary uploads are rejected.
+playables, arbitrary `object_story_spec` JSON, and binary uploads on the
+creative itself are rejected.
 
 `destinationUrl` must be an absolute HTTP(S) URL. `urlTags` uses Meta's native
 query-string format without a leading `?`; Meta dynamic macros are preserved
@@ -143,8 +220,9 @@ with guidance to declare a new logical creative and repoint the future ad
 resource. Agoraform never performs a hidden replacement.
 
 Import uses the numeric creative id and emits only the canonical typed fields.
-External image/video identifiers remain literal values because Agoraform does
-not own those assets. Equivalent imported configuration produces a no-op plan.
+External `imageHash` / `videoId` values remain lossless literals; managed
+`meta.image` / `meta.video` references are declared in configuration with
+`$ref`. Equivalent imported configuration produces a no-op plan.
 Destroy uses Meta's native Ad Creative delete operation; absence or the
 `DELETED` terminal status is idempotent success. Meta can reject deletion while
 a creative is still referenced by an ad, in which case Agoraform preserves the

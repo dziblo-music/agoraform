@@ -5,8 +5,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -51,6 +49,7 @@ type graphServer struct {
 	creatives               map[string]graphObject
 	ads                     map[string]graphObject
 	images                  map[string]graphObject // keyed by Meta image hash
+	videos                  map[string]graphObject // keyed by Meta video id
 	audiences               map[string]graphObject
 	audienceFailures        map[string]audienceFailure
 	interests               map[string]graphObject
@@ -64,6 +63,9 @@ type graphServer struct {
 	adCreateFailure         bool
 	adRefreshFailures       int
 	imageUploadFailure      bool
+	videoUploadFailure      bool
+	videoProcessingPolls    int
+	videoStatusError        bool
 }
 
 func newGraphServer(t *testing.T) *graphServer {
@@ -79,6 +81,7 @@ func newGraphServer(t *testing.T) *graphServer {
 		creatives:        map[string]graphObject{},
 		ads:              map[string]graphObject{},
 		images:           map[string]graphObject{},
+		videos:           map[string]graphObject{},
 		audiences:        map[string]graphObject{},
 		audienceFailures: map[string]audienceFailure{},
 		interests:        map[string]graphObject{},
@@ -195,6 +198,29 @@ func (s *graphServer) seedAudienceFailure(id string, status int, body string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.audienceFailures[id] = audienceFailure{status: status, body: body}
+}
+
+func (s *graphServer) seedImage(hash string, fields graphObject) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	item := graphObject{"hash": hash, "url": "https://example.com/image.jpg", "width": 1200, "height": 628, "name": "hero.jpg", "status": "ACTIVE"}
+	for k, v := range fields {
+		item[k] = v
+	}
+	s.images[hash] = item
+}
+
+func (s *graphServer) seedVideo(id string, fields graphObject) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	item := graphObject{
+		"id": id, "title": "product-demo.mp4",
+		"status": graphObject{"video_status": "ready", "processing_progress": 100, "processing_phase": graphObject{"status": "complete"}},
+	}
+	for k, v := range fields {
+		item[k] = v
+	}
+	s.videos[id] = item
 }
 
 func (s *graphServer) seedInterest(id, name string, valid bool) {
@@ -357,6 +383,25 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		s.adSets[testAdSetID] = item
 		_, _ = io.WriteString(w, `{"id":"`+testAdSetID+`"}`)
+	case r.Method == http.MethodGet && path == "act_"+testAccountID+"/adimages":
+		var hashes []string
+		if raw := r.URL.Query().Get("hashes"); raw != "" {
+			if err := json.Unmarshal([]byte(raw), &hashes); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+		items := make([]graphObject, 0, len(s.images))
+		if len(hashes) == 0 {
+			items = mapsValues(s.images)
+		} else {
+			for _, hash := range hashes {
+				if item := s.images[hash]; item != nil {
+					items = append(items, item)
+				}
+			}
+		}
+		s.writeList(w, items)
 	case r.Method == http.MethodPost && path == "act_"+testAccountID+"/adimages":
 		s.posts++
 		if s.imageUploadFailure {
@@ -369,8 +414,23 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 			// Use a variant hash when images already exist to avoid collision.
 			hash = "aabbccdd11223344aabbccdd11223344"
 		}
-		s.images[hash] = graphObject{"hash": hash, "url": "https://example.com/image.jpg", "width": 1200, "height": 628}
-		writeJSON(w, map[string]any{"images": map[string]any{"test.jpg": graphObject{"hash": hash, "url": "https://example.com/image.jpg", "width": 1200, "height": 628}}})
+		filename := "test.jpg"
+		if err := r.ParseMultipartForm(32 << 20); err == nil {
+			if _, hdr, err := r.FormFile("filename"); err == nil && hdr != nil && hdr.Filename != "" {
+				filename = hdr.Filename
+			}
+		}
+		s.images[hash] = graphObject{"hash": hash, "url": "https://example.com/image.jpg", "width": 1200, "height": 628, "name": filename, "status": "ACTIVE"}
+		writeJSON(w, map[string]any{"images": map[string]any{filename: graphObject{"hash": hash, "url": "https://example.com/image.jpg", "width": 1200, "height": 628}}})
+	case r.Method == http.MethodPost && path == "act_"+testAccountID+"/advideos":
+		s.posts++
+		if s.videoUploadFailure {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = io.WriteString(w, `{"error":{"message":"temporary video upload failure","code":1,"is_transient":true}}`)
+			return
+		}
+		s.videos[testVideoID] = graphObject{"id": testVideoID, "title": "product-demo.mp4", "status": graphObject{"video_status": "ready", "processing_progress": 100, "processing_phase": graphObject{"status": "complete"}}}
+		_, _ = io.WriteString(w, `{"id":"`+testVideoID+`"}`)
 	case r.Method == http.MethodPost && path == "act_"+testAccountID+"/adcreatives":
 		s.posts++
 		if s.creativeCreateFailure {
@@ -426,6 +486,23 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, s.campaigns[path])
 	case r.Method == http.MethodGet && s.adSets[path] != nil:
 		writeJSON(w, s.adSets[path])
+	case r.Method == http.MethodGet && s.videos[path] != nil:
+		if s.videoStatusError {
+			writeJSON(w, graphObject{
+				"id": path, "title": "product-demo.mp4",
+				"status": graphObject{"video_status": "error", "processing_progress": 0},
+			})
+			return
+		}
+		if s.videoProcessingPolls > 0 {
+			s.videoProcessingPolls--
+			writeJSON(w, graphObject{
+				"id": path, "title": "product-demo.mp4",
+				"status": graphObject{"video_status": "processing", "processing_progress": 40, "processing_phase": graphObject{"status": "active"}},
+			})
+			return
+		}
+		writeJSON(w, s.videos[path])
 	case r.Method == http.MethodGet && s.creatives[path] != nil:
 		writeJSON(w, s.creatives[path])
 	case r.Method == http.MethodGet && s.ads[path] != nil:
@@ -578,6 +655,10 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 		item["status"] = "DELETED"
 		s.creatives[path] = item
 		_, _ = io.WriteString(w, `{"success":true}`)
+	case r.Method == http.MethodDelete && s.videos[path] != nil:
+		s.deletes++
+		delete(s.videos, path)
+		_, _ = io.WriteString(w, `{"success":true}`)
 	case r.Method == http.MethodDelete && s.ads[path] != nil:
 		s.deletes++
 		item := s.ads[path]
@@ -663,10 +744,11 @@ func writeJSON(w http.ResponseWriter, v any) {
 func testProvider(t *testing.T, server *httptest.Server) *meta.Provider {
 	t.Helper()
 	return meta.NewWithHTTPClient(meta.Config{
-		AccessToken: testToken,
-		AdAccountID: testAccountID,
-		BaseURL:     server.URL,
-		Timeout:     time.Second,
+		AccessToken:   testToken,
+		AdAccountID:   testAccountID,
+		BaseURL:       server.URL,
+		Timeout:       time.Second,
+		UploadTimeout: time.Second,
 	}, server.Client())
 }
 
@@ -679,21 +761,18 @@ func imageAddress(t *testing.T, name string) resource.Address {
 	return addr
 }
 
-func imageResource(t *testing.T, name string) resource.Resource {
+func videoAddress(t *testing.T, name string) resource.Address {
 	t.Helper()
-	dir := t.TempDir()
-	path := filepath.Join(dir, name+".jpg")
-	if err := os.WriteFile(path, []byte("test image content"), 0o600); err != nil {
+	addr, err := resource.ParseAddress("meta.video." + name)
+	if err != nil {
 		t.Fatal(err)
 	}
-	return resource.Resource{
-		Address:    imageAddress(t, name),
-		Attributes: resource.Attributes{meta.AttrFile: path},
-	}
+	return addr
 }
 
-func standardImageAttrs(filePath string) resource.Attributes {
-	return resource.Attributes{meta.AttrFile: filePath}
+func imageResource(t *testing.T, name string) resource.Resource {
+	t.Helper()
+	return imageResourceFrom(t, name, localJPEG(t, name+".jpg", 64, 64))
 }
 
 func pixelAddress(t *testing.T, name string) resource.Address {

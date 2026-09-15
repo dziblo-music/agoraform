@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/resource"
@@ -30,6 +31,10 @@ type Provider struct {
 
 	currencyMu sync.Mutex
 	currency   string
+
+	videoReadyTimeout time.Duration
+	videoPollInterval time.Duration
+	sleep             func(context.Context, time.Duration) error
 }
 
 var (
@@ -59,7 +64,7 @@ func NewWithHTTPClient(cfg Config, httpClient *http.Client) *Provider {
 func (p *Provider) Name() string { return Name }
 
 func (p *Provider) ResourceTypes() []string {
-	return []string{TypeImage, TypePixel, TypeCustomConversion, TypeCampaign, TypeAdSet, TypeAdCreative, TypeAd}
+	return []string{TypeImage, TypeVideo, TypePixel, TypeCustomConversion, TypeCampaign, TypeAdSet, TypeAdCreative, TypeAd}
 }
 
 // Outputs implements provider.OutputCatalog.
@@ -67,6 +72,8 @@ func (p *Provider) Outputs(resourceType string) []provider.OutputSpec {
 	switch resourceType {
 	case TypeImage:
 		return []provider.OutputSpec{{Name: OutputImageHash, Kind: provider.OutputKindString}}
+	case TypeVideo:
+		return []provider.OutputSpec{{Name: OutputVideoID, Kind: provider.OutputKindString}}
 	case TypePixel:
 		return []provider.OutputSpec{{Name: OutputPixelID, Kind: provider.OutputKindString}}
 	case TypeCustomConversion:
@@ -148,6 +155,8 @@ func (p *Provider) Validate(_ context.Context, res resource.Resource) error {
 	switch res.Address.Type {
 	case TypeImage:
 		return p.validateImage(res)
+	case TypeVideo:
+		return p.validateVideo(res)
 	case TypePixel:
 		return p.validatePixel(res)
 	case TypeCustomConversion:
@@ -169,6 +178,8 @@ func (p *Provider) Read(ctx context.Context, res resource.Resource) (resource.Re
 	switch res.Address.Type {
 	case TypeImage:
 		return p.readImage(ctx, res)
+	case TypeVideo:
+		return p.readVideo(ctx, res)
 	case TypePixel:
 		return p.readPixel(ctx, res)
 	case TypeCustomConversion:
@@ -190,6 +201,8 @@ func (p *Provider) Create(ctx context.Context, res resource.Resource) (resource.
 	switch res.Address.Type {
 	case TypeImage:
 		return p.createImage(ctx, res)
+	case TypeVideo:
+		return p.createVideo(ctx, res)
 	case TypePixel:
 		return p.createPixel(ctx, res)
 	case TypeCustomConversion:
@@ -211,6 +224,8 @@ func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual
 	switch desired.Address.Type {
 	case TypeImage:
 		return p.updateImage(ctx, desired, actual)
+	case TypeVideo:
+		return p.updateVideo(ctx, desired, actual)
 	case TypePixel:
 		return p.updatePixel(ctx, desired, actual)
 	case TypeCustomConversion:
@@ -232,6 +247,8 @@ func (p *Provider) Import(ctx context.Context, addr resource.Address, id string)
 	switch addr.Type {
 	case TypeImage:
 		return p.importImage(ctx, addr, id)
+	case TypeVideo:
+		return p.importVideo(ctx, addr, id)
 	case TypePixel:
 		return p.importPixel(ctx, addr, id)
 	case TypeCustomConversion:
@@ -253,13 +270,10 @@ func (p *Provider) Import(ctx context.Context, addr resource.Address, id string)
 func (p *Provider) NormalizeImportID(addr resource.Address, raw string) (string, error) {
 	switch addr.Type {
 	case TypeImage:
-		// Import is not supported for meta.image; return as-is so the import
-		// command produces a clear error from importImage rather than a
-		// normalization failure.
 		return strings.TrimSpace(raw), nil
 	case TypePixel:
 		return p.canonicalPixelImportID(addr, raw)
-	case TypeCustomConversion, TypeCampaign, TypeAdSet, TypeAdCreative, TypeAd:
+	case TypeCustomConversion, TypeCampaign, TypeAdSet, TypeAdCreative, TypeAd, TypeVideo:
 		return p.canonicalCustomConversionImportID(addr, raw)
 	default:
 		return strings.TrimSpace(raw), nil
@@ -271,6 +285,8 @@ func (p *Provider) NormalizeComparable(desired resource.Resource, live *resource
 	switch desired.Address.Type {
 	case TypeImage:
 		return p.normalizeImageComparable(desired, live)
+	case TypeVideo:
+		return p.normalizeVideoComparable(desired, live)
 	case TypePixel:
 		return p.normalizePixelComparable(desired, live)
 	case TypeCustomConversion:

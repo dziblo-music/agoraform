@@ -176,6 +176,8 @@ still exits non-zero while those bindings remain.
 | Type | Capability | API | Terminal remote state | Already terminal | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `meta.pixel` | provider-owned | none | object remains | not applicable | Events Manager owns the Pixel/Dataset; Agoraform never deletes it |
+| `meta.image` | provider-owned | none | object remains | not applicable | Uploaded images may be shared across creatives; Agoraform never deletes them |
+| `meta.video` | delete | `DELETE /{id}` | not found after DELETE | not found | Meta may reject deletion while a creative still uses the video |
 | `meta.custom_conversion` | remove | `DELETE /{id}` | `is_archived=true` or not found | archived or not found | Agoraform does not assume a hard delete |
 | `meta.campaign` | remove | `DELETE /{id}` | `status=DELETED`, `ARCHIVED`, or not found | terminal status or not found | `PAUSED` is not terminal; delete never enables serving |
 | `meta.ad_set` | remove | `DELETE /{id}` | `status=DELETED`, `ARCHIVED`, or not found | terminal status or not found | dependent ads are removed first |

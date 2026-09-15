@@ -52,14 +52,25 @@ type ResourceLifecycle struct {
 
 var lifecycleByType = map[string]ResourceLifecycle{
 	TypeImage: {
-		RemoteIdentity:  "sha256 fingerprint of uploaded file content (state ID) + Meta image hash (Fingerprint/computed output)",
+		RemoteIdentity:  "Meta image hash (state ID) + local SHA-256 content digest (Fingerprint)",
 		Create:          CreateSupported,
 		Update:          UpdateReadOnly,
-		ImmutableFields: []string{AttrFile},
-		ImportSupported: false,
+		ImmutableFields: []string{"source.file"},
+		ImportSupported: true,
 		Destroy:         provider.DestroyProviderOwned,
 		AlreadyTerminal: "not applicable; Meta image assets are provider-owned and not deleted by Agoraform",
 		ServingSafety:   imageDestroyGuidance,
+	},
+	TypeVideo: {
+		RemoteIdentity:  "numeric Meta video id (state ID) + local SHA-256 content digest (Fingerprint)",
+		Create:          CreateSupported,
+		Update:          UpdateReadOnly,
+		ImmutableFields: []string{"source.file"},
+		ImportSupported: true,
+		Destroy:         provider.DestroyDelete,
+		TerminalState:   "not found after DELETE",
+		AlreadyTerminal: "not found",
+		ServingSafety:   videoDestroyGuidance,
 	},
 	TypePixel: {
 		RemoteIdentity:  "numeric Pixel/Dataset id",
@@ -121,7 +132,7 @@ var lifecycleByType = map[string]ResourceLifecycle{
 		Create:          CreateSupported,
 		Update:          UpdateSupported,
 		MutableFields:   []string{AttrName},
-		ImmutableFields: []string{AttrPageID, AttrInstagramUserID, AttrDestinationURL, AttrPrimaryText, AttrHeadline, AttrDescription, AttrCallToAction, AttrImageHash, AttrVideoID, AttrURLTags},
+		ImmutableFields: []string{AttrPageID, AttrInstagramUserID, AttrDestinationURL, AttrPrimaryText, AttrHeadline, AttrDescription, AttrCallToAction, AttrImageHash, AttrImageRef, AttrVideoID, AttrVideoRef, AttrURLTags},
 		ImportSupported: true,
 		Destroy:         provider.DestroyDelete,
 		TerminalState:   "status=DELETED or not found after DELETE",

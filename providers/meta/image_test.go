@@ -2,14 +2,13 @@ package meta_test
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
-	"os"
+	"io"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/dziblo-music/agoraform/internal/asset"
 	"github.com/dziblo-music/agoraform/internal/plan"
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/resource"
@@ -17,73 +16,41 @@ import (
 	"github.com/dziblo-music/agoraform/providers/meta"
 )
 
-// writeTestImage creates a small JPEG file with the given content in dir.
-func writeTestImage(t *testing.T, dir, name string, content []byte) string {
-	t.Helper()
-	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, content, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
-
-func sha256HexOf(data []byte) string {
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
-}
-
 func TestValidateImageAcceptsValidFile(t *testing.T) {
 	t.Parallel()
 	p := meta.New(meta.Config{AccessToken: testToken, AdAccountID: testAccountID})
-	dir := t.TempDir()
-	path := writeTestImage(t, dir, "hero.jpg", []byte("fake jpeg content"))
-	res := resource.Resource{
-		Address:    imageAddress(t, "hero"),
-		Attributes: resource.Attributes{meta.AttrFile: path},
-	}
-	if err := p.Validate(context.Background(), res); err != nil {
+	if err := p.Validate(context.Background(), imageResource(t, "hero")); err != nil {
 		t.Fatalf("Validate = %v, want nil", err)
 	}
 }
 
-func TestValidateImageRejectsUnsupportedExtension(t *testing.T) {
+func TestValidateImageRejectsUnsupportedType(t *testing.T) {
 	t.Parallel()
 	p := meta.New(meta.Config{AccessToken: testToken, AdAccountID: testAccountID})
-	dir := t.TempDir()
-	path := writeTestImage(t, dir, "hero.bmp", []byte("fake bmp"))
-	err := p.Validate(context.Background(), resource.Resource{
-		Address:    imageAddress(t, "hero"),
-		Attributes: resource.Attributes{meta.AttrFile: path},
+	local := resource.NewLocalAsset("hero.bmp", "abc", 12, "image/bmp", func() (io.ReadCloser, error) {
+		return io.NopCloser(strings.NewReader("not-an-image")), nil
 	})
-	if err == nil || !strings.Contains(err.Error(), "unsupported file extension") {
-		t.Fatalf("error = %v, want unsupported extension error", err)
+	err := p.Validate(context.Background(), imageResourceFrom(t, "hero", local))
+	if err == nil || !strings.Contains(err.Error(), "JPEG, PNG, or GIF") {
+		t.Fatalf("error = %v, want unsupported type error", err)
 	}
 }
 
-func TestValidateImageRejectsMissingFile(t *testing.T) {
+func TestValidateImageRejectsMissingSource(t *testing.T) {
 	t.Parallel()
 	p := meta.New(meta.Config{AccessToken: testToken, AdAccountID: testAccountID})
-	err := p.Validate(context.Background(), resource.Resource{
-		Address:    imageAddress(t, "hero"),
-		Attributes: resource.Attributes{meta.AttrFile: "does_not_exist.jpg"},
-	})
-	if err == nil || !strings.Contains(err.Error(), "not found") {
-		t.Fatalf("error = %v, want file not found error", err)
+	err := p.Validate(context.Background(), resource.Resource{Address: imageAddress(t, "hero")})
+	if err == nil || !strings.Contains(err.Error(), "source.file") {
+		t.Fatalf("error = %v, want source.file error", err)
 	}
 }
 
 func TestValidateImageRejectsUnknownAttributes(t *testing.T) {
 	t.Parallel()
 	p := meta.New(meta.Config{AccessToken: testToken, AdAccountID: testAccountID})
-	dir := t.TempDir()
-	path := writeTestImage(t, dir, "hero.jpg", []byte("fake jpeg"))
-	err := p.Validate(context.Background(), resource.Resource{
-		Address: imageAddress(t, "hero"),
-		Attributes: resource.Attributes{
-			meta.AttrFile:  path,
-			"unknownField": "value",
-		},
-	})
+	res := imageResource(t, "hero")
+	res.Attributes["unknownField"] = "value"
+	err := p.Validate(context.Background(), res)
 	if err == nil || !strings.Contains(err.Error(), "unsupported attribute") {
 		t.Fatalf("error = %v, want unsupported attribute error", err)
 	}
@@ -92,17 +59,23 @@ func TestValidateImageRejectsUnknownAttributes(t *testing.T) {
 func TestValidateImageRejectsComputedAttributes(t *testing.T) {
 	t.Parallel()
 	p := meta.New(meta.Config{AccessToken: testToken, AdAccountID: testAccountID})
-	dir := t.TempDir()
-	path := writeTestImage(t, dir, "hero.jpg", []byte("fake jpeg"))
-	err := p.Validate(context.Background(), resource.Resource{
-		Address: imageAddress(t, "hero"),
-		Attributes: resource.Attributes{
-			meta.AttrFile:      path,
-			meta.AttrImageHash: "shouldnotbeset",
-		},
-	})
+	res := imageResource(t, "hero")
+	res.Attributes[meta.AttrImageHash] = "shouldnotbeset"
+	err := p.Validate(context.Background(), res)
 	if err == nil || !strings.Contains(err.Error(), "computed") {
 		t.Fatalf("error = %v, want computed field error", err)
+	}
+}
+
+func TestValidateImageRejectsOversizedFile(t *testing.T) {
+	t.Parallel()
+	p := meta.New(meta.Config{AccessToken: testToken, AdAccountID: testAccountID})
+	local := resource.NewLocalAsset("huge.jpg", "abc", 31*1024*1024, "image/jpeg", func() (io.ReadCloser, error) {
+		return io.NopCloser(strings.NewReader("")), nil
+	})
+	err := p.Validate(context.Background(), imageResourceFrom(t, "hero", local))
+	if err == nil || !strings.Contains(err.Error(), "30 MB") {
+		t.Fatalf("error = %v, want size limit error", err)
 	}
 }
 
@@ -113,79 +86,54 @@ func TestCreateImageUploadsFileAndPersistsIdentity(t *testing.T) {
 	defer httpSrv.Close()
 	p := testProvider(t, httpSrv)
 
-	dir := t.TempDir()
-	content := []byte("fake jpeg image bytes")
-	path := writeTestImage(t, dir, "trial.jpg", content)
-	expectedSHA256 := sha256HexOf(content)
-
-	res := resource.Resource{
-		Address:    imageAddress(t, "trial_ad"),
-		Attributes: standardImageAttrs(path),
-	}
+	local := localJPEG(t, "trial.jpg", 64, 64)
+	res := imageResourceFrom(t, "trial_ad", local)
 	created, err := p.Create(context.Background(), res)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// State identity should be the sha256.
-	if created.Identity.ID != expectedSHA256 {
-		t.Errorf("Identity.ID = %q, want sha256 %q", created.Identity.ID, expectedSHA256)
+	if created.Identity.ID != testImageHash {
+		t.Errorf("Identity.ID = %q, want Meta image hash %q", created.Identity.ID, testImageHash)
 	}
-	// Fingerprint should be the Meta image hash.
-	if created.Identity.Fingerprint != testImageHash {
-		t.Errorf("Identity.Fingerprint = %q, want Meta image hash %q", created.Identity.Fingerprint, testImageHash)
+	if created.Identity.Fingerprint != local.Digest {
+		t.Errorf("Identity.Fingerprint = %q, want digest %q", created.Identity.Fingerprint, local.Digest)
 	}
-	// Computed should expose imageHash for creative resolution.
 	if got := created.Computed[meta.OutputImageHash]; got != testImageHash {
 		t.Errorf("Computed[imageHash] = %v, want %q", got, testImageHash)
 	}
-	// Attributes["file"] should be the sha256 for plan comparison.
-	if got := created.Attributes[meta.AttrFile]; got != expectedSHA256 {
-		t.Errorf("Attributes[file] = %v, want sha256 %q", got, expectedSHA256)
+	if _, ok := created.Attributes[asset.AttrName]; ok {
+		t.Fatal("source path must not be stored in comparable attributes")
 	}
-
 	posts, _ := srv.mutationCounts()
 	if posts != 1 {
 		t.Errorf("posts = %d, want 1 (the upload)", posts)
 	}
 }
 
-func TestReadImageReturnsSHA256AndMetaHash(t *testing.T) {
+func TestReadImageReturnsHashAndDigest(t *testing.T) {
 	t.Parallel()
 	srv := newGraphServer(t)
+	srv.seedImage(testImageHash, nil)
 	httpSrv := srv.start()
 	defer httpSrv.Close()
 	p := testProvider(t, httpSrv)
 
-	dir := t.TempDir()
-	content := []byte("stable image content")
-	path := writeTestImage(t, dir, "hero.png", content)
-	sha256hex := sha256HexOf(content)
-
-	res := resource.Resource{
-		Address:    imageAddress(t, "hero"),
-		Attributes: standardImageAttrs(path),
-		Identity: resource.Identity{
-			ID:          sha256hex,
-			Fingerprint: testImageHash,
-		},
-	}
+	local := localJPEG(t, "hero.jpg", 64, 64)
+	res := imageResourceFrom(t, "hero", local)
+	res.Identity = resource.Identity{ID: testImageHash, Fingerprint: local.Digest}
 	live, err := p.Read(context.Background(), res)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if live.Identity.ID != sha256hex {
-		t.Errorf("live.Identity.ID = %q, want %q", live.Identity.ID, sha256hex)
+	if live.Identity.ID != testImageHash {
+		t.Errorf("live.Identity.ID = %q, want %q", live.Identity.ID, testImageHash)
+	}
+	if live.Identity.Fingerprint != local.Digest {
+		t.Errorf("live.Identity.Fingerprint = %q, want digest %q", live.Identity.Fingerprint, local.Digest)
 	}
 	if live.Computed[meta.OutputImageHash] != testImageHash {
 		t.Errorf("live.Computed[imageHash] = %v, want %q", live.Computed[meta.OutputImageHash], testImageHash)
 	}
-	// live.Attributes["file"] should equal the stored sha256 for plan comparison.
-	if live.Attributes[meta.AttrFile] != sha256hex {
-		t.Errorf("live.Attributes[file] = %v, want sha256 %q", live.Attributes[meta.AttrFile], sha256hex)
-	}
-
-	// Read must not mutate Meta.
 	posts, deletes := srv.mutationCounts()
 	if posts != 0 || deletes != 0 {
 		t.Errorf("Read mutated Meta: posts=%d deletes=%d", posts, deletes)
@@ -199,15 +147,7 @@ func TestReadImageReturnsNotFoundWhenUnbound(t *testing.T) {
 	defer httpSrv.Close()
 	p := testProvider(t, httpSrv)
 
-	dir := t.TempDir()
-	path := writeTestImage(t, dir, "hero.jpg", []byte("content"))
-
-	res := resource.Resource{
-		Address:    imageAddress(t, "hero"),
-		Attributes: standardImageAttrs(path),
-		// No Identity: unbound
-	}
-	_, err := p.Read(context.Background(), res)
+	_, err := p.Read(context.Background(), imageResource(t, "hero"))
 	if !errors.Is(err, provider.ErrNotFound) {
 		t.Fatalf("Read = %v, want ErrNotFound", err)
 	}
@@ -220,14 +160,8 @@ func TestPlanDetectsNewImageAsCreate(t *testing.T) {
 	defer httpSrv.Close()
 	p := testProvider(t, httpSrv)
 
-	dir := t.TempDir()
-	path := writeTestImage(t, dir, "trial.jpg", []byte("image bytes"))
-
-	resources := []resource.Resource{{
-		Address:    imageAddress(t, "trial_ad"),
-		Attributes: standardImageAttrs(path),
-	}}
-	got, err := plan.Build(context.Background(), resources, func(resource.Address) (provider.Reader, error) {
+	res := imageResource(t, "trial_ad")
+	got, err := plan.Build(context.Background(), []resource.Resource{res}, func(resource.Address) (provider.Reader, error) {
 		return p, nil
 	})
 	if err != nil {
@@ -236,7 +170,13 @@ func TestPlanDetectsNewImageAsCreate(t *testing.T) {
 	if len(got.Changes) != 1 || got.Changes[0].Action != plan.ActionCreate {
 		t.Fatalf("changes = %#v, want one create", got.Changes)
 	}
-	// Plan must not upload.
+	rendered := plan.Format(got)
+	if !strings.Contains(rendered, `source.file: "trial_ad.jpg"`) {
+		t.Fatalf("plan missing relative path:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "source.digest:") || !strings.Contains(rendered, "sha256:") {
+		t.Fatalf("plan missing digest:\n%s", rendered)
+	}
 	posts, _ := srv.mutationCounts()
 	if posts != 0 {
 		t.Fatalf("plan uploaded to Meta: posts=%d", posts)
@@ -246,26 +186,22 @@ func TestPlanDetectsNewImageAsCreate(t *testing.T) {
 func TestPlanImageUnchangedWhenContentMatches(t *testing.T) {
 	t.Parallel()
 	srv := newGraphServer(t)
+	srv.seedImage(testImageHash, nil)
 	httpSrv := srv.start()
 	defer httpSrv.Close()
 	p := testProvider(t, httpSrv)
 
-	dir := t.TempDir()
-	content := []byte("stable image bytes")
-	path := writeTestImage(t, dir, "stable.jpg", content)
-	sha256hex := sha256HexOf(content)
-
-	st, err := state.Load(filepath.Join(dir, "agoraform.state.json"))
+	local := localJPEG(t, "stable.jpg", 64, 64)
+	res := imageResourceFrom(t, "stable", local)
+	st, err := state.Load(filepath.Join(t.TempDir(), "agoraform.state.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	addr := imageAddress(t, "stable")
-	if err := st.Bind(addr, resource.Identity{ID: sha256hex, Fingerprint: testImageHash}); err != nil {
+	if err := st.Bind(res.Address, resource.Identity{ID: testImageHash, Fingerprint: local.Digest}); err != nil {
 		t.Fatal(err)
 	}
 
-	resources := []resource.Resource{{Address: addr, Attributes: standardImageAttrs(path)}}
-	got, err := plan.BuildWithState(context.Background(), resources, func(resource.Address) (provider.Reader, error) {
+	got, err := plan.BuildWithState(context.Background(), []resource.Resource{res}, func(resource.Address) (provider.Reader, error) {
 		return p, nil
 	}, st)
 	if err != nil {
@@ -274,55 +210,39 @@ func TestPlanImageUnchangedWhenContentMatches(t *testing.T) {
 	if len(got.Changes) != 1 || got.Changes[0].Action != plan.ActionUnchanged {
 		t.Fatalf("changes = %#v, want unchanged", got.Changes)
 	}
-	// Plan must not upload.
 	posts, _ := srv.mutationCounts()
 	if posts != 0 {
 		t.Fatalf("plan uploaded to Meta: posts=%d", posts)
 	}
 }
 
-func TestPlanImageDetectsContentChange(t *testing.T) {
+func TestPlanImageChangedContentFails(t *testing.T) {
 	t.Parallel()
 	srv := newGraphServer(t)
+	srv.seedImage(testImageHash, nil)
 	httpSrv := srv.start()
 	defer httpSrv.Close()
 	p := testProvider(t, httpSrv)
 
-	dir := t.TempDir()
-
-	// Write the OLD content whose sha256 is stored in state.
-	oldContent := []byte("old image bytes")
-	oldSHA256 := sha256HexOf(oldContent)
-
-	// The local file now has NEW content.
-	newContent := []byte("new image bytes — completely different")
-	path := writeTestImage(t, dir, "changed.png", newContent)
-
-	st, err := state.Load(filepath.Join(dir, "agoraform.state.json"))
+	local := localJPEG(t, "changed.jpg", 64, 64)
+	res := imageResourceFrom(t, "changed", local)
+	st, err := state.Load(filepath.Join(t.TempDir(), "agoraform.state.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	addr := imageAddress(t, "changed")
-	// State holds the sha256 of the OLD content.
-	if err := st.Bind(addr, resource.Identity{ID: oldSHA256, Fingerprint: testImageHash}); err != nil {
+	if err := st.Bind(res.Address, resource.Identity{ID: testImageHash, Fingerprint: strings.Repeat("ab", 32)}); err != nil {
 		t.Fatal(err)
 	}
 
-	resources := []resource.Resource{{Address: addr, Attributes: standardImageAttrs(path)}}
-	got, err := plan.BuildWithState(context.Background(), resources, func(resource.Address) (provider.Reader, error) {
+	_, err = plan.BuildWithState(context.Background(), []resource.Resource{res}, func(resource.Address) (provider.Reader, error) {
 		return p, nil
 	}, st)
-	if err != nil {
-		t.Fatal(err)
+	if err == nil || !strings.Contains(err.Error(), "immutable") {
+		t.Fatalf("plan = %v, want immutable content guidance", err)
 	}
-	// Content changed → plan must show an update.
-	if len(got.Changes) != 1 || got.Changes[0].Action != plan.ActionUpdate {
-		t.Fatalf("changes = %#v, want update for content change", got.Changes)
-	}
-	// Plan must not upload.
 	posts, _ := srv.mutationCounts()
 	if posts != 0 {
-		t.Fatalf("plan uploaded to Meta: posts=%d", posts)
+		t.Fatalf("changed content uploaded: posts=%d", posts)
 	}
 }
 
@@ -333,16 +253,9 @@ func TestDestroyImageRemovesStateBindingOnly(t *testing.T) {
 	defer httpSrv.Close()
 	p := testProvider(t, httpSrv)
 
-	dir := t.TempDir()
-	content := []byte("image to remove")
-	path := writeTestImage(t, dir, "bye.jpg", content)
-	sha256hex := sha256HexOf(content)
-
-	res := resource.Resource{
-		Address:    imageAddress(t, "bye"),
-		Attributes: standardImageAttrs(path),
-		Identity:   resource.Identity{ID: sha256hex, Fingerprint: testImageHash},
-	}
+	local := localJPEG(t, "bye.jpg", 64, 64)
+	res := imageResourceFrom(t, "bye", local)
+	res.Identity = resource.Identity{ID: testImageHash, Fingerprint: local.Digest}
 	capability, err := p.DestroyCapability(res)
 	if err != nil {
 		t.Fatal(err)
@@ -357,23 +270,35 @@ func TestDestroyImageRemovesStateBindingOnly(t *testing.T) {
 	if result.Status != provider.DestroyStatusAlreadyAbsent {
 		t.Fatalf("status = %q, want AlreadyAbsent (provider-owned)", result.Status)
 	}
-	// Destroy must not contact Meta.
 	posts, deletes := srv.mutationCounts()
 	if posts != 0 || deletes != 0 {
 		t.Fatalf("Destroy mutated Meta: posts=%d deletes=%d", posts, deletes)
 	}
 }
 
-func TestImportImageIsUnsupported(t *testing.T) {
+func TestImportImageBindsHashWithoutFabricatingSource(t *testing.T) {
 	t.Parallel()
 	srv := newGraphServer(t)
+	srv.seedImage(testImageHash, nil)
 	httpSrv := srv.start()
 	defer httpSrv.Close()
 	p := testProvider(t, httpSrv)
 
-	_, err := p.Import(context.Background(), imageAddress(t, "external"), "someHash")
-	if err == nil || !strings.Contains(err.Error(), "create-managed") {
-		t.Fatalf("import error = %v, want create-managed error", err)
+	live, err := p.Import(context.Background(), imageAddress(t, "external"), testImageHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if live.Identity.ID != testImageHash {
+		t.Fatalf("id = %q", live.Identity.ID)
+	}
+	if live.Identity.Fingerprint != "" {
+		t.Fatalf("import fabricated content digest %q", live.Identity.Fingerprint)
+	}
+	if _, ok := live.Attributes[asset.AttrName]; ok {
+		t.Fatal("import fabricated a local source")
+	}
+	if live.Computed[meta.OutputImageHash] != testImageHash {
+		t.Fatalf("Computed[imageHash] = %v", live.Computed[meta.OutputImageHash])
 	}
 }
 
@@ -385,13 +310,7 @@ func TestImageUploadFailureDoesNotLeakToken(t *testing.T) {
 	defer httpSrv.Close()
 	p := testProvider(t, httpSrv)
 
-	dir := t.TempDir()
-	path := writeTestImage(t, dir, "fail.jpg", []byte("fail content"))
-
-	_, err := p.Create(context.Background(), resource.Resource{
-		Address:    imageAddress(t, "fail"),
-		Attributes: standardImageAttrs(path),
-	})
+	_, err := p.Create(context.Background(), imageResource(t, "fail"))
 	if err == nil || !strings.Contains(err.Error(), "temporary image upload failure") {
 		t.Fatalf("error = %v, want upload failure", err)
 	}
@@ -420,7 +339,6 @@ func TestAdCreativeImageAndImageHashAreMutuallyExclusive(t *testing.T) {
 	t.Parallel()
 	p := meta.New(meta.Config{AccessToken: testToken, AdAccountID: testAccountID})
 	attrs := standardImageCreativeAttrs()
-	// imageHash is set by standardImageCreativeAttrs; also set image ref.
 	addr, _ := resource.ParseAddress("meta.image.trial_ad")
 	attrs[meta.AttrImageRef] = resource.Ref{Address: addr}
 	err := p.Validate(context.Background(), creativeResource(t, "bad", attrs))
@@ -434,7 +352,6 @@ func TestAdCreativeImageRefMustTargetMetaImage(t *testing.T) {
 	p := meta.New(meta.Config{AccessToken: testToken, AdAccountID: testAccountID})
 	attrs := standardImageCreativeAttrs()
 	delete(attrs, meta.AttrImageHash)
-	// Point image ref to a campaign instead of an image.
 	campaignAddr, _ := resource.ParseAddress("meta.campaign.some_campaign")
 	attrs[meta.AttrImageRef] = resource.Ref{Address: campaignAddr}
 	err := p.Validate(context.Background(), creativeResource(t, "bad", attrs))
@@ -453,10 +370,9 @@ func TestAdCreativeManagedImageCreatesWithResolvedHash(t *testing.T) {
 	addr, _ := resource.ParseAddress("meta.image.trial_ad")
 	attrs := standardImageCreativeAttrs()
 	delete(attrs, meta.AttrImageHash)
-	// At apply time the image ref is resolved with outputs.
 	attrs[meta.AttrImageRef] = resource.Resolved{
 		Address:  addr,
-		Identity: resource.Identity{ID: "abc123sha256", Fingerprint: testImageHash},
+		Identity: resource.Identity{ID: testImageHash, Fingerprint: "digest"},
 		Outputs:  resource.Attributes{meta.OutputImageHash: testImageHash},
 	}
 	created, err := p.Create(context.Background(), creativeResource(t, "instagram", attrs))

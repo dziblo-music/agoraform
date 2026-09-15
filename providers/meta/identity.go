@@ -55,14 +55,21 @@ func (p *Provider) rememberLive(live resource.RemoteResource) resource.RemoteRes
 	return live
 }
 
-// rememberImageLive stores the Meta image hash (Identity.Fingerprint) in the
+// rememberImageLive stores the Meta image hash (Identity.ID) in the
 // provider's runtime binding so ad_creative resources can resolve the hash
-// at plan/compare time via lookupImageHash.
+// at plan/compare time via lookupImageHash. Fingerprint is the local digest.
 func (p *Provider) rememberImageLive(live resource.RemoteResource) resource.RemoteResource {
 	if live.Identity.IsZero() {
 		return live
 	}
-	// For images: ID = sha256, Fingerprint = meta image hash.
+	p.rememberBindingWithFingerprint(live.Address, live.Identity.ID, live.Identity.Fingerprint, "")
+	return live
+}
+
+func (p *Provider) rememberVideoLive(live resource.RemoteResource) resource.RemoteResource {
+	if live.Identity.IsZero() {
+		return live
+	}
 	p.rememberBindingWithFingerprint(live.Address, live.Identity.ID, live.Identity.Fingerprint, "")
 	return live
 }
@@ -82,12 +89,13 @@ func (p *Provider) lookupID(addr resource.Address) string {
 // the live ad creative's imageHash without requiring the apply engine to have
 // resolved the $ref.
 func (p *Provider) lookupImageHash(addr resource.Address) string {
-	if p == nil || addr.IsZero() {
-		return ""
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.known[addr.String()].fingerprint
+	return p.lookupID(addr)
+}
+
+// lookupVideoID returns the Meta video id for a meta.video resource that has
+// been read during the current planning or apply session.
+func (p *Provider) lookupVideoID(addr resource.Address) string {
+	return p.lookupID(addr)
 }
 
 // SetIdentityCatalog supplies local-state reverse lookups for import

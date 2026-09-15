@@ -68,7 +68,6 @@ func TestManifestsRemainValid(t *testing.T) {
 				if !ok {
 					t.Fatalf("unsupported example provider %q", res.Address.Provider)
 				}
-				res = resolveResourceFilePaths(res, m.BaseDir)
 				if err := p.Validate(context.Background(), res); err != nil {
 					t.Fatalf("validate %s: %v", res.Address, err)
 				}
@@ -114,11 +113,11 @@ func loadExample(t *testing.T, path string) *manifest.Manifest {
 	if err != nil {
 		t.Fatalf("parse example: %v", err)
 	}
-	// Populate BaseDir so callers can resolve relative file paths in resource
-	// attributes. Examples are loaded with a path relative to the examples/
-	// test working directory; BaseDir anchors to the example's own directory.
 	if abs, err := filepath.Abs(filepath.Dir(path)); err == nil {
 		m.BaseDir = abs
+	}
+	if err := manifest.BindLocalAssets(m); err != nil {
+		t.Fatalf("bind local assets: %v", err)
 	}
 	return m
 }
@@ -498,6 +497,13 @@ func TestMetaWebsiteCampaignExampleCoversServingGraph(t *testing.T) {
 	if got := requireRef(t, creative, meta.AttrImageRef); got != image.Address.String() {
 		t.Errorf("creative image $ref = %s, want %s", got, image.Address)
 	}
+	src, ok := image.Attributes["source"].(map[string]any)
+	if !ok || src["file"] != "hero.jpg" {
+		t.Errorf("managed image source = %#v, want source.file hero.jpg", image.Attributes["source"])
+	}
+	if image.LocalAsset == nil {
+		t.Error("managed image LocalAsset was not resolved")
+	}
 	if _, ok := creative.Attributes[meta.AttrImageHash]; ok {
 		t.Errorf("creative must use a managed image $ref, not a hardcoded %s", meta.AttrImageHash)
 	}
@@ -616,40 +622,4 @@ func reverseStrings(in []string) []string {
 		out[len(in)-1-i] = v
 	}
 	return out
-}
-
-// resolveResourceFilePaths returns a copy of res with any relative string
-// attribute that maps to a known file-path attribute name resolved against
-// baseDir. This is necessary in tests because the test working directory is
-// the examples/ package directory, while manifests reference files relative
-// to the manifest's own directory.
-//
-// In production the user runs agoraform from the manifest directory, so
-// relative paths resolve naturally against CWD without this helper.
-func resolveResourceFilePaths(res resource.Resource, baseDir string) resource.Resource {
-	if baseDir == "" {
-		return res
-	}
-	fileAttrs := map[string]struct{}{
-		meta.AttrFile: {},
-	}
-	attrs := res.Attributes.Clone()
-	changed := false
-	for key := range fileAttrs {
-		val, ok := attrs[key]
-		if !ok {
-			continue
-		}
-		s, ok := val.(string)
-		if !ok || filepath.IsAbs(s) {
-			continue
-		}
-		attrs[key] = filepath.Join(baseDir, s)
-		changed = true
-	}
-	if !changed {
-		return res
-	}
-	res.Attributes = attrs
-	return res
 }

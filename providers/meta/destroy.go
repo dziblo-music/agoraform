@@ -48,6 +48,8 @@ func (p *Provider) Destroy(ctx context.Context, res resource.Resource) (provider
 		return p.destroyAdCreative(ctx, res)
 	case TypeAd:
 		return p.destroyAd(ctx, res)
+	case TypeVideo:
+		return p.destroyVideo(ctx, res)
 	default:
 		return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: unsupported resource type", res.Address)
 	}

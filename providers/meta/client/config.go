@@ -15,11 +15,12 @@ var adAccountIDPattern = regexp.MustCompile(`^[1-9][0-9]*$`)
 // AccessToken is a secret and must never be written to manifests, plans,
 // logs, diagnostics, or state. AdAccountID is not a secret.
 type Config struct {
-	AccessToken string
-	AdAccountID string
-	BaseURL     string
-	Timeout     time.Duration
-	HTTPClient  *http.Client
+	AccessToken   string
+	AdAccountID   string
+	BaseURL       string
+	Timeout       time.Duration
+	UploadTimeout time.Duration
+	HTTPClient    *http.Client
 }
 
 // WithDefaults returns a normalized copy with endpoint and timeout defaults.
@@ -32,6 +33,9 @@ func (c Config) WithDefaults() Config {
 	}
 	if c.Timeout <= 0 {
 		c.Timeout = DefaultTimeout
+	}
+	if c.UploadTimeout <= 0 {
+		c.UploadTimeout = DefaultUploadTimeout
 	}
 	return c
 }

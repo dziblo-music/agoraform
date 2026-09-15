@@ -179,6 +179,49 @@ func TestMalformedResponse(t *testing.T) {
 	}
 }
 
+func TestPostMultipartStreamSetsContentLength(t *testing.T) {
+	t.Parallel()
+	payload := []byte("jpeg-bytes")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s", r.Method)
+		}
+		if r.ContentLength <= 0 {
+			t.Errorf("ContentLength = %d, want a known multipart size", r.ContentLength)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer "+testToken {
+			t.Errorf("Authorization = %q", got)
+		}
+		if !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+			t.Errorf("Content-Type = %q", r.Header.Get("Content-Type"))
+		}
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Errorf("ParseMultipartForm: %v", err)
+		}
+		file, hdr, err := r.FormFile("filename")
+		if err != nil {
+			t.Errorf("FormFile: %v", err)
+			return
+		}
+		defer file.Close()
+		if hdr.Filename != "hero.jpg" {
+			t.Errorf("filename = %q", hdr.Filename)
+		}
+		got, _ := io.ReadAll(file)
+		if string(got) != string(payload) {
+			t.Errorf("file body = %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"images":{"hero.jpg":{"hash":"abc"}}}`)
+	}))
+	defer server.Close()
+	c := newClient(t, server.URL, server.Client(), time.Second)
+	var out map[string]any
+	if err := c.PostMultipartStream(context.Background(), c.AdAccountID()+"/adimages", nil, "filename", "hero.jpg", strings.NewReader(string(payload)), int64(len(payload)), &out); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRequestTimeout(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
