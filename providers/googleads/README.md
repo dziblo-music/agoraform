@@ -381,7 +381,7 @@ after create.
 
 Import accepts the numeric ad group ID or the resource name
 `customers/{customerId}/adGroups/{id}` and stores the numeric ID.
-Import reconstructs `campaign` as a logical `$ref` when the campaign is
+Import reconstructs `campaign` as a logical `$ref` when the ad group is
 already bound in local state:
 
 ```bash
@@ -693,9 +693,9 @@ resources:
 | Attribute | Required | Description |
 | --- | --- | --- |
 | `type` | yes | Google Ads `AssetType`: `IMAGE` or `TEXT`. Sitelink/callout types remain a follow-up. |
-| `source.file` | IMAGE create | Project-relative file under `assets.root` (or the manifest directory). JPEG, PNG, or GIF; at least 128×128 pixels; at most 5,120 KiB. |
+| `source.file` | IMAGE create | Project-relative file under `assets.root` (or the manifest directory). JPEG, PNG, or GIF; at least 128×128 pixels; at most 5,120 KB. |
 | `text` | TEXT | Business-name copy. At most 25 characters. |
-| `name` | no | Optional Google Ads friendly name. Omitted names are not forced onto the remote asset. |
+| `name` | no | Optional create-time Google Ads friendly name. Google may deduplicate identical assets and retain an existing remote name, so Agoraform does not reconcile `name` after creation. |
 
 Provider-native asset IDs, resource names, MIME type, dimensions, policy
 approval/review status, and `source` (`ADVERTISER` vs
@@ -711,9 +711,10 @@ does not invent a local `source.file` for remotely created images:
 agoraform import googleads.asset.product_image 123456789
 ```
 
-Unsupported asset types fail import with guidance. Destroy refuses to
-remove an asset while `googleads.campaign_asset` attachments still
-reference it.
+Unsupported asset types fail import with guidance. Google Ads AssetService
+does not expose remove/delete for assets, so `agoraform destroy` reports
+`googleads.asset` as unsupported and preserves its state binding. Managed
+`googleads.campaign_asset` relationships are still detached normally.
 
 ### `googleads.campaign_asset`
 
@@ -762,8 +763,9 @@ agoraform import googleads.asset.product_image 123456789
 agoraform import googleads.campaign_asset.product_image 987654321~123456789~AD_IMAGE
 ```
 
-Destroy detaches the campaign relationship with mutate `remove` before
-the underlying asset is removed.
+Destroy detaches the campaign relationship with mutate `remove`. The
+underlying `googleads.asset` remains because AssetService has no remove/delete
+operation.
 
 ### `googleads.campaign_conversion_goal`
 
@@ -842,7 +844,8 @@ Customer and campaign conversion goals are provider-owned. Destroy does not
 call remove/delete on them, keeps their state bindings, and exits non-zero
 after supported resources are removed. Apply remains the way to reconcile
 `biddable`. Budgets are refused while `referenceCount > 0`. Campaign
-assets are detached before the underlying `googleads.asset` is removed.
+assets are detached normally; underlying `googleads.asset` resources are
+unsupported for destroy and remain bound in state.
 
 The exhaustive per-type mutate operation, terminal state, and capability
 table lives in [Destroy](../../docs/destroy.md#google-ads). Closing a
@@ -878,8 +881,9 @@ requests. Override `Config.BaseURL` and `Config.TokenURL` in tests.
   `referenceCount > 0`. Destroy campaigns first.
 - Image and text asset content is immutable after create. Changed local
   bytes fail planning instead of silently uploading a replacement.
-- Campaign-asset attachments are detached before the underlying asset is
-  removed.
+- Campaign-asset attachments are detached with mutate `remove`; the
+  underlying `googleads.asset` is unsupported for destroy because AssetService
+  exposes no remove/delete operation.
 - Immutable identity fields fail planning instead of destroying and
   recreating the remote object. Creative Responsive Search Ad changes
   replace ad lists in place and are visible in plan output.
