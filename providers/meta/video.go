@@ -28,7 +28,6 @@ const (
 	videoStatusReady      = "ready"
 	videoStatusProcessing = "processing"
 	videoStatusError      = "error"
-	videoPhaseComplete    = "complete"
 )
 
 var (
@@ -174,33 +173,55 @@ func (p *Provider) createVideo(ctx context.Context, res resource.Resource) (reso
 	} else if bound {
 		return resource.RemoteResource{}, fmt.Errorf("meta: create %s: resource already has persisted identity %q", res.Address, res.Identity.ID)
 	}
-
-	rc, filename, size, err := openLocalAsset(res, maxVideoBytes, videoSizeLabel)
-	if err != nil {
+	if err := requireLocalAsset(res); err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("meta: create %s: %w", res.Address, err)
 	}
-	defer rc.Close()
+	local := res.LocalAsset
+	filename := path.Base(local.Path)
+	if filename == "" || filename == "." || filename == "/" {
+		filename = "upload.mp4"
+	}
 
 	c, err := p.Client()
 	if err != nil {
 		return resource.RemoteResource{}, err
 	}
-	var created struct {
-		ID string `json:"id"`
+	rawID, uploadErr := c.UploadVideoResumable(ctx, c.AdAccountID()+"/advideos", filename, local.Size, local.Open)
+	if uploadErr != nil {
+		if strings.TrimSpace(rawID) == "" {
+			return resource.RemoteResource{}, fmt.Errorf("meta: create %s: upload failed before Meta returned a video id: %w", res.Address, uploadErr)
+		}
+		id, normalizeErr := normalizeObjectID(rawID)
+		if normalizeErr != nil {
+			id = strings.TrimSpace(rawID)
+			uploadErr = fmt.Errorf("%v; Meta returned invalid recovery video id %q: %w", uploadErr, rawID, normalizeErr)
+		}
+		live := pendingVideoRemote(res.Address, id, localContentFingerprint(res))
+		return live, fmt.Errorf("meta: create %s: Meta accepted video %s but the resumable upload did not converge: %w", res.Address, id, uploadErr)
 	}
-	if err := c.PostMultipartStream(ctx, c.AdAccountID()+"/advideos", nil, "source", filename, rc, size, &created); err != nil {
-		return resource.RemoteResource{}, fmt.Errorf("meta: create %s: upload failed: %w", res.Address, err)
-	}
-	id, err := normalizeObjectID(created.ID)
+	id, err := normalizeObjectID(rawID)
 	if err != nil {
-		return resource.RemoteResource{}, fmt.Errorf("meta: create %s: API returned an invalid id: %w", res.Address, err)
+		live := pendingVideoRemote(res.Address, strings.TrimSpace(rawID), localContentFingerprint(res))
+		return live, fmt.Errorf("meta: create %s: Meta accepted the upload but returned an invalid video id %q: %w", res.Address, rawID, err)
 	}
 
 	item, err := p.waitForVideoReady(ctx, id)
 	if err != nil {
-		return resource.RemoteResource{}, fmt.Errorf("meta: create %s: video %s uploaded but is not ready: %w; retry apply, or bind this id with agoraform import if Meta already accepted it", res.Address, id, err)
+		if strings.TrimSpace(item.ID) == "" {
+			item.ID = id
+		}
+		live := remoteVideo(res.Address, item, localContentFingerprint(res), false)
+		return live, fmt.Errorf("meta: create %s: video %s was accepted by Meta but is not ready: %w", res.Address, id, err)
 	}
 	return p.rememberVideoLive(remoteVideo(res.Address, item, localContentFingerprint(res), true)), nil
+}
+
+func pendingVideoRemote(addr resource.Address, id, digest string) resource.RemoteResource {
+	return resource.RemoteResource{
+		Address:  addr,
+		Identity: resource.Identity{ID: strings.TrimSpace(id), Fingerprint: strings.TrimSpace(digest)},
+		Computed: resource.Attributes{},
+	}
 }
 
 func (p *Provider) updateVideo(_ context.Context, desired resource.Resource, actual resource.RemoteResource) (resource.RemoteResource, error) {
@@ -297,23 +318,25 @@ func (p *Provider) waitForVideoReady(ctx context.Context, id string) (adVideo, e
 	if ctxDeadline, ok := ctx.Deadline(); ok && ctxDeadline.Before(deadline) {
 		deadline = ctxDeadline
 	}
+	last := adVideo{ID: id}
 
 	for {
 		item, err := p.readAdVideo(ctx, id)
 		if err != nil {
-			return adVideo{}, err
+			return last, err
 		}
+		last = item
 		if videoIsReady(item) {
 			return item, nil
 		}
 		if videoHasError(item) {
-			return adVideo{}, fmt.Errorf("Meta reported video processing failed")
+			return item, fmt.Errorf("Meta reported video processing failed")
 		}
 		if !time.Now().Before(deadline) {
-			return adVideo{}, fmt.Errorf("still processing after %s; retry apply", timeout)
+			return item, fmt.Errorf("still processing after %s", timeout)
 		}
 		if err := sleep(ctx, interval); err != nil {
-			return adVideo{}, err
+			return item, err
 		}
 	}
 }
@@ -388,16 +411,11 @@ func requireVideoReady(addr resource.Address, item adVideo, allowProcessing bool
 	if allowProcessing && videoIsProcessing(item) {
 		return nil
 	}
-	return fmt.Errorf("uploaded video %s is still processing (status %q); retry apply after Meta finishes encoding", item.ID, videoStatusValue(item))
+	return fmt.Errorf("uploaded video %s is still processing (status %q); retry after Meta finishes encoding", item.ID, videoStatusValue(item))
 }
 
 func videoIsReady(item adVideo) bool {
-	status := strings.ToLower(strings.TrimSpace(item.Status.VideoStatus))
-	if status == videoStatusReady {
-		return true
-	}
-	phase := strings.ToLower(strings.TrimSpace(item.Status.ProcessingPhase.Status))
-	return status == "" && phase == videoPhaseComplete
+	return strings.EqualFold(strings.TrimSpace(item.Status.VideoStatus), videoStatusReady)
 }
 
 func videoIsProcessing(item adVideo) bool {
