@@ -94,7 +94,8 @@ Graph and Marketing API v26.0. The provider manages website
 `meta.pixel` event-source bindings (import/adopt only) and website
 `meta.custom_conversion` resources, paused-by-default `meta.campaign`
 resources with ODAX objectives and optional campaign-level budgets, and
-`meta.ad_set` resources with typed targeting, Instagram placements, schedules,
+`meta.ad_set` resources with typed targeting including Custom Audience and
+interest references, Instagram placements, schedules,
 and website-conversion optimization. External-media `meta.ad_creative`
 resources and paused-by-default `meta.ad` serving relationships complete the
 initial campaign graph. See the
