@@ -1310,6 +1310,8 @@ func mutateCollection(path string) string {
 	switch {
 	case strings.Contains(path, "/campaignConversionGoals:mutate"):
 		return "campaignConversionGoals"
+	case strings.Contains(path, "/campaignAssets:mutate"):
+		return "campaignAssets"
 	case strings.Contains(path, "/conversionActions:mutate"):
 		return "conversionActions"
 	case strings.Contains(path, "/campaignBudgets:mutate"):
@@ -1326,6 +1328,8 @@ func mutateCollection(path string) string {
 		return "campaignCriteria"
 	case strings.Contains(path, "/customerConversionGoals:mutate"):
 		return "customerConversionGoals"
+	case strings.Contains(path, "/assets:mutate"):
+		return "assets"
 	case strings.Contains(path, "/ads:mutate"):
 		return "ads"
 	default:

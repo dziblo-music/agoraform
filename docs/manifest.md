@@ -307,9 +307,12 @@ googleads.campaign_budget
         ├── googleads.campaign_conversion_goal
         ├── googleads.campaign_location
         ├── googleads.campaign_language
+        ├── googleads.campaign_asset
         └── googleads.ad_group
               ├── googleads.keyword
               └── googleads.responsive_search_ad
+googleads.asset
+  └── googleads.campaign_asset
 ```
 
 New campaigns, ad groups, positive keywords, and Responsive Search Ads
@@ -605,6 +608,53 @@ language are immutable after create.
     campaign:
       $ref: googleads.campaign.brand
     language: en
+```
+
+See the [Google Ads provider reference](../providers/googleads/README.md).
+
+### `googleads.asset`
+
+Search image uploads and business-name text. IMAGE assets use
+`source.file` under optional `assets.root`. TEXT assets use `text`.
+Creative production stays outside Agoraform. Image bytes never enter the
+manifest, plan, or state.
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `type` | yes | `IMAGE` or `TEXT`. |
+| `source.file` | IMAGE create | Project-relative JPEG, PNG, or GIF. |
+| `text` | TEXT | Business-name copy (at most 25 characters). |
+| `name` | no | Optional Google Ads friendly name. |
+
+```yaml
+- address: googleads.asset.product_image
+  attributes:
+    type: IMAGE
+    source:
+      file: google/product-ui.png
+```
+
+### `googleads.campaign_asset`
+
+Attaches a managed asset to a Search campaign. Search images use
+`fieldType: AD_IMAGE`. Business logo and business name use
+`BUSINESS_LOGO` and `BUSINESS_NAME`.
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `campaign` | yes | `$ref` to a `googleads.campaign`. |
+| `asset` | yes | `$ref` to a `googleads.asset`. |
+| `fieldType` | yes | `AD_IMAGE`, `BUSINESS_LOGO`, or `BUSINESS_NAME`. |
+| `status` | no | `ENABLED` (default) or `PAUSED`. |
+
+```yaml
+- address: googleads.campaign_asset.product_image
+  attributes:
+    campaign:
+      $ref: googleads.campaign.brand
+    asset:
+      $ref: googleads.asset.product_image
+    fieldType: AD_IMAGE
 ```
 
 See the [Google Ads provider reference](../providers/googleads/README.md).

@@ -101,6 +101,24 @@ func TestCustomerConversionGoalMissingResourceUsesAdoptSemantics(t *testing.T) {
 	if mode != provider.MissingResourceCreate {
 		t.Fatalf("responsive-search-ad mode = %q, want %q", mode, provider.MissingResourceCreate)
 	}
+
+	asset := semanticResource(t, "googleads.asset.product_image", resource.Attributes{})
+	mode, err = p.PlanMissingResource(asset)
+	if err != nil {
+		t.Fatalf("PlanMissingResource asset: %v", err)
+	}
+	if mode != provider.MissingResourceCreate {
+		t.Fatalf("asset mode = %q, want %q", mode, provider.MissingResourceCreate)
+	}
+
+	campaignAsset := semanticResource(t, "googleads.campaign_asset.product_image", resource.Attributes{})
+	mode, err = p.PlanMissingResource(campaignAsset)
+	if err != nil {
+		t.Fatalf("PlanMissingResource campaign asset: %v", err)
+	}
+	if mode != provider.MissingResourceCreate {
+		t.Fatalf("campaign-asset mode = %q, want %q", mode, provider.MissingResourceCreate)
+	}
 }
 
 func TestCustomerConversionGoalReferenceCategoryMustMatch(t *testing.T) {

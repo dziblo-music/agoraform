@@ -114,6 +114,19 @@ var destroyLifecycleByType = map[string]resourceDestroyLifecycle{
 		AlreadyTerminal: "status=REMOVED or not found",
 		Precondition:    "mutate remove only; never update status to ENABLED",
 	},
+	TypeAsset: {
+		Capability:      provider.DestroyUnsupported,
+		AlreadyTerminal: "not applicable; object remains",
+		Precondition:    "Google Ads AssetService does not expose remove/delete for assets; detach googleads.campaign_asset relationships instead and preserve the asset binding in state",
+	},
+	TypeCampaignAsset: {
+		Capability:      provider.DestroyRemove,
+		Collection:      campaignAssetsCollection,
+		MutateOperation: "remove",
+		TerminalState:   "status=REMOVED",
+		AlreadyTerminal: "status=REMOVED or not found",
+		Precondition:    "mutate remove detaches the campaign relationship only; never enable serving",
+	},
 }
 
 type destroyRemote struct {
@@ -178,6 +191,8 @@ func (p *Provider) Destroy(ctx context.Context, res resource.Resource) (provider
 		return p.destroyComposite(ctx, res, spec, boundCampaignCriterionIdentity, parseCampaignCriterionID, campaignCriterionResourceName, func(campaignID, childID string) string {
 			return "SELECT campaign_criterion.resource_name, campaign_criterion.status FROM campaign_criterion WHERE campaign.id = " + campaignID + " AND campaign_criterion.criterion_id = " + childID
 		}, "campaignCriterion")
+	case TypeCampaignAsset:
+		return p.destroyCampaignAsset(ctx, res, spec)
 	default:
 		return provider.DestroyResult{}, notImplemented("destroy", res.Address)
 	}
@@ -219,6 +234,39 @@ func (p *Provider) destroyCampaignBudget(ctx context.Context, res resource.Resou
 	return p.destroyByID(ctx, res, spec, boundCampaignBudgetIdentity, func(id, customerID string) (string, string) {
 		return campaignBudgetResourceName(customerID, id), "SELECT campaign_budget.resource_name, campaign_budget.status, campaign_budget.reference_count FROM campaign_budget WHERE campaign_budget.id = " + id
 	}, "campaignBudget", true)
+}
+
+func (p *Provider) destroyCampaignAsset(ctx context.Context, res resource.Resource, spec resourceDestroyLifecycle) (provider.DestroyResult, error) {
+	id, err := requireDestroyIdentity(res, boundCampaignAssetIdentity)
+	if err != nil {
+		return provider.DestroyResult{}, err
+	}
+	campaignID, assetID, fieldType, err := parseCampaignAssetID(res.Address, id)
+	if err != nil {
+		return provider.DestroyResult{}, fmt.Errorf("googleads: destroy %s: %w", res.Address, err)
+	}
+	c, err := p.Client()
+	if err != nil {
+		return provider.DestroyResult{}, err
+	}
+	query := strings.Join([]string{
+		"SELECT campaign_asset.resource_name, campaign_asset.status FROM campaign_asset WHERE",
+		"campaign.id = " + campaignID,
+		"AND campaign_asset.asset = " + gaqlString(assetResourceName(c.CustomerID(), assetID)),
+		"AND campaign_asset.field_type = " + gaqlString(fieldType),
+	}, " ")
+	remote, err := p.inspectDestroy(ctx, res.Address, query, "campaignAsset")
+	if err != nil {
+		return provider.DestroyResult{}, fmt.Errorf("googleads: destroy %s: %w", res.Address, err)
+	}
+	if !remote.found || remote.status == googleAdsRemovedStatus {
+		return provider.DestroyResult{Status: provider.DestroyStatusAlreadyAbsent}, nil
+	}
+	name := campaignAssetResourceName(c.CustomerID(), id)
+	if remote.resourceName != "" {
+		name = remote.resourceName
+	}
+	return p.mutateRemove(ctx, res, spec.Collection, name)
 }
 
 func (p *Provider) destroyComposite(ctx context.Context, res resource.Resource, spec resourceDestroyLifecycle, bound boundIdentityFunc, parse compositeIDFunc, resourceName func(customerID, id string) string, query func(parentID, childID string) string, envelope string) (provider.DestroyResult, error) {

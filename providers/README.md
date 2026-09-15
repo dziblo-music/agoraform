@@ -75,7 +75,8 @@ manages website `googleads.conversion_action` resources, customer
 resources, Search `googleads.ad_group` resources, Search
 `googleads.keyword` criteria, Search `googleads.responsive_search_ad`
 resources, campaign location and language targeting,
-and campaign `googleads.campaign_conversion_goal` biddability,
+Search `googleads.asset` image/text uploads, `googleads.campaign_asset`
+attachments, and campaign `googleads.campaign_conversion_goal` biddability,
 and uses an authenticated REST client for query and mutate
 operations. `agoraform destroy` removes supported Google Ads resources with
 native `remove` operations; conversion goals are provider-owned.

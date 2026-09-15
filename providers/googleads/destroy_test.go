@@ -153,6 +153,27 @@ func TestDestroyRemovesEachRemovableType(t *testing.T) {
 				f.seedCriterion(map[string]any{"criterionId": "72", "campaign": "customers/" + testCustomerID + "/campaigns/21", "status": "ENABLED", "type": "LANGUAGE", "language": map[string]any{"languageConstant": "languageConstants/1000"}})
 			},
 		},
+		{
+			name:       "campaign_asset",
+			collection: "campaignAssets",
+			res: func(t *testing.T) resource.Resource {
+				res := campaignAssetResource(t, "product_image", resource.Attributes{
+					googleads.AttrCampaign:  resolvedCampaign(t, "brand", "21"),
+					googleads.AttrAsset:     resolvedAsset(t, "product_image", "81"),
+					googleads.AttrFieldType: "AD_IMAGE",
+				})
+				res.Identity = resource.Identity{ID: "21~81~AD_IMAGE"}
+				return res
+			},
+			seed: func(f *destroyFake) {
+				f.seedCampaignAsset(map[string]any{
+					"campaign":  "customers/" + testCustomerID + "/campaigns/21",
+					"asset":     "customers/" + testCustomerID + "/assets/81",
+					"fieldType": "AD_IMAGE",
+					"status":    "ENABLED",
+				})
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -543,6 +564,8 @@ type destroyFake struct {
 	keywords          map[string]map[string]any
 	ads               map[string]map[string]any
 	criteria          map[string]map[string]any
+	assets            map[string]map[string]any
+	campaignAssets    map[string]map[string]any
 
 	searchStatus   int
 	searchBody     string
@@ -563,6 +586,8 @@ func newDestroyFake() *destroyFake {
 		keywords:          map[string]map[string]any{},
 		ads:               map[string]map[string]any{},
 		criteria:          map[string]map[string]any{},
+		assets:            map[string]map[string]any{},
+		campaignAssets:    map[string]map[string]any{},
 	}
 }
 
@@ -638,6 +663,10 @@ func (f *destroyFake) searchLocked(query string) []any {
 		return f.matchRSA(query)
 	case strings.Contains(q, "from ad_group"):
 		return f.match(f.adGroups, query, "ad_group.id = ", "id", "adGroup")
+	case strings.Contains(q, "from campaign_asset"):
+		return f.matchCampaignAssets(query)
+	case strings.Contains(q, "from asset"):
+		return f.match(f.assets, query, "asset.id = ", "id", "asset")
 	case strings.Contains(q, "from campaign"):
 		return f.match(f.campaigns, query, "campaign.id = ", "id", "campaign")
 	default:
@@ -791,6 +820,20 @@ func (f *destroyFake) removeLocked(collection, resourceName string) error {
 			return errors.New("missing criterion")
 		}
 		markRemoved(item)
+	case "assets":
+		id := strings.TrimPrefix(resourceName, "customers/"+testCustomerID+"/assets/")
+		item, ok := f.assets[id]
+		if !ok {
+			return errors.New("missing asset")
+		}
+		markRemoved(item)
+	case "campaignAssets":
+		id := strings.TrimPrefix(resourceName, "customers/"+testCustomerID+"/campaignAssets/")
+		item, ok := f.campaignAssets[id]
+		if !ok {
+			return errors.New("missing campaign asset")
+		}
+		markRemoved(item)
 	default:
 		return errors.New("unknown collection")
 	}
@@ -871,6 +914,58 @@ func (f *destroyFake) seedCriterion(item map[string]any) {
 	id := campaign + "~" + stringify(item["criterionId"])
 	item["resourceName"] = "customers/" + testCustomerID + "/campaignCriteria/" + id
 	f.criteria[id] = item
+}
+
+func (f *destroyFake) seedAsset(item map[string]any) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	id := stringify(item["id"])
+	item["resourceName"] = "customers/" + testCustomerID + "/assets/" + id
+	f.assets[id] = item
+}
+
+func (f *destroyFake) seedCampaignAsset(item map[string]any) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	campaignID := strings.TrimPrefix(stringify(item["campaign"]), "customers/"+testCustomerID+"/campaigns/")
+	assetID := strings.TrimPrefix(stringify(item["asset"]), "customers/"+testCustomerID+"/assets/")
+	fieldType := stringify(item["fieldType"])
+	id := campaignID + "~" + assetID + "~" + fieldType
+	item["resourceName"] = "customers/" + testCustomerID + "/campaignAssets/" + id
+	f.campaignAssets[id] = item
+}
+
+func (f *destroyFake) matchCampaignAssets(query string) []any {
+	var out []any
+	for _, item := range f.campaignAssets {
+		campaign := stringify(item["campaign"])
+		campaignID := strings.TrimPrefix(campaign, "customers/"+testCustomerID+"/campaigns/")
+		asset := stringify(item["asset"])
+		fieldType := stringify(item["fieldType"])
+		if strings.Contains(query, "campaign.id = ") {
+			want := queryValue(query, "campaign.id = ")
+			if want != "" && want != campaignID {
+				continue
+			}
+		}
+		if strings.Contains(query, "campaign_asset.asset = ") {
+			want := gaqlQuoted(query, "campaign_asset.asset = ")
+			if want != "" && !strings.EqualFold(want, asset) {
+				continue
+			}
+		}
+		if strings.Contains(query, "campaign_asset.field_type = ") {
+			want := gaqlQuoted(query, "campaign_asset.field_type = ")
+			if want != "" && !strings.EqualFold(want, fieldType) {
+				continue
+			}
+		}
+		if stringify(item["status"]) == "REMOVED" && strings.Contains(strings.ToLower(query), "status != ") {
+			continue
+		}
+		out = append(out, map[string]any{"campaignAsset": cloneMap(item)})
+	}
+	return out
 }
 
 func (f *destroyFake) operations() []mutateOp {
