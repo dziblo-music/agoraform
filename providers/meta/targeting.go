@@ -19,7 +19,7 @@ const (
 	targetExcludedCustomAudiences = "excludedCustomAudiences"
 	targetInterests               = "interests"
 
-	customAudienceFields = "id,account_id,name,subtype"
+	customAudienceFields = "id,name,subtype,usage_restriction,use_in_campaigns"
 )
 
 // targetingEntity is a stable Meta identifier with an optional display name.
@@ -29,25 +29,13 @@ type targetingEntity struct {
 	Name string
 }
 
-var supportedCustomAudienceSubtypes = map[string]struct{}{
-	"APP":                {},
-	"APP_COMBINATION":    {},
-	"CHAT":               {},
-	"CLAIM":              {},
-	"CUSTOM":             {},
-	"DATA_SET":           {},
-	"ENGAGEMENT":         {},
-	"EVENT":              {},
-	"IG_BUSINESS":        {},
-	"LOOKALIKE":          {},
-	"LOOKALIKE_VALUE":    {},
-	"MANAGED":            {},
-	"OFFLINE":            {},
-	"OFFLINE_CONVERSION": {},
-	"PARTNER":            {},
-	"STORE_VISITS":       {},
-	"VIDEO":              {},
-	"WEBSITE":            {},
+// These audience subtypes are known to be administrative/measurement objects,
+// not targetable Custom Audiences. Other subtypes are accepted when Meta says
+// the audience can be used in campaigns; this avoids rejecting shared or newly
+// introduced targetable audience types solely because of a hard-coded enum.
+var unsupportedCustomAudienceSubtypes = map[string]struct{}{
+	"MEASUREMENT":        {},
+	"STUDY_RULE_AUDIENCE": {},
 }
 
 func (t normalizedTargeting) sameIDs(other normalizedTargeting) bool {
@@ -105,6 +93,9 @@ func normalizeTargetingEntity(addr resource.Address, path string, i int, v any, 
 		id, nerr := normalizeObjectID(s)
 		if nerr != nil {
 			return targetingEntity{}, fmt.Errorf("resource %s: %s[%d] must be a numeric Meta identifier", addr, path, i)
+		}
+		if !remote {
+			return targetingEntity{}, fmt.Errorf("resource %s: %s[%d] must be an object with a numeric id", addr, path, i)
 		}
 		return targetingEntity{ID: id}, nil
 	}
@@ -285,10 +276,11 @@ func (p *Provider) ensureCustomAudience(ctx context.Context, addr resource.Addre
 		return err
 	}
 	var item struct {
-		ID        string `json:"id"`
-		AccountID string `json:"account_id"`
-		Name      string `json:"name"`
-		Subtype   string `json:"subtype"`
+		ID               string `json:"id"`
+		Name             string `json:"name"`
+		Subtype          string `json:"subtype"`
+		UsageRestriction string `json:"usage_restriction"`
+		UseInCampaigns   *bool  `json:"use_in_campaigns"`
 	}
 	if err := c.Get(ctx, id, url.Values{"fields": {customAudienceFields}}, &item); err != nil {
 		return classifyTargetingReadError(addr, field, "custom audience", id, err)
@@ -301,15 +293,21 @@ func (p *Provider) ensureCustomAudience(ctx context.Context, addr resource.Addre
 	if subtype == "" {
 		return fmt.Errorf("resource %s: targeting.%s: id %s is not a Custom Audience", addr, field, id)
 	}
-	if _, ok := supportedCustomAudienceSubtypes[subtype]; !ok {
+	if _, unsupported := unsupportedCustomAudienceSubtypes[subtype]; unsupported {
 		return fmt.Errorf("resource %s: targeting.%s: custom audience %s has unsupported subtype %s", addr, field, id, subtype)
 	}
-	if item.AccountID != "" {
-		got := strings.TrimPrefix(strings.TrimSpace(item.AccountID), "act_")
-		want := strings.TrimPrefix(c.AdAccountID(), "act_")
-		if got != "" && got != want {
-			return fmt.Errorf("resource %s: targeting.%s: custom audience %s belongs to ad account %s, not the configured %s", addr, field, id, item.AccountID, c.AdAccountID())
+	if item.UseInCampaigns != nil && !*item.UseInCampaigns {
+		return fmt.Errorf("resource %s: targeting.%s: custom audience %s cannot be used in campaigns", addr, field, id)
+	}
+	usage := strings.ToUpper(strings.TrimSpace(item.UsageRestriction))
+	switch usage {
+	case "", "NONE", "NO_DERIVATIVES":
+	case "EXCLUSION_ONLY":
+		if field == targetCustomAudiences {
+			return fmt.Errorf("resource %s: targeting.%s: custom audience %s is restricted to exclusions and cannot be used for inclusion", addr, field, id)
 		}
+	default:
+		return fmt.Errorf("resource %s: targeting.%s: custom audience %s has unsupported usage restriction %s", addr, field, id, usage)
 	}
 	return nil
 }
