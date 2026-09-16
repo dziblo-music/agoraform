@@ -8,6 +8,8 @@ import (
 	"github.com/dziblo-music/agoraform/internal/resource"
 )
 
+const redactedRemoteUserID = "<redacted>"
+
 func optionalUserIDRef(res resource.Resource) (resource.Ref, bool, error) {
 	v, ok := res.Attributes[AttrUserID]
 	if !ok {
@@ -111,7 +113,7 @@ func (p *Provider) liveUserIDAttr(raw string, desired any) any {
 	if raw == "" {
 		return nil
 	}
-	return raw
+	return redactedRemoteUserID
 }
 
 func (p *Provider) reconstructVariableImportRefs(ctx context.Context, res resource.Resource, live resource.RemoteResource) (resource.RemoteResource, error) {
