@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/dziblo-music/agoraform/internal/graph"
@@ -178,6 +179,8 @@ func TestGoogleAdsSearchExampleCoversCampaignWorkflow(t *testing.T) {
 		googleads.TypeCampaignLocation,
 		googleads.TypeCampaignLanguage,
 		googleads.TypeCampaignNegativeKeyword,
+		googleads.TypeAsset,
+		googleads.TypeCampaignAsset,
 		googleads.TypeAdGroup,
 		googleads.TypeKeyword,
 		googleads.TypeResponsiveSearchAd,
@@ -242,6 +245,57 @@ func TestGoogleAdsSearchExampleCoversCampaignWorkflow(t *testing.T) {
 		if _, ok := kw.Attributes[googleads.AttrNegative]; ok {
 			t.Errorf("%s must omit implied negative", kw.Address)
 		}
+	}
+
+	sitelinks := 0
+	callouts := 0
+	for _, assetRes := range byType[googleads.TypeAsset] {
+		kind, _ := assetRes.Attributes[googleads.AttrType].(string)
+		switch kind {
+		case "SITELINK":
+			sitelinks++
+			if _, ok := assetRes.Attributes[googleads.AttrLinkText].(string); !ok {
+				t.Errorf("%s missing linkText", assetRes.Address)
+			}
+			if assetRes.Attributes[googleads.AttrFinalUrls] == nil {
+				t.Errorf("%s missing finalUrls", assetRes.Address)
+			}
+		case "CALLOUT":
+			callouts++
+			if _, ok := assetRes.Attributes[googleads.AttrCalloutText].(string); !ok {
+				t.Errorf("%s missing calloutText", assetRes.Address)
+			}
+		default:
+			t.Errorf("%s unexpected asset type %q", assetRes.Address, kind)
+		}
+	}
+	if sitelinks < 2 {
+		t.Errorf("sitelink assets = %d, want at least 2", sitelinks)
+	}
+	if callouts < 2 {
+		t.Errorf("callout assets = %d, want at least 2", callouts)
+	}
+
+	sitelinkLinks := 0
+	calloutLinks := 0
+	for _, link := range byType[googleads.TypeCampaignAsset] {
+		if got := requireRef(t, link, googleads.AttrCampaign); got != campaign.Address.String() {
+			t.Errorf("%s campaign $ref = %s, want %s", link.Address, got, campaign.Address)
+		}
+		if got := requireRef(t, link, googleads.AttrAsset); !strings.HasPrefix(got, "googleads.asset.") {
+			t.Errorf("%s asset $ref = %s", link.Address, got)
+		}
+		switch link.Attributes[googleads.AttrFieldType] {
+		case "SITELINK":
+			sitelinkLinks++
+		case "CALLOUT":
+			calloutLinks++
+		default:
+			t.Errorf("%s unexpected fieldType %v", link.Address, link.Attributes[googleads.AttrFieldType])
+		}
+	}
+	if sitelinkLinks < 2 || calloutLinks < 2 {
+		t.Errorf("campaign assets sitelink=%d callout=%d, want at least 2 of each", sitelinkLinks, calloutLinks)
 	}
 
 	rsa := onlyResource(t, byType, googleads.TypeResponsiveSearchAd)

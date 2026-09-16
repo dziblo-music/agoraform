@@ -21,6 +21,8 @@ const (
 	fieldTypeAdImage      = "AD_IMAGE"
 	fieldTypeBusinessLogo = "BUSINESS_LOGO"
 	fieldTypeBusinessName = "BUSINESS_NAME"
+	fieldTypeSitelink     = "SITELINK"
+	fieldTypeCallout      = "CALLOUT"
 	campaignAssetEnabled  = "ENABLED"
 	campaignAssetPaused   = "PAUSED"
 	campaignAssetRemoved  = "REMOVED"
@@ -53,12 +55,16 @@ var (
 		fieldTypeAdImage:      {},
 		fieldTypeBusinessLogo: {},
 		fieldTypeBusinessName: {},
+		fieldTypeSitelink:     {},
+		fieldTypeCallout:      {},
 	}
 
 	campaignAssetFieldTypeAssetTypes = map[string]string{
 		fieldTypeAdImage:      assetTypeImage,
 		fieldTypeBusinessLogo: assetTypeImage,
 		fieldTypeBusinessName: assetTypeText,
+		fieldTypeSitelink:     assetTypeSitelink,
+		fieldTypeCallout:      assetTypeCallout,
 	}
 
 	campaignAssetStatuses = map[string]struct{}{

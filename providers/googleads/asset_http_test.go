@@ -270,6 +270,29 @@ func (f *assetFake) updateAssetLocked(item map[string]any) (string, string, erro
 	if _, ok := item["textAsset"]; ok {
 		return "", "", errors.New("unexpected text update")
 	}
+	if sitelink, ok := item["sitelinkAsset"].(map[string]any); ok {
+		current, _ := existing["sitelinkAsset"].(map[string]any)
+		if current == nil {
+			current = map[string]any{}
+		}
+		for key, value := range sitelink {
+			current[key] = value
+		}
+		existing["sitelinkAsset"] = current
+	}
+	if callout, ok := item["calloutAsset"].(map[string]any); ok {
+		current, _ := existing["calloutAsset"].(map[string]any)
+		if current == nil {
+			current = map[string]any{}
+		}
+		for key, value := range callout {
+			current[key] = value
+		}
+		existing["calloutAsset"] = current
+	}
+	if urls, ok := item["finalUrls"]; ok {
+		existing["finalUrls"] = urls
+	}
 	return resourceName, "update", nil
 }
 
@@ -486,5 +509,57 @@ func sampleTextAsset(id, text string) map[string]any {
 		"id":        id,
 		"type":      "TEXT",
 		"textAsset": map[string]any{"text": text},
+	}
+}
+
+func sitelinkAssetResource(t *testing.T, name, linkText string, urls []any) resource.Resource {
+	t.Helper()
+	addr, err := resource.ParseAddress("googleads.asset." + name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resource.Resource{
+		Address: addr,
+		Attributes: resource.Attributes{
+			googleads.AttrType:      "SITELINK",
+			googleads.AttrLinkText:  linkText,
+			googleads.AttrFinalUrls: urls,
+		},
+	}
+}
+
+func calloutAssetResource(t *testing.T, name, text string) resource.Resource {
+	t.Helper()
+	addr, err := resource.ParseAddress("googleads.asset." + name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resource.Resource{
+		Address: addr,
+		Attributes: resource.Attributes{
+			googleads.AttrType:        "CALLOUT",
+			googleads.AttrCalloutText: text,
+		},
+	}
+}
+
+func sampleSitelinkAsset(id, linkText string, urls []any) map[string]any {
+	return map[string]any{
+		"id":        id,
+		"type":      "SITELINK",
+		"finalUrls": urls,
+		"sitelinkAsset": map[string]any{
+			"linkText": linkText,
+		},
+	}
+}
+
+func sampleCalloutAsset(id, text string) map[string]any {
+	return map[string]any{
+		"id":   id,
+		"type": "CALLOUT",
+		"calloutAsset": map[string]any{
+			"calloutText": text,
+		},
 	}
 }

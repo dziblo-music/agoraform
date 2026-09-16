@@ -5,10 +5,10 @@ conversion actions, customer conversion-goal biddability, daily Search
 campaign budgets, Search campaigns, campaign conversion-goal
 biddability, Search ad groups, Search keyword criteria, Responsive
 Search Ads, campaign location and language targeting, campaign negative
-keyword criteria, Search image and business-identity assets, and
-campaign-asset attachments. Credentials come from the environment. The
-Agoraform CLI remains provider-neutral; there is no Google Ads-specific
-command.
+keyword criteria, Search image, business-identity, sitelink, and callout
+assets, and campaign-asset attachments. Credentials come from the
+environment. The Agoraform CLI remains provider-neutral; there is no
+Google Ads-specific command.
 
 See the [Google Ads account and OAuth setup guide](../../docs/google-ads-setup.md)
 for the Manager Account, developer-token, Google Cloud, OAuth, refresh-token,
@@ -723,17 +723,19 @@ campaign negative keyword.
 
 ### `googleads.asset`
 
-Search image uploads and business-name text. Agoraform consumes already
-produced local files and supplied business-name copy; it does not
-generate, crop, resize, or optimize creatives.
+Search image uploads, business-name text, sitelinks, and callouts.
+Agoraform consumes already produced local files and supplied copy; it
+does not generate, crop, resize, or optimize creatives.
 
-Image and text assets follow Google Ads' real `Asset` resource. IMAGE
-assets use the provider-neutral `source.file` local-asset model.
-Unchanged files are fingerprinted with SHA-256 and are not uploaded
-again. Image bytes never appear in YAML, plan output, state, or
-diagnostics. IMAGE and TEXT content is immutable after create: change
-the local bytes or business-name text by declaring a new logical asset
-and repointing `googleads.campaign_asset` attachments.
+Assets follow Google Ads' real `Asset` resource. IMAGE assets use the
+provider-neutral `source.file` local-asset model. Unchanged files are
+fingerprinted with SHA-256 and are not uploaded again. Image bytes never
+appear in YAML, plan output, state, or diagnostics. IMAGE and TEXT
+content is immutable after create: change the local bytes or
+business-name text by declaring a new logical asset and repointing
+`googleads.campaign_asset` attachments. Sitelink and callout copy is
+mutable in place through AssetService; changing `type` still requires a
+new logical asset.
 
 ```yaml
 assets:
@@ -750,13 +752,31 @@ resources:
     attributes:
       type: TEXT
       text: Acme Inc
+
+  - address: googleads.asset.features_sitelink
+    attributes:
+      type: SITELINK
+      linkText: Features
+      finalUrls:
+        - https://example.com/features
+      description1: See product features
+      description2: Built for growing teams
+
+  - address: googleads.asset.free_trial_callout
+    attributes:
+      type: CALLOUT
+      calloutText: Free trial
 ```
 
 | Attribute | Required | Description |
 | --- | --- | --- |
-| `type` | yes | Google Ads `AssetType`: `IMAGE` or `TEXT`. Sitelink/callout types remain a follow-up. |
+| `type` | yes | Google Ads `AssetType`: `IMAGE`, `TEXT`, `SITELINK`, or `CALLOUT`. |
 | `source.file` | IMAGE create | Project-relative file under `assets.root` (or the manifest directory). JPEG, PNG, or GIF; at least 128×128 pixels; at most 5,120 KB. |
 | `text` | TEXT | Business-name copy. At most 25 characters. |
+| `linkText` | SITELINK | Sitelink display text. At most 25 characters. |
+| `finalUrls` | SITELINK | One or more absolute `http` or `https` landing-page URLs. Each URL is limited to 2,084 bytes. |
+| `description1` / `description2` | no | Optional sitelink description lines. At most 35 characters each. Both must be set or both omitted. Scheduling fields are out of scope. |
+| `calloutText` | CALLOUT | Callout display text. At most 25 characters. |
 | `name` | no | Optional create-time Google Ads friendly name. Google may deduplicate identical assets and retain an existing remote name, so Agoraform does not reconcile `name` after creation. |
 
 Provider-native asset IDs, resource names, MIME type, dimensions, policy
@@ -777,6 +797,8 @@ Unsupported asset types fail import with guidance. Google Ads AssetService
 does not expose remove/delete for assets, so `agoraform destroy` reports
 `googleads.asset` as unsupported and preserves its state binding. Managed
 `googleads.campaign_asset` relationships are still detached normally.
+Shared assets stay bound while other managed attachments still reference
+them.
 
 ### `googleads.campaign_asset`
 
@@ -785,9 +807,10 @@ Campaign attachment of a managed asset. This is Google Ads'
 
 Search image assets attach with `fieldType: AD_IMAGE` (Google Ads does
 not use a campaign-asset field type named `IMAGE`). Business logo and
-business name use `BUSINESS_LOGO` and `BUSINESS_NAME`. Those identity
-field types are writable through CampaignAssetService; Google may still
-reject the link for a Search campaign or unverified account. Agoraform
+business name use `BUSINESS_LOGO` and `BUSINESS_NAME`. Sitelinks and
+callouts use `SITELINK` and `CALLOUT`. Identity field types are writable
+through CampaignAssetService; Google may still reject a logo or business-
+name link for a Search campaign or unverified account. Agoraform
 surfaces that eligibility/policy error instead of emulating the write.
 
 ```yaml
@@ -799,13 +822,21 @@ resources:
       asset:
         $ref: googleads.asset.product_image
       fieldType: AD_IMAGE
+
+  - address: googleads.campaign_asset.features_sitelink
+    attributes:
+      campaign:
+        $ref: googleads.campaign.brand
+      asset:
+        $ref: googleads.asset.features_sitelink
+      fieldType: SITELINK
 ```
 
 | Attribute | Required | Description |
 | --- | --- | --- |
 | `campaign` | yes | `$ref` to a `googleads.campaign`. Immutable after create. |
-| `asset` | yes | `$ref` to a `googleads.asset`. Immutable after create. `AD_IMAGE` and `BUSINESS_LOGO` require `IMAGE`; `BUSINESS_NAME` requires `TEXT`. |
-| `fieldType` | yes | `AD_IMAGE`, `BUSINESS_LOGO`, or `BUSINESS_NAME`. |
+| `asset` | yes | `$ref` to a `googleads.asset`. Immutable after create. `AD_IMAGE` and `BUSINESS_LOGO` require `IMAGE`; `BUSINESS_NAME` requires `TEXT`; `SITELINK` requires a `SITELINK` asset; `CALLOUT` requires a `CALLOUT` asset. |
+| `fieldType` | yes | `AD_IMAGE`, `BUSINESS_LOGO`, `BUSINESS_NAME`, `SITELINK`, or `CALLOUT`. |
 | `status` | no | `ENABLED` (default) or `PAUSED`. Mutable. |
 
 Campaign, asset, and field type identify the link and cannot be updated
@@ -823,6 +854,8 @@ Import the campaign and asset first so Agoraform can reconstruct both
 agoraform import googleads.campaign.brand 987654321
 agoraform import googleads.asset.product_image 123456789
 agoraform import googleads.campaign_asset.product_image 987654321~123456789~AD_IMAGE
+agoraform import googleads.asset.features_sitelink 555666777
+agoraform import googleads.campaign_asset.features_sitelink 987654321~555666777~SITELINK
 ```
 
 Destroy detaches the campaign relationship with mutate `remove`. The
@@ -943,9 +976,12 @@ requests. Override `Config.BaseURL` and `Config.TokenURL` in tests.
   `referenceCount > 0`. Destroy campaigns first.
 - Image and text asset content is immutable after create. Changed local
   bytes fail planning instead of silently uploading a replacement.
+- Sitelink and callout copy can be updated in place. Changing asset `type`
+  fails planning instead of hiding a new identity.
 - Campaign-asset attachments are detached with mutate `remove`; the
   underlying `googleads.asset` is unsupported for destroy because AssetService
-  exposes no remove/delete operation.
+  exposes no remove/delete operation. Shared assets are not removed while
+  another managed attachment still requires them.
 - Immutable identity fields fail planning instead of destroying and
   recreating the remote object. Creative Responsive Search Ad changes
   replace ad lists in place and are visible in plan output.

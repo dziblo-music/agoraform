@@ -10,6 +10,8 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -24,33 +26,51 @@ const (
 	// googleads.asset.product_image.
 	TypeAsset = "asset"
 
-	// AttrType is the Google Ads AssetType, currently IMAGE or TEXT.
+	// AttrType is the Google Ads AssetType: IMAGE, TEXT, SITELINK, or CALLOUT.
 	AttrType = "type"
 	// AttrAsset is a $ref to a googleads.asset on a campaign-asset link.
 	AttrAsset = "asset"
 	// AttrFieldType is the Google Ads AssetFieldType on a campaign-asset link.
 	AttrFieldType = "fieldType"
+	// AttrLinkText is the sitelink display text (SitelinkAsset.link_text).
+	AttrLinkText = "linkText"
+	// AttrCalloutText is the callout display text (CalloutAsset.callout_text).
+	AttrCalloutText = "calloutText"
+	// AttrDescription1 is the optional first sitelink description line.
+	AttrDescription1 = "description1"
+	// AttrDescription2 is the optional second sitelink description line.
+	AttrDescription2 = "description2"
 
-	assetTypeImage = "IMAGE"
-	assetTypeText  = "TEXT"
+	assetTypeImage    = "IMAGE"
+	assetTypeText     = "TEXT"
+	assetTypeSitelink = "SITELINK"
+	assetTypeCallout  = "CALLOUT"
 
 	assetsCollection = "assets"
 
-	maxImageBytes         = 5_120_000 // 5,120 KB Google Ads image limit
-	minImageEdgePixels    = 128       // smallest documented logo edge
-	maxBusinessNameRunes  = 25
-	imageReplaceGuidance  = "image content is immutable after create; declare a new googleads.asset and repoint googleads.campaign_asset attachments instead of updating this resource"
-	textReplaceGuidance   = "text content is immutable after create; declare a new googleads.asset and repoint googleads.campaign_asset attachments instead of updating this resource"
-	automaticallyCreated  = "AUTOMATICALLY_CREATED"
-	assetSourceAdvertiser = "ADVERTISER"
+	maxImageBytes               = 5_120_000 // 5,120 KB Google Ads image limit
+	minImageEdgePixels          = 128       // smallest documented logo edge
+	maxBusinessNameRunes        = 25
+	maxSitelinkLinkTextRunes    = 25
+	maxSitelinkDescriptionRunes = 35
+	maxCalloutTextRunes         = 25
+	imageReplaceGuidance        = "image content is immutable after create; declare a new googleads.asset and repoint googleads.campaign_asset attachments instead of updating this resource"
+	textReplaceGuidance         = "text content is immutable after create; declare a new googleads.asset and repoint googleads.campaign_asset attachments instead of updating this resource"
+	automaticallyCreated        = "AUTOMATICALLY_CREATED"
+	assetSourceAdvertiser       = "ADVERTISER"
 )
 
 var (
 	supportedAssetAttrs = map[string]struct{}{
-		AttrType:       {},
-		AttrName:       {},
-		asset.AttrName: {},
-		AttrText:       {},
+		AttrType:         {},
+		AttrName:         {},
+		asset.AttrName:   {},
+		AttrText:         {},
+		AttrLinkText:     {},
+		AttrCalloutText:  {},
+		AttrDescription1: {},
+		AttrDescription2: {},
+		AttrFinalUrls:    {},
 	}
 
 	computedAssetAttrs = map[string]struct{}{
@@ -77,6 +97,10 @@ var (
 		"image_asset":     {},
 		"textAsset":       {},
 		"text_asset":      {},
+		"sitelinkAsset":   {},
+		"sitelink_asset":  {},
+		"calloutAsset":    {},
+		"callout_asset":   {},
 		"assetId":         {},
 		asset.AttrDigest:  {},
 		"fullSize":        {},
@@ -84,8 +108,28 @@ var (
 	}
 
 	supportedAssetTypes = map[string]struct{}{
-		assetTypeImage: {},
-		assetTypeText:  {},
+		assetTypeImage:    {},
+		assetTypeText:     {},
+		assetTypeSitelink: {},
+		assetTypeCallout:  {},
+	}
+
+	assetTypeSpecificAttrs = map[string]map[string]struct{}{
+		assetTypeImage: {
+			asset.AttrName: {},
+		},
+		assetTypeText: {
+			AttrText: {},
+		},
+		assetTypeSitelink: {
+			AttrLinkText:     {},
+			AttrFinalUrls:    {},
+			AttrDescription1: {},
+			AttrDescription2: {},
+		},
+		assetTypeCallout: {
+			AttrCalloutText: {},
+		},
 	}
 
 	supportedImageMediaTypes = map[string]struct{}{
@@ -108,7 +152,12 @@ var (
 		"asset.image_asset.full_size.url,",
 		"asset.image_asset.full_size.height_pixels,",
 		"asset.image_asset.full_size.width_pixels,",
-		"asset.text_asset.text",
+		"asset.text_asset.text,",
+		"asset.final_urls,",
+		"asset.sitelink_asset.link_text,",
+		"asset.sitelink_asset.description1,",
+		"asset.sitelink_asset.description2,",
+		"asset.callout_asset.callout_text",
 		"FROM asset",
 	}, " ")
 )
@@ -139,6 +188,9 @@ func (p *Provider) validateAsset(res resource.Resource) error {
 	if _, _, err := optionalString(res, AttrName); err != nil {
 		return err
 	}
+	if err := validateAssetAttrsForType(res, kind); err != nil {
+		return err
+	}
 
 	switch kind {
 	case assetTypeImage:
@@ -151,11 +203,6 @@ func (p *Provider) validateAsset(res resource.Resource) error {
 		} else if res.Identity.IsZero() {
 			return fmt.Errorf("resource %s: IMAGE assets require source.file naming a local file", res.Address)
 		}
-		if _, set, err := optionalString(res, AttrText); err != nil {
-			return err
-		} else if set {
-			return fmt.Errorf("resource %s: attribute %q is only valid for TEXT assets", res.Address, AttrText)
-		}
 	case assetTypeText:
 		if _, present, err := asset.SourceFile(res.Attributes); err != nil {
 			return fmt.Errorf("resource %s: %w", res.Address, err)
@@ -163,6 +210,26 @@ func (p *Provider) validateAsset(res resource.Resource) error {
 			return fmt.Errorf("resource %s: TEXT assets use attribute %q, not a local %s.file", res.Address, AttrText, asset.AttrName)
 		}
 		if _, err := requiredBusinessNameText(res); err != nil {
+			return err
+		}
+	case assetTypeSitelink:
+		if err := rejectLocalAssetSource(res, assetTypeSitelink); err != nil {
+			return err
+		}
+		if _, err := requiredLimitedText(res, AttrLinkText, maxSitelinkLinkTextRunes); err != nil {
+			return err
+		}
+		if _, err := requiredRSAFinalURLs(res); err != nil {
+			return err
+		}
+		if _, _, err := requiredSitelinkDescriptions(res); err != nil {
+			return err
+		}
+	case assetTypeCallout:
+		if err := rejectLocalAssetSource(res, assetTypeCallout); err != nil {
+			return err
+		}
+		if _, err := requiredLimitedText(res, AttrCalloutText, maxCalloutTextRunes); err != nil {
 			return err
 		}
 	}
@@ -182,17 +249,84 @@ func requiredAssetType(res resource.Resource) (string, error) {
 }
 
 func requiredBusinessNameText(res resource.Resource) (string, error) {
-	text, err := requiredString(res, AttrText)
+	return requiredLimitedText(res, AttrText, maxBusinessNameRunes)
+}
+
+func requiredLimitedText(res resource.Resource, key string, maxRunes int) (string, error) {
+	text, err := requiredString(res, key)
 	if err != nil {
 		return "", err
 	}
 	if strings.TrimSpace(text) == "" {
-		return "", fmt.Errorf("resource %s: attribute %q must be a non-empty string", res.Address, AttrText)
+		return "", fmt.Errorf("resource %s: attribute %q must be a non-empty string", res.Address, key)
 	}
-	if utf8.RuneCountInString(text) > maxBusinessNameRunes {
-		return "", fmt.Errorf("resource %s: attribute %q must be at most %d characters", res.Address, AttrText, maxBusinessNameRunes)
+	if utf8.RuneCountInString(text) > maxRunes {
+		return "", fmt.Errorf("resource %s: attribute %q must be at most %d characters", res.Address, key, maxRunes)
 	}
 	return text, nil
+}
+
+func optionalLimitedText(res resource.Resource, key string, maxRunes int) (string, bool, error) {
+	text, set, err := optionalString(res, key)
+	if err != nil || !set {
+		return text, set, err
+	}
+	if strings.TrimSpace(text) == "" {
+		return "", true, fmt.Errorf("resource %s: attribute %q must be a non-empty string", res.Address, key)
+	}
+	if utf8.RuneCountInString(text) > maxRunes {
+		return "", true, fmt.Errorf("resource %s: attribute %q must be at most %d characters", res.Address, key, maxRunes)
+	}
+	return text, true, nil
+}
+
+func requiredSitelinkDescriptions(res resource.Resource) (string, string, error) {
+	d1, set1, err := optionalLimitedText(res, AttrDescription1, maxSitelinkDescriptionRunes)
+	if err != nil {
+		return "", "", err
+	}
+	d2, set2, err := optionalLimitedText(res, AttrDescription2, maxSitelinkDescriptionRunes)
+	if err != nil {
+		return "", "", err
+	}
+	if set1 != set2 {
+		return "", "", fmt.Errorf("resource %s: attributes %q and %q must both be set or both omitted", res.Address, AttrDescription1, AttrDescription2)
+	}
+	return d1, d2, nil
+}
+
+func validateAssetAttrsForType(res resource.Resource, kind string) error {
+	allowed := map[string]struct{}{
+		AttrType: {},
+		AttrName: {},
+	}
+	for key := range assetTypeSpecificAttrs[kind] {
+		allowed[key] = struct{}{}
+	}
+	for key := range res.Attributes {
+		if _, ok := allowed[key]; ok {
+			continue
+		}
+		if _, supported := supportedAssetAttrs[key]; !supported {
+			continue
+		}
+		for typ, attrs := range assetTypeSpecificAttrs {
+			if _, ok := attrs[key]; ok {
+				return fmt.Errorf("resource %s: attribute %q is only valid for %s assets", res.Address, key, typ)
+			}
+		}
+		return fmt.Errorf("resource %s: attribute %q is not valid for %s assets", res.Address, key, kind)
+	}
+	return nil
+}
+
+func rejectLocalAssetSource(res resource.Resource, kind string) error {
+	if _, present, err := asset.SourceFile(res.Attributes); err != nil {
+		return fmt.Errorf("resource %s: %w", res.Address, err)
+	} else if present || res.LocalAsset != nil {
+		return fmt.Errorf("resource %s: %s assets do not use a local %s.file", res.Address, kind, asset.AttrName)
+	}
+	return nil
 }
 
 func validateImageLocalAsset(res resource.Resource) error {
@@ -306,15 +440,61 @@ func (p *Provider) updateAsset(ctx context.Context, desired resource.Resource, a
 		return resource.RemoteResource{}, fmt.Errorf("googleads: update %s: persisted identity %q does not match planned remote identity %q", desired.Address, id, actual.Identity.ID)
 	}
 
-	// Google Ads assets are immutable after creation. Normalization rejects
-	// content/type changes and intentionally ignores the create-time name.
-	if _, _, err := p.normalizeAssetComparable(desired, &actual); err != nil {
-		return resource.RemoteResource{}, fmt.Errorf("googleads: update %s: %w", desired.Address, err)
-	}
-
-	live, err := p.readAssetByID(ctx, desired.Address, actual.Identity.ID, desired)
+	// Google Ads IMAGE and TEXT assets are immutable after creation.
+	// Sitelink and callout copy can be updated in place. Normalization
+	// rejects type/content replacement that would hide a new identity, and
+	// ignores the create-time name.
+	want, got, err := p.normalizeAssetComparable(desired, &actual)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("googleads: update %s: %w", desired.Address, err)
+	}
+	if reflect.DeepEqual(want, got) {
+		live, err := p.readAssetByID(ctx, desired.Address, actual.Identity.ID, desired)
+		if err != nil {
+			return resource.RemoteResource{}, fmt.Errorf("googleads: update %s: %w", desired.Address, err)
+		}
+		return p.rememberLive(live), nil
+	}
+
+	kind, err := requiredAssetType(desired)
+	if err != nil {
+		return resource.RemoteResource{}, err
+	}
+	if kind == assetTypeImage || kind == assetTypeText {
+		live, err := p.readAssetByID(ctx, desired.Address, actual.Identity.ID, desired)
+		if err != nil {
+			return resource.RemoteResource{}, fmt.Errorf("googleads: update %s: %w", desired.Address, err)
+		}
+		return p.rememberLive(live), nil
+	}
+
+	c, err := p.Client()
+	if err != nil {
+		return resource.RemoteResource{}, err
+	}
+	body, mask, err := assetUpdateBody(desired, assetResourceName(c.CustomerID(), actual.Identity.ID), want, got)
+	if err != nil {
+		return resource.RemoteResource{}, fmt.Errorf("googleads: update %s: %w", desired.Address, err)
+	}
+	if len(mask) == 0 {
+		live, err := p.readAssetByID(ctx, desired.Address, actual.Identity.ID, desired)
+		if err != nil {
+			return resource.RemoteResource{}, fmt.Errorf("googleads: update %s: %w", desired.Address, err)
+		}
+		return p.rememberLive(live), nil
+	}
+	_, err = c.Mutate(ctx, assetsCollection, []map[string]any{
+		{
+			"update":     body,
+			"updateMask": strings.Join(mask, ","),
+		},
+	})
+	if err != nil {
+		return resource.RemoteResource{}, fmt.Errorf("googleads: update %s: %w", desired.Address, err)
+	}
+	live, err := p.readAssetByID(ctx, desired.Address, actual.Identity.ID, desired)
+	if err != nil {
+		return resource.RemoteResource{}, fmt.Errorf("googleads: update %s: refreshing current asset: %w", desired.Address, err)
 	}
 	return p.rememberLive(live), nil
 }
@@ -336,7 +516,7 @@ func (p *Provider) importAsset(ctx context.Context, addr resource.Address, rawID
 	}
 	kind, _ := coerceString(live.Attributes[AttrType])
 	if _, ok := supportedAssetTypes[normalizeEnum(kind)]; !ok {
-		return resource.RemoteResource{}, fmt.Errorf("googleads: import %s: remote asset %q has type %s; googleads.asset currently manages IMAGE and TEXT (business name) assets", addr, id, kind)
+		return resource.RemoteResource{}, fmt.Errorf("googleads: import %s: remote asset %q has type %s; googleads.asset currently manages %s assets", addr, id, kind, joinSorted(keys(supportedAssetTypes)))
 	}
 	return p.rememberLive(live), nil
 }
@@ -430,6 +610,11 @@ type assetData struct {
 	WidthPixels    string
 	HeightPixels   string
 	Text           string
+	LinkText       string
+	Description1   string
+	Description2   string
+	CalloutText    string
+	FinalURLs      []string
 }
 
 type assetJSON struct {
@@ -441,6 +626,9 @@ type assetJSON struct {
 	PolicySummary json.RawMessage `json:"policySummary"`
 	ImageAsset    json.RawMessage `json:"imageAsset"`
 	TextAsset     json.RawMessage `json:"textAsset"`
+	SitelinkAsset json.RawMessage `json:"sitelinkAsset"`
+	CalloutAsset  json.RawMessage `json:"calloutAsset"`
+	FinalURLs     json.RawMessage `json:"finalUrls"`
 }
 
 func decodeAssetRow(raw json.RawMessage) (assetData, error) {
@@ -526,7 +714,57 @@ func decodeAssetRow(raw json.RawMessage) (assetData, error) {
 		}
 		item.Text = textBody.Text
 	}
+	if len(body.SitelinkAsset) > 0 && string(body.SitelinkAsset) != "null" {
+		var sitelinkBody struct {
+			LinkText     string `json:"linkText"`
+			Description1 string `json:"description1"`
+			Description2 string `json:"description2"`
+		}
+		if err := json.Unmarshal(body.SitelinkAsset, &sitelinkBody); err != nil {
+			return assetData{}, malformed("invalid sitelinkAsset")
+		}
+		item.LinkText = sitelinkBody.LinkText
+		item.Description1 = sitelinkBody.Description1
+		item.Description2 = sitelinkBody.Description2
+	}
+	if len(body.CalloutAsset) > 0 && string(body.CalloutAsset) != "null" {
+		var calloutBody struct {
+			CalloutText string `json:"calloutText"`
+		}
+		if err := json.Unmarshal(body.CalloutAsset, &calloutBody); err != nil {
+			return assetData{}, malformed("invalid calloutAsset")
+		}
+		item.CalloutText = calloutBody.CalloutText
+	}
+	if urls, err := decodeAssetFinalURLs(body.FinalURLs); err != nil {
+		return assetData{}, malformed("invalid finalUrls")
+	} else {
+		item.FinalURLs = urls
+	}
 	return item, nil
+}
+
+func decodeAssetFinalURLs(raw json.RawMessage) ([]string, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+	var strs []string
+	if err := json.Unmarshal(raw, &strs); err == nil {
+		return strs, nil
+	}
+	var anyList []any
+	if err := json.Unmarshal(raw, &anyList); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(anyList))
+	for _, item := range anyList {
+		s, err := coerceString(item)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, nil
 }
 
 func (p *Provider) remoteAsset(addr resource.Address, item assetData, desired resource.Resource) (resource.RemoteResource, error) {
@@ -540,6 +778,23 @@ func (p *Provider) remoteAsset(addr resource.Address, item assetData, desired re
 	}
 	if item.Type == assetTypeText && item.Text != "" {
 		attrs[AttrText] = item.Text
+	}
+	if item.Type == assetTypeSitelink {
+		if item.LinkText != "" {
+			attrs[AttrLinkText] = item.LinkText
+		}
+		if len(item.FinalURLs) > 0 {
+			attrs[AttrFinalUrls] = comparableAnyList(item.FinalURLs)
+		}
+		if item.Description1 != "" {
+			attrs[AttrDescription1] = item.Description1
+		}
+		if item.Description2 != "" {
+			attrs[AttrDescription2] = item.Description2
+		}
+	}
+	if item.Type == assetTypeCallout && item.CalloutText != "" {
+		attrs[AttrCalloutText] = item.CalloutText
 	}
 
 	computed := resource.Attributes{}
@@ -611,12 +866,36 @@ func comparableAsset(res resource.Resource) (resource.Attributes, error) {
 	} else if set {
 		out[AttrName] = name
 	}
-	if kind == assetTypeText {
+	switch kind {
+	case assetTypeText:
 		text, err := requiredBusinessNameText(res)
 		if err != nil {
 			return nil, err
 		}
 		out[AttrText] = text
+	case assetTypeSitelink:
+		linkText, err := requiredLimitedText(res, AttrLinkText, maxSitelinkLinkTextRunes)
+		if err != nil {
+			return nil, err
+		}
+		urls, err := requiredRSAFinalURLs(res)
+		if err != nil {
+			return nil, err
+		}
+		out[AttrLinkText] = linkText
+		out[AttrFinalUrls] = comparableAnyList(urls)
+		d1, d2, err := requiredSitelinkDescriptions(res)
+		if err != nil {
+			return nil, err
+		}
+		out[AttrDescription1] = d1
+		out[AttrDescription2] = d2
+	case assetTypeCallout:
+		text, err := requiredLimitedText(res, AttrCalloutText, maxCalloutTextRunes)
+		if err != nil {
+			return nil, err
+		}
+		out[AttrCalloutText] = text
 	}
 	return out, nil
 }
@@ -629,17 +908,59 @@ func comparableAssetFromLive(desired resource.Resource, live *resource.RemoteRes
 	if err != nil {
 		return nil, fmt.Errorf("attribute %q %w", AttrType, err)
 	}
-	out := resource.Attributes{AttrType: normalizeEnum(kind)}
+	kind = normalizeEnum(kind)
+	out := resource.Attributes{AttrType: kind}
 	if desiredHasName(desired) {
 		name, _ := coerceString(live.Attributes[AttrName])
 		out[AttrName] = name
 	}
-	if normalizeEnum(kind) == assetTypeText {
+	switch kind {
+	case assetTypeText:
 		text, err := coerceString(live.Attributes[AttrText])
 		if err != nil {
 			return nil, fmt.Errorf("attribute %q %w", AttrText, err)
 		}
 		out[AttrText] = text
+	case assetTypeSitelink:
+		linkText, err := coerceString(live.Attributes[AttrLinkText])
+		if err != nil {
+			return nil, fmt.Errorf("attribute %q %w", AttrLinkText, err)
+		}
+		out[AttrLinkText] = linkText
+		urls, err := liveAssetFinalURLs(live.Attributes[AttrFinalUrls])
+		if err != nil {
+			return nil, fmt.Errorf("attribute %q %w", AttrFinalUrls, err)
+		}
+		out[AttrFinalUrls] = comparableAnyList(urls)
+		d1, _ := coerceString(live.Attributes[AttrDescription1])
+		d2, _ := coerceString(live.Attributes[AttrDescription2])
+		out[AttrDescription1] = d1
+		out[AttrDescription2] = d2
+	case assetTypeCallout:
+		text, err := coerceString(live.Attributes[AttrCalloutText])
+		if err != nil {
+			return nil, fmt.Errorf("attribute %q %w", AttrCalloutText, err)
+		}
+		out[AttrCalloutText] = text
+	}
+	return out, nil
+}
+
+func liveAssetFinalURLs(v any) ([]string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	list, err := asAnyList(v)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(list))
+	for _, item := range list {
+		s, err := coerceString(item)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
 	}
 	return out, nil
 }
@@ -705,8 +1026,66 @@ func (p *Provider) assetMutateBody(res resource.Resource, resourceName string) (
 			return nil, "", err
 		}
 		body["textAsset"] = map[string]any{"text": text}
+	case assetTypeSitelink:
+		linkText, err := requiredLimitedText(res, AttrLinkText, maxSitelinkLinkTextRunes)
+		if err != nil {
+			return nil, "", err
+		}
+		urls, err := requiredRSAFinalURLs(res)
+		if err != nil {
+			return nil, "", err
+		}
+		sitelink := map[string]any{"linkText": linkText}
+		d1, d2, err := requiredSitelinkDescriptions(res)
+		if err != nil {
+			return nil, "", err
+		}
+		if d1 != "" || d2 != "" {
+			sitelink["description1"] = d1
+			sitelink["description2"] = d2
+		}
+		body["sitelinkAsset"] = sitelink
+		body["finalUrls"] = comparableAnyList(urls)
+	case assetTypeCallout:
+		text, err := requiredLimitedText(res, AttrCalloutText, maxCalloutTextRunes)
+		if err != nil {
+			return nil, "", err
+		}
+		body["calloutAsset"] = map[string]any{"calloutText": text}
 	}
 	return body, fingerprint, nil
+}
+
+func assetUpdateBody(desired resource.Resource, resourceName string, want, got resource.Attributes) (map[string]any, []string, error) {
+	kind, err := requiredAssetType(desired)
+	if err != nil {
+		return nil, nil, err
+	}
+	body := map[string]any{"resourceName": resourceName}
+	mask := make([]string, 0, 4)
+	switch kind {
+	case assetTypeSitelink:
+		if !reflect.DeepEqual(want[AttrLinkText], got[AttrLinkText]) {
+			setNestedMutateValue(body, "sitelinkAsset.linkText", want[AttrLinkText])
+			mask = append(mask, "sitelinkAsset.linkText")
+		}
+		if !reflect.DeepEqual(want[AttrDescription1], got[AttrDescription1]) || !reflect.DeepEqual(want[AttrDescription2], got[AttrDescription2]) {
+			setNestedMutateValue(body, "sitelinkAsset.description1", want[AttrDescription1])
+			setNestedMutateValue(body, "sitelinkAsset.description2", want[AttrDescription2])
+			mask = append(mask, "sitelinkAsset.description1", "sitelinkAsset.description2")
+		}
+		if !reflect.DeepEqual(want[AttrFinalUrls], got[AttrFinalUrls]) {
+			body["finalUrls"] = want[AttrFinalUrls]
+			mask = append(mask, "finalUrls")
+		}
+	case assetTypeCallout:
+		if !reflect.DeepEqual(want[AttrCalloutText], got[AttrCalloutText]) {
+			setNestedMutateValue(body, "calloutAsset.calloutText", want[AttrCalloutText])
+			mask = append(mask, "calloutAsset.calloutText")
+		}
+	}
+	sort.Strings(mask)
+	return body, mask, nil
 }
 
 func readLocalImageBytes(res resource.Resource) ([]byte, error) {

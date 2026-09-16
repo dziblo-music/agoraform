@@ -377,7 +377,7 @@ func TestImportCampaignAssetRejectsUnsupportedFieldType(t *testing.T) {
 	fake.seedCampaignAsset(map[string]any{
 		"campaign":  "customers/" + testCustomerID + "/campaigns/21",
 		"asset":     "customers/" + testCustomerID + "/assets/81",
-		"fieldType": "SITELINK",
+		"fieldType": "PROMOTION",
 		"status":    "ENABLED",
 	})
 	p := testAssetProvider(t, fake)
@@ -389,7 +389,7 @@ func TestImportCampaignAssetRejectsUnsupportedFieldType(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.SetIdentityCatalog(st)
-	_, err := p.Import(context.Background(), mustCampaignAssetAddress(t, "product_image"), "21~81~SITELINK")
+	_, err := p.Import(context.Background(), mustCampaignAssetAddress(t, "product_image"), "21~81~PROMOTION")
 	if err == nil {
 		t.Fatal("expected unsupported field type")
 	}

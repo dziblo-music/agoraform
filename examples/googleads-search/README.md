@@ -18,6 +18,8 @@ in Google Ads:
   and English targeting;
 - campaign-level negative keywords exclude shared non-buyer queries such as
   jobs, careers, and login without duplicating them on every ad group;
+- sitelink and callout assets attach to the campaign with
+  `googleads.asset` plus `googleads.campaign_asset`;
 - `googleads.ad_group.trial` is a paused Search standard ad group;
 - positive keywords declare `EXACT`, `PHRASE`, and `BROAD` match types;
 - `googleads.responsive_search_ad.trial` is paused placeholder Search ad
@@ -26,7 +28,8 @@ in Google Ads:
 Logical `$ref` values create the dependency graph. Agoraform therefore
 creates the conversion action and budget before the campaign, the campaign
 before targeting, conversion-goal reconciliation, campaign negative keywords,
-and the ad group, and the ad group before keywords and the Responsive Search Ad.
+sitelink and callout attachments, and the ad group, and the ad group before
+keywords and the Responsive Search Ad.
 
 Provider-native IDs, customer IDs, and credentials do not belong in the
 manifest. Replace the placeholder landing page, headlines, descriptions,
@@ -37,11 +40,12 @@ enabling spend.
 
 Agoraform reconciles Google Ads **configuration**: conversion measurement,
 budget, Search campaign, campaign conversion-goal biddability, targeting,
-campaign negative keywords, ad group, keywords, and Responsive Search Ad copy.
+campaign negative keywords, sitelink and callout extensions, ad group,
+keywords, and Responsive Search Ad copy.
 
 It does not:
 
-- generate headlines or descriptions;
+- generate headlines, descriptions, sitelinks, or callouts;
 - install website tags or emit conversion events;
 - enable campaigns, ad groups, keywords, or ads unless you change `status`;
 - optimize bids, budgets, or keywords after apply;
@@ -218,6 +222,9 @@ campaign is still paused before enabling spend:
 8. Open **Ads** and confirm the Responsive Search Ad is **Paused**, uses
    `https://example.com/`, and shows the placeholder headlines, descriptions,
    and `trial/start` display path.
+9. Open campaign **Assets** (sitelinks and callouts) and confirm the four
+   sitelinks and four callouts from the manifest are attached to **Search
+   acquisition**.
 
 Replace the example.com landing page and placeholder copy with your own
 product URLs and legal/ad-policy-compliant text before enabling anything.
@@ -248,6 +255,8 @@ agoraform import googleads.campaign_language.english CAMPAIGN_ID~LANGUAGE_CRITER
 agoraform import googleads.campaign_negative_keyword.jobs CAMPAIGN_ID~CRITERION_ID
 agoraform import googleads.campaign_negative_keyword.careers CAMPAIGN_ID~CRITERION_ID
 agoraform import googleads.campaign_negative_keyword.login CAMPAIGN_ID~CRITERION_ID
+agoraform import googleads.asset.features_sitelink ASSET_ID
+agoraform import googleads.campaign_asset.features_sitelink CAMPAIGN_ID~ASSET_ID~SITELINK
 agoraform import googleads.ad_group.trial AD_GROUP_ID
 agoraform import googleads.keyword.saas_software_exact AD_GROUP_ID~CRITERION_ID
 agoraform import googleads.keyword.start_free_trial_phrase AD_GROUP_ID~CRITERION_ID
@@ -258,7 +267,9 @@ agoraform import googleads.responsive_search_ad.trial AD_GROUP_ID~AD_ID
 Numeric IDs may also be written as Google Ads resource names such as
 `customers/{customerId}/campaigns/{id}`. Keyword identities are
 `adGroupId~criterionId`. Location, language, and campaign negative keyword
-identities are `campaignId~criterionId`. The Responsive Search Ad identity is
+identities are `campaignId~criterionId`. Campaign-asset identities are
+`campaignId~assetId~FIELD_TYPE`. Asset identities are numeric asset IDs.
+The Responsive Search Ad identity is
 `adGroupId~adId`. The customer conversion-goal identity is `SIGNUP~WEBSITE`.
 The campaign conversion-goal identity is `CAMPAIGN_ID~SIGNUP~WEBSITE`.
 
