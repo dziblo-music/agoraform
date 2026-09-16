@@ -2,6 +2,7 @@ package matomo
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -18,6 +19,10 @@ const (
 
 	// AttrEvent is the Data Layer event name matched by a customEvent trigger.
 	AttrEvent = "event"
+	// AttrHistorySource optionally restricts a historyChange trigger to one
+	// browser History API source so one logical SPA navigation is not counted
+	// multiple times when a router emits more than one history event.
+	AttrHistorySource = "historySource"
 
 	triggerTypeCustomEvent   = "customEvent"
 	triggerTypePageView      = "pageView"
@@ -26,6 +31,8 @@ const (
 	matomoTypePageView       = "PageView"
 	matomoTypeHistoryChange  = "HistoryChange"
 	paramEventName           = "eventName"
+	historySourceVariable    = "HistorySource"
+	historySourceComparison  = "equals"
 
 	// MaxEventNameLen is Matomo's maximum length for a Custom Event
 	// trigger event name (eventName).
@@ -37,10 +44,11 @@ const (
 
 var (
 	supportedTriggerAttrs = map[string]struct{}{
-		AttrType:      {},
-		AttrEvent:     {},
-		AttrName:      {},
-		AttrContainer: {},
+		AttrType:          {},
+		AttrEvent:         {},
+		AttrHistorySource: {},
+		AttrName:          {},
+		AttrContainer:     {},
 	}
 
 	computedTriggerAttrs = map[string]struct{}{
@@ -64,6 +72,13 @@ var (
 		triggerTypePageView:      matomoTypePageView,
 		triggerTypeHistoryChange: matomoTypeHistoryChange,
 	}
+
+	supportedHistorySources = map[string]struct{}{
+		"pushState":    {},
+		"replaceState": {},
+		"hashchange":   {},
+		"popstate":     {},
+	}
 )
 
 func (p *Provider) validateTrigger(res resource.Resource) error {
@@ -83,7 +98,7 @@ func (p *Provider) validateTrigger(res resource.Resource) error {
 		if _, computed := computedTriggerAttrs[key]; computed {
 			return fmt.Errorf("resource %s: %s is computed and cannot be set in configuration", res.Address, key)
 		}
-		return fmt.Errorf("resource %s: unsupported attribute %q; matomo.trigger supports %s, optional %s (customEvent only), optional %s, and optional %s", res.Address, key, AttrType, AttrEvent, AttrName, AttrContainer)
+		return fmt.Errorf("resource %s: unsupported attribute %q; matomo.trigger supports %s, optional %s (customEvent only), optional %s (historyChange only), optional %s, and optional %s", res.Address, key, AttrType, AttrEvent, AttrHistorySource, AttrName, AttrContainer)
 	}
 
 	if _, _, err := optionalContainerRef(res); err != nil {
@@ -114,6 +129,25 @@ func (p *Provider) validateTrigger(res resource.Resource) error {
 		}
 	} else if _, ok := attrs[AttrEvent]; ok {
 		return fmt.Errorf("resource %s: attribute %q is only supported when %s is %q", res.Address, AttrEvent, AttrType, triggerTypeCustomEvent)
+	}
+
+	historySource, historySourceSet, err := optionalString(res, AttrHistorySource)
+	if err != nil {
+		return err
+	}
+	if historySourceSet {
+		if typ != triggerTypeHistoryChange {
+			return fmt.Errorf("resource %s: attribute %q is only supported when %s is %q", res.Address, AttrHistorySource, AttrType, triggerTypeHistoryChange)
+		}
+		if historySource == "" {
+			return fmt.Errorf("resource %s: attribute %q must be a non-empty string", res.Address, AttrHistorySource)
+		}
+		if err := rejectEdgeWhitespace(res.Address, AttrHistorySource, historySource); err != nil {
+			return err
+		}
+		if _, ok := supportedHistorySources[historySource]; !ok {
+			return fmt.Errorf("resource %s: attribute %q must be one of %s", res.Address, AttrHistorySource, joinSorted(keys(supportedHistorySources)))
+		}
 	}
 
 	name, nameSet, err := optionalString(res, AttrName)
@@ -187,7 +221,12 @@ func (p *Provider) createTrigger(ctx context.Context, res resource.Resource) (re
 		return resource.RemoteResource{}, fmt.Errorf("matomo: create %s: %w", res.Address, err)
 	}
 
-	id, err := tm.AddContainerTrigger(ctx, version, triggerInput(res.Address, res.Attributes))
+	in := triggerInput(res.Address, res.Attributes)
+	conditions, err := desiredTriggerConditions(nil, res.Attributes)
+	if err != nil {
+		return resource.RemoteResource{}, fmt.Errorf("matomo: create %s: %w", res.Address, err)
+	}
+	id, err := tm.AddContainerTriggerWithConditions(ctx, version, in, conditions)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: create %s: %w", res.Address, err)
 	}
@@ -197,13 +236,13 @@ func (p *Provider) createTrigger(ctx context.Context, res resource.Resource) (re
 		return live, nil
 	}
 	p.rememberBinding(res.Address, id, triggerName(res.Address, res.Attributes))
-	in := triggerInput(res.Address, res.Attributes)
 	fallback, ferr := remoteTrigger(res.Address, client.Trigger{
 		IDTrigger:          id,
 		IDContainerVersion: version,
 		Type:               in.Type,
 		Name:               in.Name,
 		Parameters:         in.Parameters,
+		Conditions:         conditions,
 	})
 	if ferr != nil {
 		return resource.RemoteResource{}, ferr
@@ -243,7 +282,11 @@ func (p *Provider) updateTrigger(ctx context.Context, desired resource.Resource,
 		Description: computedString(current.Computed, "description"),
 		Conditions:  conditionsValue(current.Computed["conditions"]),
 	}
-	if err := tm.UpdateContainerTrigger(ctx, version, actual.Identity.ID, triggerInput(desired.Address, desired.Attributes), preserved); err != nil {
+	conditions, err := desiredTriggerConditions(preserved.Conditions, desired.Attributes)
+	if err != nil {
+		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: %w", desired.Address, err)
+	}
+	if err := tm.UpdateContainerTriggerWithConditions(ctx, version, actual.Identity.ID, triggerInput(desired.Address, desired.Attributes), conditions, preserved); err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: %w", desired.Address, err)
 	}
 
@@ -314,6 +357,10 @@ func comparableTrigger(addr resource.Address, attrs resource.Attributes) (resour
 	if err != nil {
 		return nil, fmt.Errorf("attribute %q %w", AttrEvent, err)
 	}
+	historySource, err := coerceString(attrs[AttrHistorySource])
+	if err != nil {
+		return nil, fmt.Errorf("attribute %q %w", AttrHistorySource, err)
+	}
 	name, err := coerceString(attrs[AttrName])
 	if err != nil {
 		return nil, fmt.Errorf("attribute %q %w", AttrName, err)
@@ -327,6 +374,9 @@ func comparableTrigger(addr resource.Address, attrs resource.Attributes) (resour
 	}
 	if typ == triggerTypeCustomEvent {
 		out[AttrEvent] = event
+	}
+	if typ == triggerTypeHistoryChange && historySource != "" {
+		out[AttrHistorySource] = historySource
 	}
 	return withComparableContainer(out, attrs)
 }
@@ -344,6 +394,15 @@ func remoteTrigger(addr resource.Address, tr client.Trigger) (resource.RemoteRes
 	if agoraType == triggerTypeCustomEvent {
 		if event := tr.Parameters[paramEventName]; event != "" {
 			attrs[AttrEvent] = event
+		}
+	}
+	if agoraType == triggerTypeHistoryChange {
+		historySource, err := historySourceFromConditions(tr.Conditions)
+		if err != nil {
+			return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: remote trigger %q: %w", addr, tr.IDTrigger, err)
+		}
+		if historySource != "" {
+			attrs[AttrHistorySource] = historySource
 		}
 	}
 
@@ -431,6 +490,80 @@ func conditionsValue(v any) []byte {
 		return nil
 	}
 	return []byte(s)
+}
+
+func desiredTriggerConditions(existing json.RawMessage, attrs resource.Attributes) (json.RawMessage, error) {
+	if stringAttr(attrs, AttrType) != triggerTypeHistoryChange {
+		return existing, nil
+	}
+	return mergeHistorySourceCondition(existing, stringAttr(attrs, AttrHistorySource))
+}
+
+func historySourceFromConditions(raw json.RawMessage) (string, error) {
+	conditions, err := decodeTriggerConditions(raw)
+	if err != nil {
+		return "", err
+	}
+	var found string
+	for _, condition := range conditions {
+		actual, _ := condition["actual"].(string)
+		comparison, _ := condition["comparison"].(string)
+		if actual != historySourceVariable || comparison != historySourceComparison {
+			continue
+		}
+		expected, ok := condition["expected"].(string)
+		if !ok || expected == "" {
+			return "", fmt.Errorf("History Source condition must have a non-empty string expected value")
+		}
+		if _, ok := supportedHistorySources[expected]; !ok {
+			return "", fmt.Errorf("History Source condition has unsupported value %q; supported values are %s", expected, joinSorted(keys(supportedHistorySources)))
+		}
+		if found != "" {
+			return "", fmt.Errorf("multiple History Source equals conditions are not uniquely representable")
+		}
+		found = expected
+	}
+	return found, nil
+}
+
+func mergeHistorySourceCondition(raw json.RawMessage, source string) (json.RawMessage, error) {
+	conditions, err := decodeTriggerConditions(raw)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(conditions)+1)
+	for _, condition := range conditions {
+		actual, _ := condition["actual"].(string)
+		comparison, _ := condition["comparison"].(string)
+		if actual == historySourceVariable && comparison == historySourceComparison {
+			continue
+		}
+		out = append(out, condition)
+	}
+	if source != "" {
+		out = append(out, map[string]any{
+			"actual":     historySourceVariable,
+			"comparison": historySourceComparison,
+			"expected":   source,
+		})
+	}
+	encoded, err := json.Marshal(out)
+	if err != nil {
+		return nil, fmt.Errorf("encode trigger conditions: %w", err)
+	}
+	return encoded, nil
+}
+
+func decodeTriggerConditions(raw json.RawMessage) ([]map[string]any, error) {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		return nil, nil
+	}
+	var conditions []map[string]any
+	if err := json.Unmarshal(raw, &conditions); err != nil {
+		return nil, fmt.Errorf("decode trigger conditions: %w", err)
+	}
+	return conditions, nil
 }
 
 func ensureImmutableTriggerType(desired resource.Resource, live resource.RemoteResource) error {
