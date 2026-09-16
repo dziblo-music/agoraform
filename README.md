@@ -490,7 +490,7 @@ Configuration variables:
 
 ### `matomo.trigger`
 
-Custom Event, Pageview, and History Change triggers:
+v0.2.0 supports Custom Event triggers:
 
 ```yaml
 - address: matomo.trigger.trial_started
@@ -501,9 +501,8 @@ Custom Event, Pageview, and History Change triggers:
 
 ### `matomo.tag`
 
-Matomo Analytics event tags, SPA/initial `trackingType: pageview` tags, and
-Google Ads conversion tags. The fire trigger is a logical `$ref`; supported
-event and pageview fields can use literals or supported managed-variable
+v0.2.0 supports Matomo Analytics event tags. The fire trigger is a logical
+`$ref`; supported event fields can use literals or supported managed-variable
 references where documented. Tags may reference a managed Matomo
 Configuration variable with `matomoConfiguration: { $ref: matomo.variable.* }`.
 
@@ -512,9 +511,7 @@ template. `conversionId` and `conversionLabel` may be literals or selected
 outputs from a managed `googleads.conversion_action`. Agoraform does not emit
 the application event or manage Google Tag (`gtag.js`) in the container.
 
-Native History Change pageview tracking does not require application code
-when the site uses the browser History API. See the
-[Matomo provider reference](providers/matomo/README.md) for the complete
+See the [Matomo provider reference](providers/matomo/README.md) for the complete
 supported schemas.
 
 ## Import existing resources

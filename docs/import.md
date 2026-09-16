@@ -397,10 +397,6 @@ Import a Tag Manager trigger by its numeric `idtrigger` in the configured
 container draft. That id is stored in local state as `remoteId`. Do not
 copy it into YAML. `type` remains immutable for a managed trigger.
 
-Custom Event import emits `type`, `event`, and `name`. Pageview and History
-Change import emit `type` and `name` only; those templates have no
-parameters.
-
 ## Matomo tags
 
 Import a Tag Manager tag by its numeric `idtag` in the configured container
@@ -414,9 +410,6 @@ resources are already bound in local state:
 - Event fields that use `{{Variable Name}}` become `$ref`s to managed
   `matomo.variable` resources when those variables are bound. Unmanaged
   templates remain literal strings.
-- Pageview `documentTitle` and `customUrl` templates are reconstructed the
-  same way. Built-in values such as `{{PageTitle}}` and `{{PageUrl}}` stay
-  literals unless a managed variable with that name is bound.
 - A managed Matomo Configuration variable bound in state becomes
   `matomoConfiguration: { $ref: matomo.variable.NAME }`. If that variable
   is not bound, the attribute is omitted and implicit discovery remains in
