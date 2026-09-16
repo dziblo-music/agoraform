@@ -60,6 +60,45 @@ window._mtm.push({
 
 If the managed trigger changes from `trialStarted` to another event name, validation and integration output follow the referenced trigger automatically.
 
+## Authenticated User ID
+
+Paid-acquisition measurement often needs to connect anonymous pre-signup
+behavior with authenticated product activity. That Matomo-side assignment is
+Tag Manager configuration, not an `applicationEvents` binding.
+
+Declare a Data Layer variable and reference it from the Matomo Configuration
+variable:
+
+```yaml
+- address: matomo.variable.user_id
+  attributes:
+    type: dataLayer
+    key: userId
+    name: User ID
+
+- address: matomo.variable.config
+  attributes:
+    type: matomoConfiguration
+    name: Matomo Configuration
+    matomoUrl: https://matomo.example.com
+    siteId: 1
+    userId:
+      $ref: matomo.variable.user_id
+```
+
+The application makes a **stable non-sensitive internal identifier** available
+on the data layer. Agoraform does not generate this code, choose the
+identifier, hash email addresses, or implement login/logout:
+
+```javascript
+window._mtm = window._mtm || [];
+window._mtm.push({ userId: "internal-user-id" });
+```
+
+When the data-layer value is absent, Matomo leaves User ID unset (anonymous
+tracking). Clearing the value on logout is application-owned. Do not put
+email addresses or other PII in manifests, state, or diagnostics.
+
 ## SPA pageviews
 
 Initial page loads and client-side route changes are Matomo Tag Manager

@@ -164,6 +164,162 @@ func TestImportMatomoConfigurationVariablePersistsIdentityThenPlanUnchanged(t *t
 	}
 }
 
+func TestImportMatomoConfigurationReconstructsUserIDRefThenPlanUnchanged(t *testing.T) {
+	t.Parallel()
+
+	p, srv := matomoTagManagerServerProvider(t)
+	srv.seedVariable(cliTMVariable{ID: 2, Name: "User ID", Type: "DataLayer", Key: "userId"})
+	srv.seedVariable(cliTMVariable{
+		ID:   20,
+		Name: "Matomo Configuration",
+		Type: "MatomoConfiguration",
+		Parameters: map[string]any{
+			"matomoUrl": "https://matomo.example.com",
+			"idSite":    "1",
+			"userId":    "{{User ID}}",
+			"domains":   []any{"example.com"},
+		},
+	})
+
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "agoraform.yaml")
+
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "matomo.variable.user_id", "2"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("user id import exit = %d, want %d; stderr=%q stdout=%q", code, cli.ExitOK, stderr.String(), stdout.String())
+	}
+	userYAML := extractYAML(stdout.String())
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "matomo.variable.config", "20"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("config import exit = %d, want %d; stderr=%q stdout=%q", code, cli.ExitOK, stderr.String(), stdout.String())
+	}
+	configOut := stdout.String()
+	if strings.Contains(configOut, "cli-test-token") || strings.Contains(configOut, "idvariable") || strings.Contains(configOut, "domains") {
+		t.Fatalf("configuration import leaked secret, identity, or unowned field:\n%s", configOut)
+	}
+	if !strings.Contains(configOut, "$ref: matomo.variable.user_id") {
+		t.Fatalf("configuration import missing reconstructed userId $ref:\n%s", configOut)
+	}
+	configYAML := extractYAML(configOut)
+
+	combined := combineManifestResources(t, userYAML, configYAML)
+	if err := os.WriteFile(manifestPath, []byte(combined), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	assertPersistedRemoteID(t, manifestPath, "matomo.variable.user_id", "2")
+	assertPersistedRemoteID(t, manifestPath, "matomo.variable.config", "20")
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"plan", "-f", manifestPath}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("plan after configuration userId import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "No changes.") {
+		t.Fatalf("plan after configuration userId import = %q", stdout.String())
+	}
+	if srv.mutationCount() != 0 {
+		t.Fatalf("configuration userId import mutated remote: %d", srv.mutationCount())
+	}
+}
+
+func TestImportMatomoConfigurationOmitsUnboundUserIDThenPlanUnchanged(t *testing.T) {
+	t.Parallel()
+
+	p, srv := matomoTagManagerServerProvider(t)
+	srv.seedVariable(cliTMVariable{ID: 2, Name: "User ID", Type: "DataLayer", Key: "userId"})
+	srv.seedVariable(cliTMVariable{
+		ID:   20,
+		Name: "Matomo Configuration",
+		Type: "MatomoConfiguration",
+		Parameters: map[string]any{
+			"matomoUrl": "https://matomo.example.com",
+			"idSite":    "1",
+			"userId":    "{{User ID}}",
+		},
+	})
+
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "agoraform.yaml")
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "matomo.variable.config", "20"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("import exit = %d, want %d; stderr=%q stdout=%q", code, cli.ExitOK, stderr.String(), stdout.String())
+	}
+	out := stdout.String()
+	if strings.Contains(out, "userId") || strings.Contains(out, "$ref") {
+		t.Fatalf("unbound userId was guessed:\n%s", out)
+	}
+
+	yamlText := extractYAML(out)
+	if err := os.WriteFile(manifestPath, []byte(yamlText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"plan", "-f", manifestPath}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("plan after unbound userId import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "No changes.") {
+		t.Fatalf("plan after unbound userId import = %q", stdout.String())
+	}
+	if srv.mutationCount() != 0 {
+		t.Fatalf("unbound userId import mutated remote: %d", srv.mutationCount())
+	}
+}
+
+func TestImportMatomoConfigurationRejectsAmbiguousUserID(t *testing.T) {
+	t.Parallel()
+
+	p, srv := matomoTagManagerServerProvider(t)
+	srv.seedVariable(cliTMVariable{ID: 2, Name: "User ID", Type: "DataLayer", Key: "userId"})
+	srv.seedVariable(cliTMVariable{ID: 8, Name: "User ID", Type: "DataLayer", Key: "user.id"})
+	srv.seedVariable(cliTMVariable{
+		ID:   20,
+		Name: "Matomo Configuration",
+		Type: "MatomoConfiguration",
+		Parameters: map[string]any{
+			"matomoUrl": "https://matomo.example.com",
+			"idSite":    "1",
+			"userId":    "{{User ID}}",
+		},
+	})
+
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "agoraform.yaml")
+	importDependency(t, reg, manifestPath, "matomo.variable.user_id", "2")
+
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "matomo.variable.config", "20"}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("config import exit = %d, want %d; stderr=%q", code, cli.ExitError, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "multiple") {
+		t.Fatalf("stderr = %q, want ambiguous userId guidance", stderr.String())
+	}
+	if srv.mutationCount() != 0 {
+		t.Fatalf("failed import mutated remote: %d", srv.mutationCount())
+	}
+}
+
 func TestImportMatomoTriggerPersistsIdentityThenPlanUnchanged(t *testing.T) {
 	t.Parallel()
 

@@ -29,6 +29,11 @@ const (
 	// AttrEnableLinkTracking is the optional link-tracking flag for a
 	// matomoConfiguration variable.
 	AttrEnableLinkTracking = "enableLinkTracking"
+	// AttrUserID is an optional $ref to a managed dataLayer variable used
+	// as the Matomo Configuration User ID. The application still pushes
+	// the identifier onto the data layer; Agoraform only configures
+	// Tag Manager to consume it.
+	AttrUserID = "userId"
 
 	variableTypeDataLayer           = "dataLayer"
 	variableTypeMatomoConfiguration = "matomoConfiguration"
@@ -38,6 +43,7 @@ const (
 	paramMatomoURL                  = "matomoUrl"
 	paramIDSite                     = "idSite"
 	paramEnableLinkTracking         = "enableLinkTracking"
+	paramUserID                     = "userId"
 	computedVariableParameters      = "parameters"
 
 	// MaxDataLayerKeyLen is Matomo's maximum length for a Data Layer
@@ -57,6 +63,7 @@ var (
 		AttrMatomoURL:          {},
 		AttrSiteID:             {},
 		AttrEnableLinkTracking: {},
+		AttrUserID:             {},
 	}
 
 	dataLayerVariableAttrs = map[string]struct{}{
@@ -73,6 +80,7 @@ var (
 		AttrMatomoURL:          {},
 		AttrSiteID:             {},
 		AttrEnableLinkTracking: {},
+		AttrUserID:             {},
 	}
 
 	computedVariableAttrs = map[string]struct{}{
@@ -117,7 +125,7 @@ func (p *Provider) validateVariable(res resource.Resource) error {
 		if _, computed := computedVariableAttrs[key]; computed {
 			return fmt.Errorf("resource %s: %s is computed and cannot be set in configuration", res.Address, key)
 		}
-		return fmt.Errorf("resource %s: unsupported attribute %q; matomo.variable supports type %s (%s, optional %s, optional %s) and type %s (%s, %s, %s, optional %s, optional %s)", res.Address, key, variableTypeDataLayer, AttrKey, AttrName, AttrContainer, variableTypeMatomoConfiguration, AttrName, AttrMatomoURL, AttrSiteID, AttrEnableLinkTracking, AttrContainer)
+		return fmt.Errorf("resource %s: unsupported attribute %q; matomo.variable supports type %s (%s, optional %s, optional %s) and type %s (%s, %s, %s, optional %s, optional %s, optional %s)", res.Address, key, variableTypeDataLayer, AttrKey, AttrName, AttrContainer, variableTypeMatomoConfiguration, AttrName, AttrMatomoURL, AttrSiteID, AttrEnableLinkTracking, AttrUserID, AttrContainer)
 	}
 
 	if _, _, err := optionalContainerRef(res); err != nil {
@@ -215,6 +223,9 @@ func validateMatomoConfigurationVariable(res resource.Resource) error {
 	if _, _, err := optionalBoolAttr(res, AttrEnableLinkTracking); err != nil {
 		return err
 	}
+	if _, _, err := optionalUserIDRef(res); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -257,6 +268,7 @@ func (p *Provider) readVariable(ctx context.Context, res resource.Resource) (res
 		live, err := remoteVariable(res.Address, matches[0])
 		if err == nil {
 			live = attachContainerRef(live, res.Attributes)
+			live = p.reconcileVariableUserID(res, live)
 			p.rememberBinding(res.Address, live.Identity.ID, matches[0].Name)
 		}
 		return live, err
@@ -279,7 +291,11 @@ func (p *Provider) createVariable(ctx context.Context, res resource.Resource) (r
 		return resource.RemoteResource{}, fmt.Errorf("matomo: create %s: %w", res.Address, err)
 	}
 
-	id, err := tm.AddContainerVariable(ctx, version, variableInput(res.Attributes))
+	in, err := p.variableInput(ctx, res)
+	if err != nil {
+		return resource.RemoteResource{}, fmt.Errorf("matomo: create %s: %w", res.Address, err)
+	}
+	id, err := tm.AddContainerVariable(ctx, version, in)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: create %s: %w", res.Address, err)
 	}
@@ -294,12 +310,13 @@ func (p *Provider) createVariable(ctx context.Context, res resource.Resource) (r
 		IDContainerVersion: version,
 		Type:               matomoVariableType(stringAttr(res.Attributes, AttrType)),
 		Name:               variableName(res.Attributes),
-		Parameters:         variableInput(res.Attributes).Parameters,
+		Parameters:         in.Parameters,
 	})
 	if ferr != nil {
 		return resource.RemoteResource{}, ferr
 	}
-	return attachContainerRef(fallback, res.Attributes), nil
+	fallback = attachContainerRef(fallback, res.Attributes)
+	return p.reconcileVariableUserID(res, fallback), nil
 }
 
 func (p *Provider) updateVariable(ctx context.Context, desired resource.Resource, actual resource.RemoteResource) (resource.RemoteResource, error) {
@@ -340,7 +357,11 @@ func (p *Provider) updateVariable(ctx context.Context, desired resource.Resource
 		LookupTable:  lookupTableValue(current.Computed["lookup_table"]),
 		Parameters:   preservedParams,
 	}
-	if err := tm.UpdateContainerVariable(ctx, version, actual.Identity.ID, variableInput(desired.Attributes), preserved); err != nil {
+	in, err := p.variableInput(ctx, desired)
+	if err != nil {
+		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: %w", desired.Address, err)
+	}
+	if err := tm.UpdateContainerVariable(ctx, version, actual.Identity.ID, in, preserved); err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("matomo: update %s: %w", desired.Address, err)
 	}
 
@@ -364,6 +385,7 @@ func (p *Provider) readVariableByID(ctx context.Context, res resource.Resource, 
 			live, err := remoteVariable(res.Address, v)
 			if err == nil {
 				live = attachContainerRef(live, res.Attributes)
+				live = p.reconcileVariableUserID(res, live)
 				p.rememberBinding(res.Address, live.Identity.ID, v.Name)
 			}
 			return live, err
@@ -398,6 +420,9 @@ func (p *Provider) normalizeVariableComparable(desired resource.Resource, live *
 	}
 	if _, ok := desired.Attributes[AttrEnableLinkTracking]; !ok {
 		delete(got, AttrEnableLinkTracking)
+	}
+	if _, ok := desired.Attributes[AttrUserID]; !ok {
+		delete(got, AttrUserID)
 	}
 	return want, got, nil
 }
@@ -466,6 +491,13 @@ func comparableMatomoConfiguration(attrs resource.Attributes) (resource.Attribut
 			return nil, fmt.Errorf("attribute %q %w", AttrEnableLinkTracking, err)
 		}
 		out[AttrEnableLinkTracking] = enabled
+	}
+	if _, ok := attrs[AttrUserID]; ok {
+		userID, err := comparableEventAttr(attrs[AttrUserID])
+		if err != nil {
+			return nil, fmt.Errorf("attribute %q %w", AttrUserID, err)
+		}
+		out[AttrUserID] = userID
 	}
 	return withComparableContainer(out, attrs)
 }
@@ -544,10 +576,16 @@ func setRemoteMatomoConfigurationAttrs(addr resource.Address, v client.Variable,
 		}
 		attrs[AttrEnableLinkTracking] = enabled
 	}
+	if raw, ok := v.Parameters[paramUserID]; ok && raw != nil && raw != "" {
+		if _, err := coerceString(raw); err != nil {
+			return fmt.Errorf("matomo: read %s: remote variable %q has an unreadable %s", addr, v.IDVariable, AttrUserID)
+		}
+	}
 	return nil
 }
 
-func variableInput(attrs resource.Attributes) client.VariableInput {
+func (p *Provider) variableInput(ctx context.Context, res resource.Resource) (client.VariableInput, error) {
+	attrs := res.Attributes
 	typ := stringAttr(attrs, AttrType)
 	in := client.VariableInput{
 		Type:       matomoVariableType(typ),
@@ -565,10 +603,17 @@ func variableInput(attrs resource.Attributes) client.VariableInput {
 				in.Parameters[paramEnableLinkTracking] = enabled
 			}
 		}
+		userID, set, err := p.userIDParameter(ctx, res)
+		if err != nil {
+			return client.VariableInput{}, err
+		}
+		if set {
+			in.Parameters[paramUserID] = userID
+		}
 	default:
 		in.Parameters[paramDataLayerName] = stringAttr(attrs, AttrKey)
 	}
-	return in
+	return in, nil
 }
 
 func variableName(attrs resource.Attributes) string {

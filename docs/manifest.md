@@ -232,11 +232,17 @@ Matomo Configuration variables:
     matomoUrl: https://matomo.example.com
     siteId: 1
     enableLinkTracking: true
+    userId:
+      $ref: matomo.variable.user_id
 ```
 
 For `dataLayer`, `type` and `key` are required; `name` is optional and
 defaults to `key`. For `matomoConfiguration`, `type`, `name`, `matomoUrl`,
-and `siteId` are required; `enableLinkTracking` is optional.
+and `siteId` are required; `enableLinkTracking` is an optional boolean and
+`userId` is an optional `$ref` to a managed `dataLayer` variable. Agoraform
+configures Tag Manager to consume that data-layer value as Matomo User ID.
+The application still pushes a stable non-sensitive internal identifier; do
+not put email addresses or other PII in the manifest.
 
 ### `matomo.trigger`
 

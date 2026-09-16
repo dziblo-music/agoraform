@@ -93,6 +93,10 @@ func (p *Provider) importVariable(ctx context.Context, addr resource.Address, id
 		}
 		return resource.RemoteResource{}, fmt.Errorf("matomo: import %s: %w", addr, err)
 	}
+	live, err = p.reconstructVariableImportRefs(ctx, res, live)
+	if err != nil {
+		return resource.RemoteResource{}, err
+	}
 	return p.attachImportedContainerRef(live, containerID), nil
 }
 

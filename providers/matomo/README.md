@@ -140,6 +140,8 @@ managed-container mode every child resource must name the container.
     matomoUrl: https://matomo.example.com
     siteId: 1
     enableLinkTracking: true
+    userId:
+      $ref: matomo.variable.user_id
 ```
 
 In external-container mode omit `container` and set `MATOMO_CONTAINER_ID`.
@@ -149,17 +151,28 @@ Supported `type` values:
 | `type` | Required fields | Notes |
 | --- | --- | --- |
 | `dataLayer` | `key` | `name` optional; defaults to `key`. |
-| `matomoConfiguration` | `name`, `matomoUrl`, `siteId` | `enableLinkTracking` optional boolean. |
+| `matomoConfiguration` | `name`, `matomoUrl`, `siteId` | `enableLinkTracking` optional boolean. `userId` optional `$ref` to a managed `dataLayer` variable. |
 
 `container` is required when a `matomo.container` resource is declared and
 omitted when `MATOMO_CONTAINER_ID` selects an existing container. `type` is
 immutable after the resource is bound.
 
-`matomoConfiguration` manages a stable initial subset: Matomo URL, site ID,
-and optional link tracking. Cookie, consent, domain, cross-domain, and custom
-dimension settings are unowned. Updates read the complete remote variable and
-round-trip every unowned template parameter unchanged. If those parameters
-cannot be represented without loss, apply fails before mutation.
+`matomoConfiguration` manages a stable subset: Matomo URL, site ID, optional
+link tracking, and optional User ID. User ID is stored on the Matomo
+Configuration template as `userId` and, when declared, is sent as
+`{{Variable Name}}` for the referenced Data Layer variable. An omitted or
+empty remote User ID is anonymous tracking: Matomo does not assign `uid`.
+Cookie, consent, domain, cross-domain, and custom dimension settings remain
+unowned. Updates read the complete remote variable and round-trip every
+unowned template parameter unchanged. If those parameters cannot be
+represented without loss, apply fails before mutation.
+
+The application remains responsible for pushing the identifier onto the data
+layer, for example `window._mtm.push({ userId: "internal-user-id" })`. Use a
+stable non-sensitive internal identifier. Agoraform does not generate
+application code, choose the identifier, hash PII, or implement login/logout.
+If `userId` is omitted from the manifest, any existing remote User ID
+assignment is preserved.
 
 Agoraform may encounter other, unmanaged Matomo variable types while reading a
 container. Their scalar and structured parameter values are tolerated so they
@@ -168,8 +181,13 @@ do not prevent managed variables from being planned or applied.
 Import an existing configuration variable with:
 
 ```text
+agoraform import matomo.variable.user_id VARIABLE_ID
 agoraform import matomo.variable.config VARIABLE_ID
 ```
+
+Import the Data Layer variable first when the configuration's User ID should
+be reconstructed as a logical `$ref`. Missing and unbound User ID
+relationships are omitted; ambiguous names fail instead of guessing.
 
 ### `matomo.trigger`
 

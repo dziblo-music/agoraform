@@ -387,9 +387,12 @@ copy it into YAML. `type` remains immutable for a managed variable.
 
 Data Layer and Matomo Configuration variables are both imported through
 `matomo.variable`. Configuration import emits `type`, `name`, `matomoUrl`,
-`siteId`, and `enableLinkTracking` when present. Unowned template settings
-such as domains and custom dimensions are preserved remotely and omitted
-from generated YAML.
+`siteId`, `enableLinkTracking` when present, and `userId` as a logical `$ref`
+when a uniquely named Data Layer variable is already bound in local state.
+Empty, literal, and unbound User ID values are omitted rather than guessed.
+Ambiguous variable names fail import. Unowned template settings such as
+domains and custom dimensions are preserved remotely and omitted from
+generated YAML.
 
 ## Matomo triggers
 
@@ -424,12 +427,14 @@ resources are already bound in local state:
   guesses a relationship. Cross-provider reconstruction uses bound identities
   already in local state; it is not a separate workflow.
 
-Import order matters. Import (or apply) related triggers and variables
-before importing a tag:
+Import order matters. Import (or apply) the Data Layer User ID variable
+before the Matomo Configuration variable when you want import to reconstruct
+`userId: { $ref: ... }`. Import related triggers and variables before
+importing a tag:
 
 ```bash
-agoraform import matomo.variable.config 20
 agoraform import matomo.variable.user_id 2
+agoraform import matomo.variable.config 20
 agoraform import matomo.trigger.trial_started 4
 agoraform import matomo.tag.trial_started 1
 ```

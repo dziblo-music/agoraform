@@ -43,9 +43,14 @@ Fully managed setups declare that variable in the manifest:
     matomoUrl: https://matomo.example.com
     siteId: 1
     enableLinkTracking: true
+    userId:
+      $ref: matomo.variable.user_id
 ```
 
 and reference it from the tag with `matomoConfiguration: { $ref: matomo.variable.config }`.
+The `userId` `$ref` configures Matomo Tag Manager to consume the managed Data
+Layer variable. The application still pushes a stable non-sensitive internal
+identifier, for example `window._mtm.push({ userId: currentUserId })`.
 
 This example keeps the existing-container path: omit `matomoConfiguration` on
 the tag so Agoraform locates a single pre-existing configuration variable in
@@ -134,8 +139,8 @@ exist, import dependencies before the tag, using the numeric IDs shown by
 Matomo:
 
 ```bash
-agoraform import matomo.variable.config VARIABLE_ID
 agoraform import matomo.variable.user_id VARIABLE_ID
+agoraform import matomo.variable.config VARIABLE_ID
 agoraform import matomo.trigger.trial_started TRIGGER_ID
 agoraform import matomo.tag.trial_started TAG_ID
 ```

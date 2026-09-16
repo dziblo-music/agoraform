@@ -195,6 +195,48 @@ func TestValidateResourceSetAllowsManagedMatomoConfigurationRef(t *testing.T) {
 	}
 }
 
+func TestValidateResourceSetRejectsUserIDRefToConfiguration(t *testing.T) {
+	t.Parallel()
+
+	p := matomo.New(client.Config{
+		BaseURL:     "https://matomo.example.com",
+		TokenAuth:   providerToken,
+		SiteID:      "3",
+		ContainerID: variableContainerID,
+	})
+	err := p.ValidateResourceSet(context.Background(), []resource.Resource{
+		variableResource(t, "config", configVariableAttrs(resource.Attributes{
+			matomo.AttrUserID: resource.Ref{Address: mustVariableAddress(t, "config")},
+		})),
+	})
+	if err == nil || !strings.Contains(err.Error(), "dataLayer") {
+		t.Fatalf("ValidateResourceSet = %v, want dataLayer type rejection", err)
+	}
+}
+
+func TestValidateResourceSetAllowsUserIDDataLayerRef(t *testing.T) {
+	t.Parallel()
+
+	p := matomo.New(client.Config{
+		BaseURL:     "https://matomo.example.com",
+		TokenAuth:   providerToken,
+		SiteID:      "3",
+		ContainerID: variableContainerID,
+	})
+	if err := p.ValidateResourceSet(context.Background(), []resource.Resource{
+		variableResource(t, "user_id", resource.Attributes{
+			matomo.AttrType: "dataLayer",
+			matomo.AttrKey:  "userId",
+			matomo.AttrName: "User ID",
+		}),
+		variableResource(t, "config", configVariableAttrs(resource.Attributes{
+			matomo.AttrUserID: resource.Ref{Address: mustVariableAddress(t, "user_id")},
+		})),
+	}); err != nil {
+		t.Fatalf("ValidateResourceSet: %v", err)
+	}
+}
+
 func TestValidateResourceSetPublicationWithManagedContainerOmitsEnvID(t *testing.T) {
 	t.Parallel()
 
