@@ -19,7 +19,7 @@ func (p *Provider) reconstructTagImportRefs(ctx context.Context, res resource.Re
 	}
 	attrs[AttrTrigger] = trigger
 
-	for _, key := range []string{AttrEventCategory, AttrEventAction, AttrEventName, AttrEventValue} {
+	for _, key := range []string{AttrEventCategory, AttrEventAction, AttrEventName, AttrEventValue, AttrDocumentTitle, AttrCustomURL} {
 		raw, ok := attrs[key].(string)
 		if !ok {
 			continue

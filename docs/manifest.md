@@ -240,21 +240,32 @@ and `siteId` are required; `enableLinkTracking` is optional.
 
 ### `matomo.trigger`
 
-v0.2.0 supports Custom Event triggers:
+Custom Event, Pageview, and History Change triggers:
 
 ```yaml
 - address: matomo.trigger.trial_started
   attributes:
     type: customEvent
     event: trialStarted
+
+- address: matomo.trigger.pageview
+  attributes:
+    type: pageView
+
+- address: matomo.trigger.route_change
+  attributes:
+    type: historyChange
 ```
 
-`type` and `event` are required; `name` is optional and defaults to `event`.
+For `customEvent`, `type` and `event` are required; `name` is optional and
+defaults to `event`. Pageview and History Change triggers have no Matomo
+parameters; `name` is optional and defaults to the address name.
 
 ### `matomo.tag`
 
-v0.2.0 supports Matomo Analytics event tags. Google Ads conversion tags use
-the Matomo Tag Manager `GoogleAdsConversion` template:
+Matomo Analytics tags support event tracking (default) and `trackingType:
+pageview` for initial loads and SPA route changes. Google Ads conversion
+tags use the Matomo Tag Manager `GoogleAdsConversion` template:
 
 ```yaml
 - address: matomo.tag.trial_started
@@ -264,6 +275,17 @@ the Matomo Tag Manager `GoogleAdsConversion` template:
       $ref: matomo.trigger.trial_started
     eventCategory: signup
     eventAction: trialStarted
+    matomoConfiguration:
+      $ref: matomo.variable.config
+
+- address: matomo.tag.pageview
+  attributes:
+    type: matomoAnalytics
+    trackingType: pageview
+    trigger:
+      $ref: matomo.trigger.pageview
+    documentTitle: "{{PageTitle}}"
+    customUrl: "{{PageUrl}}"
     matomoConfiguration:
       $ref: matomo.variable.config
 
@@ -280,13 +302,15 @@ the Matomo Tag Manager `GoogleAdsConversion` template:
       output: conversionLabel
 ```
 
-Supported event fields may be literals or, where documented, references to
-managed variables. `matomoConfiguration` is an optional `$ref` to a managed
-`matomo.variable` of type `matomoConfiguration` and applies to Matomo
-Analytics tags. Google Ads conversion tags consume `conversionId` and
-`conversionLabel` as literals or as selected outputs from a managed
-`googleads.conversion_action`. Agoraform does not emit the application event;
-the application still pushes the configured data-layer event. See the
+Supported event and pageview fields may be literals or, where documented,
+references to managed variables. `trackingType: pageview` uses
+`documentTitle` and `customUrl` instead of event fields. `matomoConfiguration`
+is an optional `$ref` to a managed `matomo.variable` of type
+`matomoConfiguration` and applies to Matomo Analytics tags. Google Ads
+conversion tags consume `conversionId` and `conversionLabel` as literals or
+as selected outputs from a managed `googleads.conversion_action`. Agoraform
+does not emit the application event; native History Change pageviews need no
+application data-layer event when the site uses the History API. See the
 [Matomo provider reference](../providers/matomo/README.md)
 for the complete resource-specific schema, template parameter mapping, and
 preservation behavior. The

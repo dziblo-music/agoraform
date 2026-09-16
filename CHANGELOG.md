@@ -12,6 +12,13 @@ prints the SemVer identifier without the prefix (`0.5.0`).
 
 ### Added
 
+- Matomo Tag Manager SPA pageview tracking: `matomo.trigger` supports
+  `pageView` and `historyChange` templates, and `matomo.tag`
+  `type: matomoAnalytics` accepts `trackingType: pageview` with optional
+  `documentTitle` and `customUrl`. Initial loads and History API route
+  changes are declared as separate one-trigger tags so they do not double
+  count. Native History Change tracking does not require application code.
+
 - Google Ads Search sitelink and callout assets: `googleads.asset`
   manages `SITELINK` and `CALLOUT` copy, and `googleads.campaign_asset`
   attaches them to a Search campaign. Sitelink `linkText`, optional paired
