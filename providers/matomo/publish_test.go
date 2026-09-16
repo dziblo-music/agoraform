@@ -100,6 +100,27 @@ func TestConditionalPublicationSkipsVersionWhenMutationConvergesDraftToLive(t *t
 	}
 }
 
+func TestPlanFinalizationIncludesConfigurationUserIDChange(t *testing.T) {
+	t.Parallel()
+
+	s := newFinalizeServer(t)
+	p := newFinalizeProvider(t, s)
+	if err := p.Configure(resource.Attributes{"publish": true, "environment": "live"}); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+
+	planned, err := p.PlanFinalization(context.Background(), []provider.PendingChange{{
+		Address: resource.Address{Provider: matomo.Name, Type: matomo.TypeVariable, Name: "config"},
+		Action:  "update",
+	}})
+	if err != nil {
+		t.Fatalf("PlanFinalization: %v", err)
+	}
+	if planned == nil || planned.Action != "publish" || planned.Target != "live" || !planned.Conditional {
+		t.Fatalf("planned = %+v, want conditional publish -> live", planned)
+	}
+}
+
 func TestPublicationWithoutPendingChangesIsDefiniteWhenDraftDiffers(t *testing.T) {
 	t.Parallel()
 

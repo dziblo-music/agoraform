@@ -19,6 +19,13 @@ prints the SemVer identifier without the prefix (`0.5.0`).
   changes are declared as separate one-trigger tags so they do not double
   count. Native History Change tracking does not require application code.
 
+- Matomo Configuration User ID: `matomo.variable` `type: matomoConfiguration`
+  accepts optional `userId: { $ref: matomo.variable.* }` to a managed
+  `dataLayer` variable. Agoraform maps that reference to the Tag Manager
+  `userId` template parameter and preserves unowned configuration settings.
+  Application login, logout, and identifier selection remain outside
+  Agoraform.
+
 - Google Ads Search sitelink and callout assets: `googleads.asset`
   manages `SITELINK` and `CALLOUT` copy, and `googleads.campaign_asset`
   attaches them to a Search campaign. Sitelink `linkText`, optional paired

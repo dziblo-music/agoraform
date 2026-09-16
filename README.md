@@ -486,6 +486,8 @@ Configuration variables:
     matomoUrl: https://matomo.example.com
     siteId: 1
     enableLinkTracking: true
+    userId:
+      $ref: matomo.variable.user_id
 ```
 
 ### `matomo.trigger`
@@ -522,8 +524,8 @@ prints canonical YAML. It does not mutate the remote platform or edit your
 manifest.
 
 ```bash
-agoraform import matomo.variable.config VARIABLE_ID
 agoraform import matomo.variable.user_id VARIABLE_ID
+agoraform import matomo.variable.config VARIABLE_ID
 agoraform import matomo.trigger.trial_started TRIGGER_ID
 agoraform import matomo.tag.trial_started TAG_ID
 agoraform import googleads.conversion_action.trial_started 123456789

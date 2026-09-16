@@ -47,6 +47,12 @@ func TestValidateMatomoConfigurationVariableValid(t *testing.T) {
 				matomo.AttrSiteID: "12",
 			}),
 		},
+		{
+			name: "user id data layer reference",
+			attrs: configVariableAttrs(resource.Attributes{
+				matomo.AttrUserID: resource.Ref{Address: mustVariableAddress(t, "user_id")},
+			}),
+		},
 	}
 	for _, tc := range cases {
 		tc := tc
@@ -144,6 +150,21 @@ func TestValidateMatomoConfigurationVariableErrors(t *testing.T) {
 			want:  "boolean",
 		},
 		{
+			name:  "userId literal",
+			attrs: configVariableAttrs(resource.Attributes{matomo.AttrUserID: "internal-user-id"}),
+			want:  "$ref",
+		},
+		{
+			name:  "userId empty string",
+			attrs: configVariableAttrs(resource.Attributes{matomo.AttrUserID: ""}),
+			want:  "$ref",
+		},
+		{
+			name:  "userId refs a trigger",
+			attrs: configVariableAttrs(resource.Attributes{matomo.AttrUserID: resource.Ref{Address: mustTriggerAddress(t, "trial_started")}}),
+			want:  "matomo.variable",
+		},
+		{
 			name:  "open-ended parameter map",
 			attrs: configVariableAttrs(resource.Attributes{"domains": []any{"example.com"}}),
 			want:  "unsupported attribute",
@@ -208,6 +229,9 @@ func TestReadCreateUpdateMatomoConfigurationVariable(t *testing.T) {
 	}
 	if srv.lastCreateValues().Get("parameters[dataLayerName]") != "" {
 		t.Fatal("create must not send dataLayerName")
+	}
+	if srv.lastCreateValues().Get("parameters[userId]") != "" {
+		t.Fatal("create must not send userId when omitted")
 	}
 
 	got, err := p.Read(context.Background(), res)

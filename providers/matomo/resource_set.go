@@ -53,7 +53,7 @@ func (p *Provider) ValidateResourceSet(_ context.Context, resources []resource.R
 				return fmt.Errorf("resource %s: attribute %q must reference %s", child.Address, AttrContainer, containers[0].Address)
 			}
 		}
-		return validateMatomoConfigurationRefs(resources)
+		return validateVariableRelationshipRefs(resources)
 	}
 
 	p.clearManagedContainer()
@@ -67,7 +67,7 @@ func (p *Provider) ValidateResourceSet(_ context.Context, resources []resource.R
 		}
 	}
 
-	if err := validateMatomoConfigurationRefs(resources); err != nil {
+	if err := validateVariableRelationshipRefs(resources); err != nil {
 		return err
 	}
 
@@ -76,6 +76,13 @@ func (p *Provider) ValidateResourceSet(_ context.Context, resources []resource.R
 		return fmt.Errorf("matomo: %s is required when provider publication is enabled without a managed matomo.container resource", EnvContainerID)
 	}
 	return nil
+}
+
+func validateVariableRelationshipRefs(resources []resource.Resource) error {
+	if err := validateMatomoConfigurationRefs(resources); err != nil {
+		return err
+	}
+	return validateUserIDRefs(resources)
 }
 
 func validateMatomoConfigurationRefs(resources []resource.Resource) error {
@@ -100,6 +107,36 @@ func validateMatomoConfigurationRefs(resources []resource.Resource) error {
 		}
 		if stringAttr(target.Attributes, AttrType) != variableTypeMatomoConfiguration {
 			return fmt.Errorf("resource %s: attribute %q must reference a %s.%s resource with type %q", res.Address, AttrMatomoConfiguration, Name, TypeVariable, variableTypeMatomoConfiguration)
+		}
+	}
+	return nil
+}
+
+func validateUserIDRefs(resources []resource.Resource) error {
+	byAddr := make(map[string]resource.Resource, len(resources))
+	for _, res := range resources {
+		byAddr[res.Address.String()] = res
+	}
+	for _, res := range resources {
+		if res.Address.Provider != Name || res.Address.Type != TypeVariable {
+			continue
+		}
+		if stringAttr(res.Attributes, AttrType) != variableTypeMatomoConfiguration {
+			continue
+		}
+		ref, set, err := optionalUserIDRef(res)
+		if err != nil {
+			return err
+		}
+		if !set {
+			continue
+		}
+		target, ok := byAddr[ref.Address.String()]
+		if !ok {
+			continue
+		}
+		if stringAttr(target.Attributes, AttrType) != variableTypeDataLayer {
+			return fmt.Errorf("resource %s: attribute %q must reference a %s.%s resource with type %q", res.Address, AttrUserID, Name, TypeVariable, variableTypeDataLayer)
 		}
 	}
 	return nil

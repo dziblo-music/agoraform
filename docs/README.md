@@ -33,7 +33,8 @@ declarative container publication through `plan` and `apply`. v0.5.0 adds
 `agoraform destroy` for managed resources in reverse dependency order. The
 Matomo provider also manages `matomo.container` so the Tag Manager container
 itself can be declared, imported, or destroyed when Agoraform-managed.
-`matomo.variable` also supports `type: matomoConfiguration`. Matomo SPA
+`matomo.variable` also supports `type: matomoConfiguration`, including an
+optional User ID `$ref` to a managed Data Layer variable. Matomo SPA
 pageviews can use native Pageview and History Change triggers; see
 [Matomo SPA pageviews](matomo-spa-pageviews.md) for duplicate-route-event
 filtering with `historySource`. v0.3.0 adds supported website
