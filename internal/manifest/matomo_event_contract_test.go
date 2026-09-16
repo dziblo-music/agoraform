@@ -30,6 +30,29 @@ applicationEvents:
 	}
 }
 
+func TestValidateApplicationEvents_MatomoRejectsPageViewTrigger(t *testing.T) {
+	t.Parallel()
+	yaml := `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: matomo.trigger.pageview
+    attributes:
+      type: pageView
+applicationEvents:
+  pageview:
+    matomo:
+      trigger:
+        $ref: matomo.trigger.pageview
+`
+	m, err := manifest.Parse([]byte(yaml), "test")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	err = manifest.CheckApplicationEvents(m)
+	if err == nil || !strings.Contains(err.Error(), "customEvent") {
+		t.Fatalf("error = %v, want customEvent requirement for applicationEvents", err)
+	}
+}
+
 func TestValidateApplicationEvents_MatomoDerivesManagedEvent(t *testing.T) {
 	t.Parallel()
 	yaml := `apiVersion: agoraform.io/v1alpha1

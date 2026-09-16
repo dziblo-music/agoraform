@@ -112,6 +112,31 @@ resources:
         output: conversionLabel
 `
 
+const matomoSPAPageviewManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: matomo.trigger.pageview
+    attributes:
+      type: pageView
+  - address: matomo.trigger.route_change
+    attributes:
+      type: historyChange
+  - address: matomo.tag.pageview
+    attributes:
+      type: matomoAnalytics
+      trackingType: pageview
+      trigger:
+        $ref: matomo.trigger.pageview
+  - address: matomo.tag.route_change
+    attributes:
+      type: matomoAnalytics
+      trackingType: pageview
+      name: SPA route change
+      trigger:
+        $ref: matomo.trigger.route_change
+      documentTitle: "{{PageTitle}}"
+      customUrl: "{{PageUrl}}"
+`
+
 const invalidManifest = `apiVersion: agoraform.io/v1alpha1
 resources:
   - address: not-an-address
@@ -1610,6 +1635,26 @@ func TestValidateMatomoTagWithProvider(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "2 resources") {
 		t.Fatalf("stdout = %q, want 2 resources", stdout.String())
+	}
+}
+
+func TestValidateMatomoSPAPageviewWithProvider(t *testing.T) {
+	t.Parallel()
+
+	p, _ := matomoVariableTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", matomoSPAPageviewManifest)
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cli.ExitOK, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "4 resources") {
+		t.Fatalf("stdout = %q, want 4 resources", stdout.String())
 	}
 }
 

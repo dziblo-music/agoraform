@@ -90,8 +90,13 @@ func TestValidateTriggerErrors(t *testing.T) {
 		},
 		{
 			name:  "unsupported type",
-			attrs: resource.Attributes{matomo.AttrType: "pageView", matomo.AttrEvent: "trialStarted"},
+			attrs: resource.Attributes{matomo.AttrType: "domReady", matomo.AttrEvent: "trialStarted"},
 			want:  "customEvent",
+		},
+		{
+			name:  "pageView rejects event",
+			attrs: resource.Attributes{matomo.AttrType: "pageView", matomo.AttrEvent: "trialStarted"},
+			want:  "event",
 		},
 		{
 			name:  "matomo native type casing",
@@ -737,7 +742,7 @@ func TestReadTriggerUnsupportedRemoteType(t *testing.T) {
 	t.Parallel()
 
 	srv := newTriggerServer(t)
-	srv.seed(apiTrigger{ID: 3, Name: "trialStarted", Type: "PageView", Event: "trialStarted"})
+	srv.seed(apiTrigger{ID: 3, Name: "trialStarted", Type: "DomReady", Event: "trialStarted"})
 	p := testTriggerProvider(t, srv)
 
 	_, err := p.Read(context.Background(), triggerResource(t, "trial_started", resource.Attributes{
@@ -750,7 +755,7 @@ func TestReadTriggerUnsupportedRemoteType(t *testing.T) {
 	if errors.Is(err, provider.ErrNotFound) {
 		t.Fatal("unsupported remote type must not look like not found")
 	}
-	if !strings.Contains(err.Error(), "PageView") {
+	if !strings.Contains(err.Error(), "DomReady") {
 		t.Fatalf("error = %q, want remote type", err)
 	}
 }
@@ -955,6 +960,10 @@ func (s *triggerServer) writeTriggers(w http.ResponseWriter) {
 	}
 	out := make([]map[string]any, 0, len(s.triggers))
 	for id, tr := range s.triggers {
+		params := map[string]any{}
+		if tr.Event != "" {
+			params["eventName"] = tr.Event
+		}
 		item := map[string]any{
 			"idtrigger":          strconv.Itoa(id),
 			"idcontainerversion": tr.Version,
@@ -963,7 +972,7 @@ func (s *triggerServer) writeTriggers(w http.ResponseWriter) {
 			"name":               tr.Name,
 			"status":             tr.Status,
 			"description":        tr.Description,
-			"parameters":         map[string]any{"eventName": tr.Event},
+			"parameters":         params,
 		}
 		if tr.Conditions != "" {
 			var conditions any

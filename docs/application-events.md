@@ -60,6 +60,24 @@ window._mtm.push({
 
 If the managed trigger changes from `trialStarted` to another event name, validation and integration output follow the referenced trigger automatically.
 
+## SPA pageviews
+
+Initial page loads and client-side route changes are Matomo Tag Manager
+configuration, not `applicationEvents`. Declare a `pageView` trigger for the
+first load and a `historyChange` trigger for History API navigations, each
+firing its own `matomo.tag` with `trackingType: pageview`.
+
+History Change is a native Tag Manager trigger. Agoraform does not modify
+application or router code. No data-layer event is required when the
+application already uses `pushState`, `replaceState`, `hashchange`, or
+`popstate`. Keep `document.title` current if you use `{{PageTitle}}`.
+
+If a particular framework does not use the History API, that contract stays
+outside Agoraform. Use a managed `customEvent` trigger and declare it under
+`applicationEvents`, or push `{ event: "mtm.PageView" }` from application
+code. Native `pageView` and `historyChange` triggers cannot be referenced
+from `applicationEvents`.
+
 ## Google Ads binding
 
 The Google Ads binding references the managed website conversion action:

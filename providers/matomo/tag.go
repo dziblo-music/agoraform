@@ -31,6 +31,16 @@ const (
 	// matomo.variable of type matomoConfiguration.
 	AttrMatomoConfiguration = "matomoConfiguration"
 
+	// AttrTrackingType selects the Matomo Analytics tag trackingType
+	// parameter. Omitted values default to event.
+	AttrTrackingType = "trackingType"
+	// AttrDocumentTitle is the optional Matomo Analytics pageview
+	// documentTitle parameter (UI: Custom Title).
+	AttrDocumentTitle = "documentTitle"
+	// AttrCustomURL is the optional Matomo Analytics pageview customUrl
+	// parameter (UI: Custom URL).
+	AttrCustomURL = "customUrl"
+
 	// AttrConversionID is the Google Ads conversion ID for a
 	// googleAdsConversion tag. It may be a literal or an output reference.
 	AttrConversionID = "conversionId"
@@ -53,6 +63,7 @@ const (
 	matomoTypeGoogleAdsConversion    = "GoogleAdsConversion"
 	paramTrackingType                = "trackingType"
 	trackingTypeEvent                = "event"
+	trackingTypePageview             = "pageview"
 	paramMatomoConfig                = "matomoConfig"
 	paramGoogleAdsConversionID       = "googleAdsConversionId"
 	paramGoogleAdsConversionLabel    = "googleAdsConversionLabel"
@@ -68,7 +79,8 @@ const (
 	googleAdsOutputConversionAction  = "conversion_action"
 
 	// MaxEventFieldLen is Matomo's maximum length for event category,
-	// action, name, and value parameters.
+	// action, name, and value parameters, and for pageview documentTitle
+	// and customUrl.
 	MaxEventFieldLen = 500
 	// MaxTagNameLen is Matomo's maximum length for a Tag Manager tag
 	// display name.
@@ -86,6 +98,9 @@ var (
 		AttrName:                    {},
 		AttrContainer:               {},
 		AttrMatomoConfiguration:     {},
+		AttrTrackingType:            {},
+		AttrDocumentTitle:           {},
+		AttrCustomURL:               {},
 		AttrConversionID:            {},
 		AttrConversionLabel:         {},
 		AttrConversionValue:         {},
@@ -103,6 +118,9 @@ var (
 		AttrName:                {},
 		AttrContainer:           {},
 		AttrMatomoConfiguration: {},
+		AttrTrackingType:        {},
+		AttrDocumentTitle:       {},
+		AttrCustomURL:           {},
 	}
 
 	googleAdsConversionTagAttrs = map[string]struct{}{
@@ -144,7 +162,6 @@ var (
 		"created_date":                   {},
 		"updated_date":                   {},
 		"matomoConfig":                   {},
-		"trackingType":                   {},
 		paramGoogleAdsConversionID:       {},
 		paramGoogleAdsConversionLabel:    {},
 		paramGoogleAdsConversionValue:    {},
@@ -158,6 +175,13 @@ var (
 	}
 
 	optionalTagEventAttrs = []string{AttrEventName, AttrEventValue}
+
+	optionalPageviewFieldAttrs = []string{AttrDocumentTitle, AttrCustomURL}
+
+	supportedMatomoTrackingTypes = map[string]struct{}{
+		trackingTypeEvent:    {},
+		trackingTypePageview: {},
+	}
 
 	optionalGoogleAdsConversionAttrs = []string{
 		AttrConversionValue,
@@ -223,15 +247,38 @@ func (p *Provider) validateTag(res resource.Resource) error {
 		if _, _, err := optionalMatomoConfigurationRef(res); err != nil {
 			return err
 		}
-		if err := requiredEventField(res, AttrEventCategory); err != nil {
+		tracking, err := trackingTypeValue(res)
+		if err != nil {
 			return err
 		}
-		if err := requiredEventField(res, AttrEventAction); err != nil {
-			return err
-		}
-		for _, key := range optionalTagEventAttrs {
-			if err := optionalEventField(res, key); err != nil {
+		switch tracking {
+		case trackingTypePageview:
+			for _, key := range []string{AttrEventCategory, AttrEventAction, AttrEventName, AttrEventValue} {
+				if _, ok := attrs[key]; ok {
+					return fmt.Errorf("resource %s: attribute %q is not supported when %s is %q", res.Address, key, AttrTrackingType, trackingTypePageview)
+				}
+			}
+			for _, key := range optionalPageviewFieldAttrs {
+				if err := optionalEventField(res, key); err != nil {
+					return err
+				}
+			}
+		default:
+			for _, key := range optionalPageviewFieldAttrs {
+				if _, ok := attrs[key]; ok {
+					return fmt.Errorf("resource %s: attribute %q is not supported when %s is %q", res.Address, key, AttrTrackingType, trackingTypeEvent)
+				}
+			}
+			if err := requiredEventField(res, AttrEventCategory); err != nil {
 				return err
+			}
+			if err := requiredEventField(res, AttrEventAction); err != nil {
+				return err
+			}
+			for _, key := range optionalTagEventAttrs {
+				if err := optionalEventField(res, key); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -254,11 +301,13 @@ func (p *Provider) validateTag(res resource.Resource) error {
 		if nameSet {
 			return fmt.Errorf("resource %s: attribute %q must be at most %d characters", res.Address, AttrName, MaxTagNameLen)
 		}
-		hint := AttrEventAction
 		if typ == tagTypeGoogleAdsConversion {
-			hint = AttrName
+			return fmt.Errorf("resource %s: tag display name must be at most %d characters; set %s", res.Address, MaxTagNameLen, AttrName)
 		}
-		return fmt.Errorf("resource %s: tag display name must be at most %d characters; set %s or shorten %s", res.Address, MaxTagNameLen, AttrName, hint)
+		if tracking, err := trackingTypeValue(res); err == nil && tracking == trackingTypePageview {
+			return fmt.Errorf("resource %s: tag display name must be at most %d characters; set %s or shorten the address name", res.Address, MaxTagNameLen, AttrName)
+		}
+		return fmt.Errorf("resource %s: tag display name must be at most %d characters; set %s or shorten %s", res.Address, MaxTagNameLen, AttrName, AttrEventAction)
 	}
 
 	return nil
@@ -461,33 +510,54 @@ func (p *Provider) comparableMatomoAnalyticsTag(attrs resource.Attributes, addr 
 	if err != nil {
 		return nil, fmt.Errorf("attribute %q %w", AttrTrigger, err)
 	}
-	category, err := comparableEventAttr(attrs[AttrEventCategory])
+	tracking, err := comparableTrackingType(attrs)
 	if err != nil {
-		return nil, fmt.Errorf("attribute %q %w", AttrEventCategory, err)
-	}
-	action, err := comparableEventAttr(attrs[AttrEventAction])
-	if err != nil {
-		return nil, fmt.Errorf("attribute %q %w", AttrEventAction, err)
+		return nil, err
 	}
 	out := resource.Attributes{
-		AttrType:          typ,
-		AttrName:          name,
-		AttrTrigger:       trigger,
-		AttrEventCategory: category,
-		AttrEventAction:   action,
+		AttrType:         typ,
+		AttrName:         name,
+		AttrTrigger:      trigger,
+		AttrTrackingType: tracking,
 	}
-	for _, key := range optionalTagEventAttrs {
-		if _, ok := attrs[key]; !ok {
-			continue
+	if tracking == trackingTypePageview {
+		for _, key := range optionalPageviewFieldAttrs {
+			if _, ok := attrs[key]; !ok {
+				continue
+			}
+			v, err := comparableEventAttr(attrs[key])
+			if err != nil {
+				return nil, fmt.Errorf("attribute %q %w", key, err)
+			}
+			if v == nil || v == "" {
+				continue
+			}
+			out[key] = v
 		}
-		v, err := comparableEventAttr(attrs[key])
+	} else {
+		category, err := comparableEventAttr(attrs[AttrEventCategory])
 		if err != nil {
-			return nil, fmt.Errorf("attribute %q %w", key, err)
+			return nil, fmt.Errorf("attribute %q %w", AttrEventCategory, err)
 		}
-		if v == nil || v == "" {
-			continue
+		action, err := comparableEventAttr(attrs[AttrEventAction])
+		if err != nil {
+			return nil, fmt.Errorf("attribute %q %w", AttrEventAction, err)
 		}
-		out[key] = v
+		out[AttrEventCategory] = category
+		out[AttrEventAction] = action
+		for _, key := range optionalTagEventAttrs {
+			if _, ok := attrs[key]; !ok {
+				continue
+			}
+			v, err := comparableEventAttr(attrs[key])
+			if err != nil {
+				return nil, fmt.Errorf("attribute %q %w", key, err)
+			}
+			if v == nil || v == "" {
+				continue
+			}
+			out[key] = v
+		}
 	}
 	if _, ok := attrs[AttrMatomoConfiguration]; ok {
 		ref, err := comparableMatomoConfigurationAttr(attrs[AttrMatomoConfiguration])
@@ -509,31 +579,46 @@ func (p *Provider) remoteTag(addr resource.Address, tag client.Tag, desired reso
 	if agoraType == tagTypeGoogleAdsConversion {
 		return p.remoteGoogleAdsConversionTag(addr, tag, desired)
 	}
-	if tracking := parameterString(tag.Parameters, paramTrackingType); tracking != "" && tracking != trackingTypeEvent {
-		return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: remote tag %q has unsupported trackingType %q; matomoAnalytics supports %s", addr, tag.IDTag, tracking, trackingTypeEvent)
+	tracking := remoteTrackingType(parameterString(tag.Parameters, paramTrackingType))
+	if _, ok := supportedMatomoTrackingTypes[tracking]; !ok {
+		return resource.RemoteResource{}, fmt.Errorf("matomo: read %s: remote tag %q has unsupported trackingType %q; matomoAnalytics supports %s", addr, tag.IDTag, tracking, joinSorted(keys(supportedMatomoTrackingTypes)))
 	}
 
 	attrs := resource.Attributes{
-		AttrType: agoraType,
-		AttrName: tag.Name,
+		AttrType:         agoraType,
+		AttrName:         tag.Name,
+		AttrTrackingType: tracking,
 	}
 	if trigger := p.liveTriggerAttr(tag.FireTriggerIDs, desired[AttrTrigger]); trigger != nil {
 		attrs[AttrTrigger] = trigger
 	}
-	if category := p.liveEventAttr(parameterString(tag.Parameters, AttrEventCategory), desired[AttrEventCategory]); category != nil {
-		attrs[AttrEventCategory] = category
-	}
-	if action := p.liveEventAttr(parameterString(tag.Parameters, AttrEventAction), desired[AttrEventAction]); action != nil {
-		attrs[AttrEventAction] = action
-	}
-	if name := parameterString(tag.Parameters, AttrEventName); name != "" || desired[AttrEventName] != nil {
-		if v := p.liveEventAttr(name, desired[AttrEventName]); v != nil {
-			attrs[AttrEventName] = v
+	if tracking == trackingTypePageview {
+		if title := parameterString(tag.Parameters, AttrDocumentTitle); title != "" || desired[AttrDocumentTitle] != nil {
+			if v := p.liveEventAttr(title, desired[AttrDocumentTitle]); v != nil {
+				attrs[AttrDocumentTitle] = v
+			}
 		}
-	}
-	if value := parameterString(tag.Parameters, AttrEventValue); value != "" || desired[AttrEventValue] != nil {
-		if v := p.liveEventAttr(value, desired[AttrEventValue]); v != nil {
-			attrs[AttrEventValue] = v
+		if url := parameterString(tag.Parameters, AttrCustomURL); url != "" || desired[AttrCustomURL] != nil {
+			if v := p.liveEventAttr(url, desired[AttrCustomURL]); v != nil {
+				attrs[AttrCustomURL] = v
+			}
+		}
+	} else {
+		if category := p.liveEventAttr(parameterString(tag.Parameters, AttrEventCategory), desired[AttrEventCategory]); category != nil {
+			attrs[AttrEventCategory] = category
+		}
+		if action := p.liveEventAttr(parameterString(tag.Parameters, AttrEventAction), desired[AttrEventAction]); action != nil {
+			attrs[AttrEventAction] = action
+		}
+		if name := parameterString(tag.Parameters, AttrEventName); name != "" || desired[AttrEventName] != nil {
+			if v := p.liveEventAttr(name, desired[AttrEventName]); v != nil {
+				attrs[AttrEventName] = v
+			}
+		}
+		if value := parameterString(tag.Parameters, AttrEventValue); value != "" || desired[AttrEventValue] != nil {
+			if v := p.liveEventAttr(value, desired[AttrEventValue]); v != nil {
+				attrs[AttrEventValue] = v
+			}
 		}
 	}
 	if cfg := p.liveMatomoConfigurationAttr(parameterString(tag.Parameters, paramMatomoConfig), desired[AttrMatomoConfiguration], tag.Parameters[paramMatomoConfig]); cfg != nil {
@@ -558,32 +643,37 @@ func (p *Provider) tagInput(ctx context.Context, res resource.Resource, live *re
 	if err != nil {
 		return client.TagInput{}, err
 	}
-	category, err := p.eventFieldValue(ctx, res, res.Attributes[AttrEventCategory])
+	tracking, err := trackingTypeValue(res)
 	if err != nil {
-		return client.TagInput{}, fmt.Errorf("attribute %q: %w", AttrEventCategory, err)
-	}
-	action, err := p.eventFieldValue(ctx, res, res.Attributes[AttrEventAction])
-	if err != nil {
-		return client.TagInput{}, fmt.Errorf("attribute %q: %w", AttrEventAction, err)
+		return client.TagInput{}, err
 	}
 	params := map[string]any{
-		paramTrackingType: trackingTypeEvent,
-		AttrEventCategory: category,
-		AttrEventAction:   action,
+		paramTrackingType: tracking,
 	}
-	if v, ok := res.Attributes[AttrEventName]; ok {
-		name, err := p.eventFieldValue(ctx, res, v)
-		if err != nil {
-			return client.TagInput{}, fmt.Errorf("attribute %q: %w", AttrEventName, err)
+	if tracking == trackingTypePageview {
+		if err := p.setOptionalTagField(ctx, res, params, AttrDocumentTitle); err != nil {
+			return client.TagInput{}, err
 		}
-		params[AttrEventName] = name
-	}
-	if v, ok := res.Attributes[AttrEventValue]; ok {
-		value, err := p.eventFieldValue(ctx, res, v)
-		if err != nil {
-			return client.TagInput{}, fmt.Errorf("attribute %q: %w", AttrEventValue, err)
+		if err := p.setOptionalTagField(ctx, res, params, AttrCustomURL); err != nil {
+			return client.TagInput{}, err
 		}
-		params[AttrEventValue] = value
+	} else {
+		category, err := p.eventFieldValue(ctx, res, res.Attributes[AttrEventCategory])
+		if err != nil {
+			return client.TagInput{}, fmt.Errorf("attribute %q: %w", AttrEventCategory, err)
+		}
+		action, err := p.eventFieldValue(ctx, res, res.Attributes[AttrEventAction])
+		if err != nil {
+			return client.TagInput{}, fmt.Errorf("attribute %q: %w", AttrEventAction, err)
+		}
+		params[AttrEventCategory] = category
+		params[AttrEventAction] = action
+		if err := p.setOptionalTagField(ctx, res, params, AttrEventName); err != nil {
+			return client.TagInput{}, err
+		}
+		if err := p.setOptionalTagField(ctx, res, params, AttrEventValue); err != nil {
+			return client.TagInput{}, err
+		}
 	}
 	cfg, err := p.matomoConfigValue(ctx, res, live)
 	if err != nil {
@@ -598,6 +688,22 @@ func (p *Provider) tagInput(ctx context.Context, res resource.Resource, live *re
 		FireTriggerIDs: []string{triggerID},
 		Parameters:     params,
 	}, nil
+}
+
+func (p *Provider) setOptionalTagField(ctx context.Context, res resource.Resource, params map[string]any, key string) error {
+	v, ok := res.Attributes[key]
+	if !ok {
+		return nil
+	}
+	value, err := p.eventFieldValue(ctx, res, v)
+	if err != nil {
+		return fmt.Errorf("attribute %q: %w", key, err)
+	}
+	if value == "" {
+		return nil
+	}
+	params[key] = value
+	return nil
 }
 
 func (p *Provider) resolvedTriggerID(v any) (string, error) {
@@ -935,6 +1041,47 @@ func ensureImmutableTagType(desired resource.Resource, live resource.RemoteResou
 		return nil
 	}
 	return fmt.Errorf("resource %s: attribute %q is immutable for Matomo tag %q; remote type is %q and configuration requests %q", desired.Address, AttrType, live.Identity.ID, got, want)
+}
+
+func trackingTypeValue(res resource.Resource) (string, error) {
+	v, ok := res.Attributes[AttrTrackingType]
+	if !ok {
+		return trackingTypeEvent, nil
+	}
+	s, err := coerceString(v)
+	if err != nil {
+		return "", fmt.Errorf("resource %s: attribute %q must be a string", res.Address, AttrTrackingType)
+	}
+	if s == "" {
+		return "", fmt.Errorf("resource %s: attribute %q must be a non-empty string", res.Address, AttrTrackingType)
+	}
+	if err := rejectEdgeWhitespace(res.Address, AttrTrackingType, s); err != nil {
+		return "", err
+	}
+	if _, ok := supportedMatomoTrackingTypes[s]; !ok {
+		return "", fmt.Errorf("resource %s: attribute %q must be one of %s", res.Address, AttrTrackingType, joinSorted(keys(supportedMatomoTrackingTypes)))
+	}
+	return s, nil
+}
+
+func comparableTrackingType(attrs resource.Attributes) (string, error) {
+	s, err := coerceString(attrs[AttrTrackingType])
+	if err != nil {
+		return "", fmt.Errorf("attribute %q %w", AttrTrackingType, err)
+	}
+	if s == "" {
+		return trackingTypeEvent, nil
+	}
+	return s, nil
+}
+
+func remoteTrackingType(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		// MatomoTag.php defaults trackingType to pageview when unset.
+		return trackingTypePageview
+	}
+	return raw
 }
 
 func requiredTriggerRef(res resource.Resource) (resource.Ref, error) {

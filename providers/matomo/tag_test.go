@@ -1057,6 +1057,10 @@ func (s *tagServer) writeTriggers(w http.ResponseWriter) {
 	}
 	out := make([]map[string]any, 0, len(s.triggers))
 	for id, tr := range s.triggers {
+		params := map[string]any{}
+		if tr.Event != "" {
+			params["eventName"] = tr.Event
+		}
 		out = append(out, map[string]any{
 			"idtrigger":          strconv.Itoa(id),
 			"idcontainerversion": s.version,
@@ -1064,7 +1068,7 @@ func (s *tagServer) writeTriggers(w http.ResponseWriter) {
 			"type":               tr.Type,
 			"name":               tr.Name,
 			"status":             tr.Status,
-			"parameters":         map[string]any{"eventName": tr.Event},
+			"parameters":         params,
 			"conditions":         []any{},
 		})
 	}
