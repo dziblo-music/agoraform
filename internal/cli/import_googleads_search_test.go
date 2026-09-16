@@ -59,16 +59,26 @@ func TestImportGoogleAdsSearchStackThenPlanUnchanged(t *testing.T) {
 	if !strings.Contains(languageYAML, "language: en") {
 		t.Fatalf("language YAML missing ISO code:\n%s", languageYAML)
 	}
+	campaignNegYAML := mustCLIImport(t, reg, manifestPath, "googleads.campaign_negative_keyword.jobs", "21~61")
+	if !strings.Contains(campaignNegYAML, "$ref: googleads.campaign.brand") {
+		t.Fatalf("campaign negative keyword YAML missing campaign $ref:\n%s", campaignNegYAML)
+	}
+	if !strings.Contains(campaignNegYAML, "text: jobs") {
+		t.Fatalf("campaign negative keyword YAML missing text:\n%s", campaignNegYAML)
+	}
+	if strings.Contains(campaignNegYAML, "negative:") {
+		t.Fatalf("campaign negative keyword YAML leaked implied negative:\n%s", campaignNegYAML)
+	}
 
 	for _, leaked := range []string{"resourceName", "amountMicros", "cpcBidMicros", "geoTargetConstants", "languageConstants", "assetPerformanceLabel", cliGoogleAdsAccessToken} {
-		for _, yamlText := range []string{budgetYAML, campaignYAML, goalYAML, groupYAML, keywordYAML, negativeYAML, rsaYAML, locationYAML, languageYAML} {
+		for _, yamlText := range []string{budgetYAML, campaignYAML, goalYAML, groupYAML, keywordYAML, negativeYAML, rsaYAML, locationYAML, languageYAML, campaignNegYAML} {
 			if strings.Contains(yamlText, leaked) {
 				t.Fatalf("generated YAML leaked %q:\n%s", leaked, yamlText)
 			}
 		}
 	}
 
-	combined := combineManifestResources(t, budgetYAML, campaignYAML, goalYAML, groupYAML, keywordYAML, negativeYAML, rsaYAML, locationYAML, languageYAML)
+	combined := combineManifestResources(t, budgetYAML, campaignYAML, goalYAML, groupYAML, keywordYAML, negativeYAML, rsaYAML, locationYAML, languageYAML, campaignNegYAML)
 	if err := os.WriteFile(manifestPath, []byte(combined), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -215,6 +225,21 @@ func TestImportGoogleAdsSearchUnsupportedRemote(t *testing.T) {
 			want:     "LOCATION",
 		},
 		{
+			name: "location criterion as campaign negative keyword",
+			seed: func(srv *cliGoogleAdsFake) {
+				srv.seedCriterion(map[string]any{
+					"criterionId": "41",
+					"campaign":    "customers/" + cliGoogleAdsCustomerID + "/campaigns/21",
+					"type":        "LOCATION",
+					"status":      "ENABLED",
+					"location":    map[string]any{"geoTargetConstant": "geoTargetConstants/2840"},
+				})
+			},
+			address:  "googleads.campaign_negative_keyword.united_states",
+			remoteID: "21~41",
+			want:     "KEYWORD",
+		},
+		{
 			name: "lifetime budget",
 			seed: func(srv *cliGoogleAdsFake) {
 				srv.seedBudget(map[string]any{
@@ -305,6 +330,15 @@ func TestImportGoogleAdsSearchMissingParent(t *testing.T) {
 		t.Fatalf("stderr = %q, want ad group import guidance", stderr.String())
 	}
 
+	streams, _, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"import", "-f", path, "googleads.campaign_negative_keyword.jobs", "21~61"}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("campaign negative keyword without campaign exit = %d; stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "campaign") {
+		t.Fatalf("stderr = %q, want campaign import guidance", stderr.String())
+	}
+
 	if srv.mutateCount() != 0 {
 		t.Fatalf("missing-parent import mutated remote: %d", srv.mutateCount())
 	}
@@ -325,6 +359,7 @@ func TestImportGoogleAdsSearchInvalidIDs(t *testing.T) {
 		{"googleads.responsive_search_ad.brand", "abc", "not a valid Google Ads responsive search ad id"},
 		{"googleads.campaign_location.united_states", "abc", "not a valid Google Ads campaign criterion id"},
 		{"googleads.campaign_language.english", "abc", "not a valid Google Ads campaign criterion id"},
+		{"googleads.campaign_negative_keyword.jobs", "abc", "not a valid Google Ads campaign criterion id"},
 		{"googleads.campaign_conversion_goal.trial_signup", "not-an-id", "not a valid Google Ads campaign conversion goal id"},
 	}
 
@@ -370,6 +405,7 @@ func TestImportGoogleAdsSearchNotFound(t *testing.T) {
 		{"googleads.responsive_search_ad.brand", "31~71"},
 		{"googleads.campaign_location.united_states", "21~41"},
 		{"googleads.campaign_language.english", "21~51"},
+		{"googleads.campaign_negative_keyword.jobs", "21~61"},
 		{"googleads.campaign_conversion_goal.trial_signup", "21~SIGNUP~WEBSITE"},
 	}
 	for _, tt := range tests {
@@ -551,6 +587,17 @@ func seedCLIBrandSearch(srv *cliGoogleAdsFake) {
 		"type":        "LANGUAGE",
 		"status":      "ENABLED",
 		"language":    map[string]any{"languageConstant": "languageConstants/1000"},
+	})
+	srv.seedCriterion(map[string]any{
+		"criterionId": "61",
+		"campaign":    "customers/" + cliGoogleAdsCustomerID + "/campaigns/21",
+		"type":        "KEYWORD",
+		"status":      "ENABLED",
+		"negative":    true,
+		"keyword": map[string]any{
+			"text":      "jobs",
+			"matchType": "PHRASE",
+		},
 	})
 }
 

@@ -954,6 +954,17 @@ func TestImportGoogleAdsCampaignLocationAndLanguage(t *testing.T) {
 		"status":      "ENABLED",
 		"language":    map[string]any{"languageConstant": "languageConstants/1000"},
 	})
+	srv.seedCriterion(map[string]any{
+		"criterionId": "61",
+		"campaign":    "customers/" + cliGoogleAdsCustomerID + "/campaigns/21",
+		"type":        "KEYWORD",
+		"status":      "ENABLED",
+		"negative":    true,
+		"keyword": map[string]any{
+			"text":      "jobs",
+			"matchType": "PHRASE",
+		},
+	})
 
 	reg := provider.NewRegistry()
 	if err := reg.Register(p); err != nil {
@@ -1013,6 +1024,25 @@ func TestImportGoogleAdsCampaignLocationAndLanguage(t *testing.T) {
 	if strings.Contains(languageYAML, "languageConstants") {
 		t.Fatalf("language YAML leaked language constant:\n%s", languageYAML)
 	}
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "googleads.campaign_negative_keyword.jobs", "21~61"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("campaign negative keyword import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	out = stdout.String()
+	assertGoogleAdsImportOutputClean(t, out)
+	if !strings.Contains(out, "Imported googleads.campaign_negative_keyword.jobs (remote identity 21~61).") {
+		t.Fatalf("stdout missing campaign negative keyword import confirmation:\n%s", out)
+	}
+	campaignNegYAML := extractYAML(out)
+	if !strings.Contains(campaignNegYAML, "$ref: googleads.campaign.brand") {
+		t.Fatalf("campaign negative keyword YAML missing campaign $ref:\n%s", campaignNegYAML)
+	}
+	if strings.Contains(campaignNegYAML, "negative:") {
+		t.Fatalf("campaign negative keyword YAML leaked implied negative:\n%s", campaignNegYAML)
+	}
+
 	if srv.mutateCount() != 0 {
 		t.Fatalf("targeting import mutated remote: %d", srv.mutateCount())
 	}

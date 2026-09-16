@@ -16,17 +16,17 @@ in Google Ads:
 - `googleads.campaign_location.united_states` and
   `googleads.campaign_language.english` set presence-based United States
   and English targeting;
+- campaign-level negative keywords exclude shared non-buyer queries such as
+  jobs, careers, and login without duplicating them on every ad group;
 - `googleads.ad_group.trial` is a paused Search standard ad group;
 - positive keywords declare `EXACT`, `PHRASE`, and `BROAD` match types;
-- negative keywords exclude common non-buyer queries such as jobs, careers,
-  and login;
 - `googleads.responsive_search_ad.trial` is paused placeholder Search ad
   copy on `https://example.com/`.
 
 Logical `$ref` values create the dependency graph. Agoraform therefore
 creates the conversion action and budget before the campaign, the campaign
-before targeting, conversion-goal reconciliation, and the ad group, and the
-ad group before keywords and the Responsive Search Ad.
+before targeting, conversion-goal reconciliation, campaign negative keywords,
+and the ad group, and the ad group before keywords and the Responsive Search Ad.
 
 Provider-native IDs, customer IDs, and credentials do not belong in the
 manifest. Replace the placeholder landing page, headlines, descriptions,
@@ -37,7 +37,7 @@ enabling spend.
 
 Agoraform reconciles Google Ads **configuration**: conversion measurement,
 budget, Search campaign, campaign conversion-goal biddability, targeting,
-ad group, keywords, and Responsive Search Ad copy.
+campaign negative keywords, ad group, keywords, and Responsive Search Ad copy.
 
 It does not:
 
@@ -128,27 +128,27 @@ resources:
 * googleads.campaign_conversion_goal.trial_signup (adopt)
 + googleads.campaign_location.united_states
 + googleads.campaign_language.english
++ googleads.campaign_negative_keyword.jobs
++ googleads.campaign_negative_keyword.careers
++ googleads.campaign_negative_keyword.login
 + googleads.ad_group.trial
 + googleads.keyword.saas_software_exact
 + googleads.keyword.start_free_trial_phrase
 + googleads.keyword.online_software_broad
-+ googleads.keyword.jobs_neg
-+ googleads.keyword.careers_neg
-+ googleads.keyword.login_neg
 + googleads.responsive_search_ad.trial
 ```
 
 `apply` follows the `$ref` graph: conversion action and budget first, then
-the campaign, then targeting, conversion-goal reconciliation, and the ad
-group, then keywords and the ad. Agoraform never creates or deletes
+the campaign, then targeting, conversion-goal reconciliation, campaign
+negative keywords, and the ad group, then keywords and the ad. Agoraform never creates or deletes
 customer or campaign conversion goals. If an expected goal is still missing
 after the conversion action and campaign exist, the provider reports that
 Google Ads creates the object automatically and that Agoraform cannot create
 it.
 
 New campaign, ad group, positive keyword, and ad resources are `PAUSED`.
-Negative keywords are created `ENABLED` because Google Ads does not allow
-paused negative ad-group criteria. Do not change those statuses to
+Campaign negative keywords are created as negative campaign criteria;
+Google Ads does not allow pausing them. Do not change serving statuses to
 `ENABLED` until you have verified the configuration in Google Ads.
 
 The final plan must report `No changes.` when the manifest and remote
@@ -161,8 +161,8 @@ have verified the campaign in Google Ads. Agoraform does not enable spend
 or generate creative automatically.
 
 New campaigns, ad groups, positive keywords, and the Responsive Search Ad
-are created `PAUSED`. Negative keywords are created `ENABLED` because Google
-Ads does not allow paused negative ad-group criteria.
+are created `PAUSED`. Campaign negative keywords are created as negative
+campaign criteria because Google Ads does not allow pausing them.
 
 Agoraform does not hide a destroy-and-recreate behind immutable identity
 changes. Changing an immutable identity field fails `plan` instead of
@@ -245,20 +245,20 @@ agoraform import googleads.campaign.search_acquisition CAMPAIGN_ID
 agoraform import googleads.campaign_conversion_goal.trial_signup CAMPAIGN_ID~SIGNUP~WEBSITE
 agoraform import googleads.campaign_location.united_states CAMPAIGN_ID~LOCATION_CRITERION_ID
 agoraform import googleads.campaign_language.english CAMPAIGN_ID~LANGUAGE_CRITERION_ID
+agoraform import googleads.campaign_negative_keyword.jobs CAMPAIGN_ID~CRITERION_ID
+agoraform import googleads.campaign_negative_keyword.careers CAMPAIGN_ID~CRITERION_ID
+agoraform import googleads.campaign_negative_keyword.login CAMPAIGN_ID~CRITERION_ID
 agoraform import googleads.ad_group.trial AD_GROUP_ID
 agoraform import googleads.keyword.saas_software_exact AD_GROUP_ID~CRITERION_ID
 agoraform import googleads.keyword.start_free_trial_phrase AD_GROUP_ID~CRITERION_ID
 agoraform import googleads.keyword.online_software_broad AD_GROUP_ID~CRITERION_ID
-agoraform import googleads.keyword.jobs_neg AD_GROUP_ID~CRITERION_ID
-agoraform import googleads.keyword.careers_neg AD_GROUP_ID~CRITERION_ID
-agoraform import googleads.keyword.login_neg AD_GROUP_ID~CRITERION_ID
 agoraform import googleads.responsive_search_ad.trial AD_GROUP_ID~AD_ID
 ```
 
 Numeric IDs may also be written as Google Ads resource names such as
 `customers/{customerId}/campaigns/{id}`. Keyword identities are
-`adGroupId~criterionId`. Location and language identities are
-`campaignId~criterionId`. The Responsive Search Ad identity is
+`adGroupId~criterionId`. Location, language, and campaign negative keyword
+identities are `campaignId~criterionId`. The Responsive Search Ad identity is
 `adGroupId~adId`. The customer conversion-goal identity is `SIGNUP~WEBSITE`.
 The campaign conversion-goal identity is `CAMPAIGN_ID~SIGNUP~WEBSITE`.
 

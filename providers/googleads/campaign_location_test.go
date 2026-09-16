@@ -867,6 +867,9 @@ func (f *targetingFake) mutateLocked(body []byte) (string, error) {
 		if _, ok := created["language"]; ok {
 			created["type"] = "LANGUAGE"
 		}
+		if _, ok := created["keyword"]; ok {
+			created["type"] = "KEYWORD"
+		}
 	}
 	f.storeCriterionLocked(created)
 	return stringify(created["resourceName"]), nil
@@ -949,6 +952,13 @@ func matchesCampaignCriterionQuery(query string, item map[string]any) bool {
 		want := gaqlQuoted(query, "campaign_criterion.language.language_constant = ")
 		info, _ := item["language"].(map[string]any)
 		if !strings.EqualFold(want, stringify(info["languageConstant"])) {
+			return false
+		}
+	}
+	if strings.Contains(query, "campaign_criterion.keyword.match_type = ") {
+		want := gaqlQuoted(query, "campaign_criterion.keyword.match_type = ")
+		info, _ := item["keyword"].(map[string]any)
+		if !strings.EqualFold(want, stringify(info["matchType"])) {
 			return false
 		}
 	}

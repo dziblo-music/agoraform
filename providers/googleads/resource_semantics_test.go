@@ -93,6 +93,15 @@ func TestCustomerConversionGoalMissingResourceUsesAdoptSemantics(t *testing.T) {
 		t.Fatalf("campaign-language mode = %q, want %q", mode, provider.MissingResourceCreate)
 	}
 
+	campaignNegative := semanticResource(t, "googleads.campaign_negative_keyword.jobs", resource.Attributes{})
+	mode, err = p.PlanMissingResource(campaignNegative)
+	if err != nil {
+		t.Fatalf("PlanMissingResource campaign negative keyword: %v", err)
+	}
+	if mode != provider.MissingResourceCreate {
+		t.Fatalf("campaign-negative-keyword mode = %q, want %q", mode, provider.MissingResourceCreate)
+	}
+
 	rsa := semanticResource(t, "googleads.responsive_search_ad.brand", resource.Attributes{})
 	mode, err = p.PlanMissingResource(rsa)
 	if err != nil {
@@ -391,6 +400,94 @@ func TestCampaignLanguageDuplicateRejected(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "duplicates") {
 		t.Fatalf("error = %q, want duplicate language diagnostic", err)
+	}
+}
+
+func TestCampaignNegativeKeywordDuplicateRejected(t *testing.T) {
+	p := googleads.New(googleads.Config{})
+	campaignAddr := semanticAddress(t, "googleads.campaign.brand")
+	first := semanticResource(t, "googleads.campaign_negative_keyword.jobs", resource.Attributes{
+		googleads.AttrCampaign:  resource.Ref{Address: campaignAddr},
+		googleads.AttrText:      "Jobs",
+		googleads.AttrMatchType: "phrase",
+	})
+	second := semanticResource(t, "googleads.campaign_negative_keyword.jobs_dup", resource.Attributes{
+		googleads.AttrCampaign:  resource.Ref{Address: campaignAddr},
+		googleads.AttrText:      "jobs",
+		googleads.AttrMatchType: "PHRASE",
+	})
+
+	err := p.ValidateResourceSet(context.Background(), []resource.Resource{first, second})
+	if err == nil {
+		t.Fatal("expected duplicate campaign negative keyword error")
+	}
+	if !strings.Contains(err.Error(), "duplicates") || !strings.Contains(err.Error(), "jobs") || !strings.Contains(err.Error(), "PHRASE") {
+		t.Fatalf("error = %q, want duplicate campaign negative keyword diagnostic", err)
+	}
+}
+
+func TestCampaignNegativeKeywordSameTextDifferentMatchTypeAllowed(t *testing.T) {
+	p := googleads.New(googleads.Config{})
+	campaignAddr := semanticAddress(t, "googleads.campaign.brand")
+	phrase := semanticResource(t, "googleads.campaign_negative_keyword.jobs_phrase", resource.Attributes{
+		googleads.AttrCampaign:  resource.Ref{Address: campaignAddr},
+		googleads.AttrText:      "jobs",
+		googleads.AttrMatchType: "PHRASE",
+	})
+	exact := semanticResource(t, "googleads.campaign_negative_keyword.jobs_exact", resource.Attributes{
+		googleads.AttrCampaign:  resource.Ref{Address: campaignAddr},
+		googleads.AttrText:      "jobs",
+		googleads.AttrMatchType: "EXACT",
+	})
+
+	if err := p.ValidateResourceSet(context.Background(), []resource.Resource{phrase, exact}); err != nil {
+		t.Fatalf("ValidateResourceSet: %v", err)
+	}
+}
+
+func TestCampaignNegativeKeywordSameTextDifferentCampaignAllowed(t *testing.T) {
+	p := googleads.New(googleads.Config{})
+	brand := semanticAddress(t, "googleads.campaign.brand")
+	generic := semanticAddress(t, "googleads.campaign.generic")
+	first := semanticResource(t, "googleads.campaign_negative_keyword.brand_jobs", resource.Attributes{
+		googleads.AttrCampaign:  resource.Ref{Address: brand},
+		googleads.AttrText:      "jobs",
+		googleads.AttrMatchType: "PHRASE",
+	})
+	second := semanticResource(t, "googleads.campaign_negative_keyword.generic_jobs", resource.Attributes{
+		googleads.AttrCampaign:  resource.Ref{Address: generic},
+		googleads.AttrText:      "jobs",
+		googleads.AttrMatchType: "PHRASE",
+	})
+
+	if err := p.ValidateResourceSet(context.Background(), []resource.Resource{first, second}); err != nil {
+		t.Fatalf("ValidateResourceSet: %v", err)
+	}
+}
+
+func TestCampaignNegativeKeywordDoesNotCollideWithAdGroupKeyword(t *testing.T) {
+	p := googleads.New(googleads.Config{})
+	campaignAddr := semanticAddress(t, "googleads.campaign.brand")
+	adGroupAddr := semanticAddress(t, "googleads.ad_group.brand")
+	campaignNeg := semanticResource(t, "googleads.campaign_negative_keyword.jobs", resource.Attributes{
+		googleads.AttrCampaign:  resource.Ref{Address: campaignAddr},
+		googleads.AttrText:      "jobs",
+		googleads.AttrMatchType: "PHRASE",
+	})
+	adGroupNeg := semanticResource(t, "googleads.keyword.jobs_neg", resource.Attributes{
+		googleads.AttrAdGroup:   resource.Ref{Address: adGroupAddr},
+		googleads.AttrText:      "jobs",
+		googleads.AttrMatchType: "PHRASE",
+		googleads.AttrNegative:  true,
+	})
+	adGroupPos := semanticResource(t, "googleads.keyword.jobs_exact", resource.Attributes{
+		googleads.AttrAdGroup:   resource.Ref{Address: adGroupAddr},
+		googleads.AttrText:      "jobs",
+		googleads.AttrMatchType: "EXACT",
+	})
+
+	if err := p.ValidateResourceSet(context.Background(), []resource.Resource{campaignNeg, adGroupNeg, adGroupPos}); err != nil {
+		t.Fatalf("ValidateResourceSet: %v", err)
 	}
 }
 

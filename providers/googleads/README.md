@@ -4,10 +4,11 @@ The Google Ads provider registers as `googleads` and manages website
 conversion actions, customer conversion-goal biddability, daily Search
 campaign budgets, Search campaigns, campaign conversion-goal
 biddability, Search ad groups, Search keyword criteria, Responsive
-Search Ads, campaign location and language targeting, Search image and
-business-identity assets, and campaign-asset attachments. Credentials
-come from the environment. The Agoraform CLI remains provider-neutral;
-there is no Google Ads-specific command.
+Search Ads, campaign location and language targeting, campaign negative
+keyword criteria, Search image and business-identity assets, and
+campaign-asset attachments. Credentials come from the environment. The
+Agoraform CLI remains provider-neutral; there is no Google Ads-specific
+command.
 
 See the [Google Ads account and OAuth setup guide](../../docs/google-ads-setup.md)
 for the Manager Account, developer-token, Google Cloud, OAuth, refresh-token,
@@ -397,8 +398,9 @@ re-import the ad group.
 
 Search ad-group keyword criteria, including negative keywords. Agoraform
 creates and updates `KEYWORD` criteria only. Campaign-level negative
-keywords, Keyword Planner, Dynamic Search Ads criteria, audience
-criteria, and keyword-level URL or tracking overrides are out of scope.
+keywords use `googleads.campaign_negative_keyword`. Keyword Planner,
+Dynamic Search Ads criteria, audience criteria, and keyword-level URL or
+tracking overrides are out of scope.
 
 ```yaml
 resources:
@@ -658,6 +660,66 @@ agoraform import googleads.campaign_language.english 987654321~888999001
 
 Non-language criteria fail import with guidance. Import the campaign
 first, or apply it, then re-import the language.
+
+### `googleads.campaign_negative_keyword`
+
+Campaign-level negative keyword criteria. Agoraform creates `KEYWORD`
+campaign criteria with `negative: true`. Positive campaign keywords,
+shared negative keyword lists, and Keyword Planner recommendations are
+out of scope.
+
+```yaml
+resources:
+  - address: googleads.campaign.brand
+    attributes:
+      name: Brand
+      budget:
+        $ref: googleads.campaign_budget.brand
+      bidding:
+        strategy: MANUAL_CPC
+  - address: googleads.campaign_negative_keyword.jobs
+    attributes:
+      campaign:
+        $ref: googleads.campaign.brand
+      text: jobs
+      matchType: PHRASE
+```
+
+Campaign negatives attach to a campaign with a logical `$ref`. Use this
+resource for shared exclusions instead of duplicating the same negative
+on every `googleads.keyword` ad-group criterion. `negative` is implied
+by the resource type and must be omitted.
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `campaign` | yes | `$ref` to a `googleads.campaign`. Resolved to the provider-native campaign at apply time. Immutable after create. |
+| `text` | yes | Keyword text without match-type punctuation such as `[brackets]` or `"quotes"`. Trimmed, lowercased, and compared without changing user intent. |
+| `matchType` | yes | `EXACT`, `PHRASE`, or `BROAD`. Immutable after create. |
+
+Google Ads does not allow pausing campaign negative keywords. Duplicate
+text and match type on the same campaign fail validation before
+mutation. `campaign`, `text`, and `matchType` identify the criterion and
+cannot be updated in place; plan reports that instead of hiding
+replacement. Provider-native IDs, resource names, type, status, and the
+implied negative flag live in local state and on
+`RemoteResource.Computed`.
+
+Equivalent live values, including `Jobs` / `jobs` and `phrase` /
+`PHRASE`, produce no plan diff. There are no mutable fields.
+
+Import accepts `campaignId~criterionId` or the resource name
+`customers/{customerId}/campaignCriteria/{campaignId}~{criterionId}` and
+stores `campaignId~criterionId`. Import reconstructs `campaign` as a
+logical `$ref` when the campaign is already bound in local state:
+
+```bash
+agoraform import googleads.campaign.brand 987654321
+agoraform import googleads.campaign_negative_keyword.jobs 987654321~888999002
+```
+
+Non-keyword criteria and positive campaign keywords fail import with
+guidance. Import the campaign first, or apply it, then re-import the
+campaign negative keyword.
 
 ### `googleads.asset`
 

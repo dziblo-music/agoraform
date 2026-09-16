@@ -12,6 +12,15 @@ prints the SemVer identifier without the prefix (`0.5.0`).
 
 ### Added
 
+- Google Ads campaign-level negative keywords:
+  `googleads.campaign_negative_keyword` maintains shared Search exclusions
+  on a campaign without duplicating them across ad groups. Criteria
+  reference `googleads.campaign` with `$ref`, support `EXACT`, `PHRASE`,
+  and `BROAD`, and treat campaign, text, and match type as immutable.
+  Import reconstructs the campaign relationship when the parent is bound
+  and emits only configurable fields. Destroy removes the campaign
+  criterion before the campaign.
+
 - Meta Ads local image and video upload: `meta.image` and `meta.video`
   stream finished files through the provider-neutral `source.file` model,
   persist SHA-256 fingerprints, and expose the Meta image hash or video id
