@@ -7,9 +7,6 @@ tags, and declarative container publication, and v0.5.0 adds
 instead of requiring a pre-created container id. `matomo.tag` also supports
 Matomo's Google Ads conversion template so a managed Google Ads conversion
 action can supply conversion ID and label through `{ $ref, output }`.
-`matomo.trigger` supports Pageview and History Change templates, and
-`matomo.tag` `type: matomoAnalytics` can set `trackingType: pageview` for
-SPA and initial pageview tracking.
 
 The Agoraform CLI remains provider-neutral. There is no Matomo-specific
 `publish` command.
@@ -176,9 +173,7 @@ agoraform import matomo.variable.config VARIABLE_ID
 
 ### `matomo.trigger`
 
-Custom Event, Pageview, and History Change triggers. Verified against Matomo
-Tag Manager 5.2+ (`CustomEvent`, `PageView`, `HistoryChange`). Those Pageview
-and History Change templates declare no parameters.
+v0.2.0 Custom Event trigger:
 
 ```yaml
 - address: matomo.trigger.trial_started
@@ -187,36 +182,16 @@ and History Change templates declare no parameters.
       $ref: matomo.container.main
     type: customEvent
     event: trialStarted
-
-- address: matomo.trigger.pageview
-  attributes:
-    container:
-      $ref: matomo.container.main
-    type: pageView
-    name: Pageview
-
-- address: matomo.trigger.route_change
-  attributes:
-    container:
-      $ref: matomo.container.main
-    type: historyChange
-    name: History Change
 ```
 
-| `type` | Matomo template | Required fields | Notes |
-| --- | --- | --- | --- |
-| `customEvent` | `CustomEvent` | `event` | `name` optional; defaults to `event`. |
-| `pageView` | `PageView` | | Fires on the initial container load (`mtm.PageView`). No parameters. |
-| `historyChange` | `HistoryChange` | | Fires on `pushState` / `replaceState` / `hashchange` / `popstate`. Does not fire on the initial page load. |
-
-`container` follows the same managed-versus-external rule as variables.
-`type` is immutable after the resource is bound. Updates preserve unmanaged
-description/conditions. `event` is only valid for `customEvent`.
+`type: customEvent` and `event` are required. `name` is optional and defaults
+to `event`. `container` follows the same managed-versus-external rule as
+variables. Updates preserve unmanaged description/conditions.
 
 ### `matomo.tag`
 
-v0.2.0 Matomo Analytics event tag, SPA pageview tags, and Google Ads
-conversion tags that fire from a managed Matomo trigger:
+v0.2.0 Matomo Analytics event tag, and Google Ads conversion tags that fire
+from a managed Matomo trigger:
 
 ```yaml
 - address: matomo.tag.trial_started
@@ -228,33 +203,6 @@ conversion tags that fire from a managed Matomo trigger:
       $ref: matomo.trigger.trial_started
     eventCategory: signup
     eventAction: trialStarted
-    matomoConfiguration:
-      $ref: matomo.variable.config
-
-- address: matomo.tag.pageview
-  attributes:
-    container:
-      $ref: matomo.container.main
-    type: matomoAnalytics
-    trackingType: pageview
-    trigger:
-      $ref: matomo.trigger.pageview
-    documentTitle: "{{PageTitle}}"
-    customUrl: "{{PageUrl}}"
-    matomoConfiguration:
-      $ref: matomo.variable.config
-
-- address: matomo.tag.route_change
-  attributes:
-    container:
-      $ref: matomo.container.main
-    type: matomoAnalytics
-    trackingType: pageview
-    name: SPA route change
-    trigger:
-      $ref: matomo.trigger.route_change
-    documentTitle: "{{PageTitle}}"
-    customUrl: "{{PageUrl}}"
     matomoConfiguration:
       $ref: matomo.variable.config
 
@@ -290,65 +238,14 @@ Supported fields for `type: matomoAnalytics`:
 | Attribute | Required | Notes |
 | --- | --- | --- |
 | `type` | yes | `matomoAnalytics` or `googleAdsConversion`. Immutable after create. |
-| `trigger` | yes | `$ref` to managed `matomo.trigger`. Agoraform tags fire on exactly one trigger. |
-| `trackingType` | no | Matomo Analytics `parameters.trackingType`. Omitted values default to `event`. Use `pageview` for SPA/initial pageviews. |
-| `eventCategory` | yes when `trackingType` is `event` | Literal or supported variable `$ref`. Not valid for `pageview`. |
-| `eventAction` | yes when `trackingType` is `event` | Literal or supported variable `$ref`. Not valid for `pageview`. |
-| `eventName` | no | Event tracking only. Literal or supported variable `$ref`. |
-| `eventValue` | no | Event tracking only. Numeric literal/string or supported variable `$ref`. |
-| `documentTitle` | no | Pageview tracking only. Maps to `parameters.documentTitle` (UI: Custom Title). Literal, including unmanaged `{{PageTitle}}`, or a managed variable `$ref`. |
-| `customUrl` | no | Pageview tracking only. Maps to `parameters.customUrl` (UI: Custom URL). Literal, including unmanaged `{{PageUrl}}` or `{{PageOrigin}}/{{PageHash}}`, or a managed variable `$ref`. |
+| `trigger` | yes | `$ref` to managed `matomo.trigger`. |
+| `eventCategory` | yes for `matomoAnalytics` | Literal or supported variable `$ref`. |
+| `eventAction` | yes for `matomoAnalytics` | Literal or supported variable `$ref`. |
+| `eventName` | no | Literal or supported variable `$ref`. |
+| `eventValue` | no | Numeric literal/string or supported variable `$ref`. |
 | `name` | no | Defaults from `eventAction` when possible, otherwise the address name. |
 | `container` | managed mode | `$ref` to the declared `matomo.container`. |
 | `matomoConfiguration` | no | `$ref` to a managed `matomo.variable` with type `matomoConfiguration`. Omitted analytics tags keep implicit/external discovery. |
-
-#### Matomo Analytics pageview template (API contract)
-
-Verified against Matomo Tag Manager 5.2+ (`MatomoTag.php` / `Matomo` tag type)
-and the `PageView` / `HistoryChange` trigger templates. UI labels are not the
-API contract. `trackingType` values are the template enums `event` and
-`pageview` (lowercase). Goal and initialise tracking remain unsupported.
-
-| Agoraform | Matomo `type` / parameter key | Required |
-| --- | --- | --- |
-| `type: matomoAnalytics` | `Matomo` | yes |
-| `trackingType: pageview` | `parameters.trackingType=pageview` | yes for pageviews; omitted Agoraform configs still default to `event` |
-| `documentTitle` | `parameters.documentTitle` | no |
-| `customUrl` | `parameters.customUrl` | no |
-| `matomoConfiguration` | `parameters.matomoConfig` | no; discovered when omitted |
-| `type: pageView` trigger | `PageView` | initial load |
-| `type: historyChange` trigger | `HistoryChange` | SPA History API route changes |
-
-A missing remote `trackingType` is treated as `pageview`, which is the Matomo
-template default. Agoraform-created event tags always persist
-`trackingType=event`. Ecommerce view fields, custom dimensions, and other
-unowned template parameters are not managed.
-
-#### SPA pageviews and duplicate counting
-
-Matomo's UI can attach both Pageview and History Change as fire triggers on
-one tag. Agoraform tags support exactly one fire trigger, so declare two
-pageview tags instead — one bound to `matomo.trigger` `type: pageView`, one
-bound to `type: historyChange`. That is equivalent, not double counting:
-`HistoryChangeTrigger.web.js` does not fire on the initial load, and
-`PageViewTrigger.web.js` emits `mtm.PageView` once when the container starts.
-
-Do not also fire a pageview tag from Window Loaded, DOM Ready, or a second
-Pageview trigger, or the initial load will be counted twice. Give the two
-tags distinct `name` values; Matomo trigger and tag names must be unique.
-
-Agoraform does not modify Next.js, Astro, React, or router code. History
-Change is sufficient when the application uses the browser History API
-(`pushState` / `replaceState` / `hashchange` / `popstate`). For accurate
-titles, the application should update `document.title` before the pageview
-tag fires. If a framework does not use the History API, that is an
-application-side contract — typically a `customEvent` trigger already
-managed by Agoraform, or `window._mtm.push({ event: "mtm.PageView" })` —
-and belongs in `applicationEvents` only when the trigger is `customEvent`.
-Native `pageView` and `historyChange` triggers are not application events.
-
-Hash-routed apps should set `customUrl` to `{{PageOrigin}}/{{PageHash}}`;
-path-routed apps should use `{{PageUrl}}`.
 
 Supported fields for `type: googleAdsConversion`:
 

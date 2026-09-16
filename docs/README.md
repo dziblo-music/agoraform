@@ -12,6 +12,7 @@ guides lives here.
 - [Import (0.1.0)](import.md)
 - [Local provider configuration](local-configuration.md)
 - [Matomo Tag Manager publication (v0.2.0)](matomo-publishing.md)
+- [Matomo SPA pageviews](matomo-spa-pageviews.md)
 - [Google Ads account and OAuth setup](google-ads-setup.md)
 - [Local state (0.1.0)](state.md)
 - [Releasing](release.md)
@@ -32,18 +33,20 @@ declarative container publication through `plan` and `apply`. v0.5.0 adds
 `agoraform destroy` for managed resources in reverse dependency order. The
 Matomo provider also manages `matomo.container` so the Tag Manager container
 itself can be declared, imported, or destroyed when Agoraform-managed.
-`matomo.variable` also supports `type: matomoConfiguration`. v0.3.0 adds
-supported website `googleads.conversion_action` and
-`googleads.customer_conversion_goal` resources plus import/adoption of existing
-conversion measurement. v0.4.0 adds the complete Search campaign graph:
-daily `googleads.campaign_budget` resources, Search `googleads.campaign`
-resources, Search `googleads.ad_group` resources, Search
-`googleads.keyword` criteria, Search `googleads.responsive_search_ad`
-resources, campaign location and language targeting, and campaign
-`googleads.campaign_conversion_goal` biddability. `agoraform destroy` uses
-Google Ads mutate `remove` for supported resources; customer and campaign
-conversion goals remain provider-owned. Removing a resource from the
-manifest does not destroy or prune it. See the
+`matomo.variable` also supports `type: matomoConfiguration`. Matomo SPA
+pageviews can use native Pageview and History Change triggers; see
+[Matomo SPA pageviews](matomo-spa-pageviews.md) for duplicate-route-event
+filtering with `historySource`. v0.3.0 adds supported website
+`googleads.conversion_action` and `googleads.customer_conversion_goal`
+resources plus import/adoption of existing conversion measurement. v0.4.0 adds
+the complete Search campaign graph: daily `googleads.campaign_budget`
+resources, Search `googleads.campaign` resources, Search
+`googleads.ad_group` resources, Search `googleads.keyword` criteria, Search
+`googleads.responsive_search_ad` resources, campaign location and language
+targeting, and campaign `googleads.campaign_conversion_goal` biddability.
+`agoraform destroy` uses Google Ads mutate `remove` for supported resources;
+customer and campaign conversion goals remain provider-owned. Removing a
+resource from the manifest does not destroy or prune it. See the
 [Google Ads setup guide](google-ads-setup.md),
 [Google Ads Search campaign example](../examples/googleads-search/README.md),
 and [Google Ads conversion example](../examples/googleads-conversion/README.md).
