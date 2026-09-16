@@ -786,13 +786,11 @@ func (p *Provider) remoteAsset(addr resource.Address, item assetData, desired re
 		if len(item.FinalURLs) > 0 {
 			attrs[AttrFinalUrls] = comparableAnyList(item.FinalURLs)
 		}
-		if importOrManages(desired, AttrDescription1) || importOrManages(desired, AttrDescription2) || desired.Attributes == nil {
-			if item.Description1 != "" {
-				attrs[AttrDescription1] = item.Description1
-			}
-			if item.Description2 != "" {
-				attrs[AttrDescription2] = item.Description2
-			}
+		if item.Description1 != "" {
+			attrs[AttrDescription1] = item.Description1
+		}
+		if item.Description2 != "" {
+			attrs[AttrDescription2] = item.Description2
 		}
 	}
 	if item.Type == assetTypeCallout && item.CalloutText != "" {
@@ -890,10 +888,8 @@ func comparableAsset(res resource.Resource) (resource.Attributes, error) {
 		if err != nil {
 			return nil, err
 		}
-		if d1 != "" || d2 != "" {
-			out[AttrDescription1] = d1
-			out[AttrDescription2] = d2
-		}
+		out[AttrDescription1] = d1
+		out[AttrDescription2] = d2
 	case assetTypeCallout:
 		text, err := requiredLimitedText(res, AttrCalloutText, maxCalloutTextRunes)
 		if err != nil {
@@ -936,12 +932,10 @@ func comparableAssetFromLive(desired resource.Resource, live *resource.RemoteRes
 			return nil, fmt.Errorf("attribute %q %w", AttrFinalUrls, err)
 		}
 		out[AttrFinalUrls] = comparableAnyList(urls)
-		if importOrManages(desired, AttrDescription1) || importOrManages(desired, AttrDescription2) {
-			d1, _ := coerceString(live.Attributes[AttrDescription1])
-			d2, _ := coerceString(live.Attributes[AttrDescription2])
-			out[AttrDescription1] = d1
-			out[AttrDescription2] = d2
-		}
+		d1, _ := coerceString(live.Attributes[AttrDescription1])
+		d2, _ := coerceString(live.Attributes[AttrDescription2])
+		out[AttrDescription1] = d1
+		out[AttrDescription2] = d2
 	case assetTypeCallout:
 		text, err := coerceString(live.Attributes[AttrCalloutText])
 		if err != nil {
@@ -969,14 +963,6 @@ func liveAssetFinalURLs(v any) ([]string, error) {
 		out = append(out, s)
 	}
 	return out, nil
-}
-
-func importOrManages(res resource.Resource, key string) bool {
-	if res.Attributes == nil {
-		return true
-	}
-	_, ok := res.Attributes[key]
-	return ok
 }
 
 func rejectImmutableAssetChanges(desired resource.Resource, live *resource.RemoteResource, want, got resource.Attributes) error {
@@ -1083,12 +1069,10 @@ func assetUpdateBody(desired resource.Resource, resourceName string, want, got r
 			setNestedMutateValue(body, "sitelinkAsset.linkText", want[AttrLinkText])
 			mask = append(mask, "sitelinkAsset.linkText")
 		}
-		if importOrManages(desired, AttrDescription1) || importOrManages(desired, AttrDescription2) {
-			if !reflect.DeepEqual(want[AttrDescription1], got[AttrDescription1]) || !reflect.DeepEqual(want[AttrDescription2], got[AttrDescription2]) {
-				setNestedMutateValue(body, "sitelinkAsset.description1", want[AttrDescription1])
-				setNestedMutateValue(body, "sitelinkAsset.description2", want[AttrDescription2])
-				mask = append(mask, "sitelinkAsset.description1", "sitelinkAsset.description2")
-			}
+		if !reflect.DeepEqual(want[AttrDescription1], got[AttrDescription1]) || !reflect.DeepEqual(want[AttrDescription2], got[AttrDescription2]) {
+			setNestedMutateValue(body, "sitelinkAsset.description1", want[AttrDescription1])
+			setNestedMutateValue(body, "sitelinkAsset.description2", want[AttrDescription2])
+			mask = append(mask, "sitelinkAsset.description1", "sitelinkAsset.description2")
 		}
 		if !reflect.DeepEqual(want[AttrFinalUrls], got[AttrFinalUrls]) {
 			body["finalUrls"] = want[AttrFinalUrls]
