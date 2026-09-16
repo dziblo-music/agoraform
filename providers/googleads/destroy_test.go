@@ -154,6 +154,18 @@ func TestDestroyRemovesEachRemovableType(t *testing.T) {
 			},
 		},
 		{
+			name:       "campaign_negative_keyword",
+			collection: "campaignCriteria",
+			res: func(t *testing.T) resource.Resource {
+				res := campaignNegativeKeywordResource(t, "jobs", defaultCampaignNegativeKeywordAttrs(t))
+				res.Identity = resource.Identity{ID: "21~73"}
+				return res
+			},
+			seed: func(f *destroyFake) {
+				f.seedCriterion(map[string]any{"criterionId": "73", "campaign": "customers/" + testCustomerID + "/campaigns/21", "status": "ENABLED", "negative": true, "type": "KEYWORD", "keyword": map[string]any{"text": "jobs", "matchType": "PHRASE"}})
+			},
+		},
+		{
 			name:       "campaign_asset",
 			collection: "campaignAssets",
 			res: func(t *testing.T) resource.Resource {
@@ -420,8 +432,8 @@ func TestDestroyRunReverseOrderProviderOwnedAndRetry(t *testing.T) {
 	if !errors.As(err, &remaining) || remaining == nil {
 		t.Fatalf("Run err = %v, want RemainingError", err)
 	}
-	if result.Removed != 8 || result.Remaining != 2 {
-		t.Fatalf("result = %+v, want 8 removed and 2 remaining", result)
+	if result.Removed != 9 || result.Remaining != 2 {
+		t.Fatalf("result = %+v, want 9 removed and 2 remaining", result)
 	}
 
 	ops := fake.operations()
@@ -431,8 +443,8 @@ func TestDestroyRunReverseOrderProviderOwnedAndRetry(t *testing.T) {
 	assertBefore(t, got, "campaignCriteria", "campaigns")
 	assertBefore(t, got, "adGroups", "campaigns")
 	assertBefore(t, got, "campaigns", "campaignBudgets")
-	if len(got) != 8 {
-		t.Fatalf("collections = %v, want 8 removable mutations", got)
+	if len(got) != 9 {
+		t.Fatalf("collections = %v, want 9 removable mutations", got)
 	}
 	for _, op := range ops {
 		if op.collection == "customerConversionGoals" || op.collection == "campaignConversionGoals" {
@@ -446,6 +458,7 @@ func TestDestroyRunReverseOrderProviderOwnedAndRetry(t *testing.T) {
 		"googleads.keyword.brand_exact",
 		"googleads.campaign_location.united_states",
 		"googleads.campaign_language.english",
+		"googleads.campaign_negative_keyword.jobs",
 		"googleads.ad_group.brand",
 		"googleads.campaign.brand",
 		"googleads.conversion_action.trial_started",
@@ -487,6 +500,7 @@ func TestDestroyRunPartialFailurePreservesRetryableState(t *testing.T) {
 		"googleads.keyword.brand_exact",
 		"googleads.campaign_location.united_states",
 		"googleads.campaign_language.english",
+		"googleads.campaign_negative_keyword.jobs",
 		"googleads.ad_group.brand",
 		"googleads.conversion_action.trial_started",
 	} {
@@ -1002,6 +1016,7 @@ func seedSearchGraph(fake *destroyFake) {
 	fake.seedRSA(map[string]any{"adGroup": "customers/" + testCustomerID + "/adGroups/41", "status": "PAUSED", "ad": map[string]any{"id": "61", "type": "RESPONSIVE_SEARCH_AD"}})
 	fake.seedCriterion(map[string]any{"criterionId": "71", "campaign": "customers/" + testCustomerID + "/campaigns/21", "status": "ENABLED", "type": "LOCATION"})
 	fake.seedCriterion(map[string]any{"criterionId": "72", "campaign": "customers/" + testCustomerID + "/campaigns/21", "status": "ENABLED", "type": "LANGUAGE"})
+	fake.seedCriterion(map[string]any{"criterionId": "73", "campaign": "customers/" + testCustomerID + "/campaigns/21", "status": "ENABLED", "negative": true, "type": "KEYWORD", "keyword": map[string]any{"text": "jobs", "matchType": "PHRASE"}})
 }
 
 func searchDestroyGraph(t *testing.T) []resource.Resource {
@@ -1032,6 +1047,7 @@ func searchDestroyGraph(t *testing.T) []resource.Resource {
 		}),
 		campaignLocationResource(t, "united_states", defaultCampaignLocationAttrs(t)),
 		campaignLanguageResource(t, "english", defaultCampaignLanguageAttrs(t)),
+		campaignNegativeKeywordResource(t, "jobs", defaultCampaignNegativeKeywordAttrs(t)),
 		adGroupResource(t, "brand", defaultAdGroupAttrs(t)),
 		keywordResource(t, "brand_exact", resource.Attributes{
 			googleads.AttrAdGroup:   adGroupRef(t, "brand"),
@@ -1051,6 +1067,7 @@ func searchDestroyIDs() map[string]string {
 		"googleads.campaign_conversion_goal.trial_signup": "21~SIGNUP~WEBSITE",
 		"googleads.campaign_location.united_states":       "21~71",
 		"googleads.campaign_language.english":             "21~72",
+		"googleads.campaign_negative_keyword.jobs":        "21~73",
 		"googleads.ad_group.brand":                        "41",
 		"googleads.keyword.brand_exact":                   "41~51",
 		"googleads.responsive_search_ad.brand":            "41~61",

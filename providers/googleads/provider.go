@@ -25,8 +25,9 @@ const (
 // googleads.campaign, googleads.campaign_conversion_goal,
 // googleads.ad_group, googleads.keyword, googleads.responsive_search_ad,
 // googleads.campaign_location, googleads.campaign_language,
-// googleads.asset, and googleads.campaign_asset and shares
-// a reusable REST client for authenticated query and mutate operations.
+// googleads.campaign_negative_keyword, googleads.asset, and
+// googleads.campaign_asset and shares a reusable REST client for
+// authenticated query and mutate operations.
 type Provider struct {
 	cfg    Config
 	once   sync.Once
@@ -81,7 +82,7 @@ func (p *Provider) Name() string { return Name }
 
 // ResourceTypes implements provider.Provider.
 func (p *Provider) ResourceTypes() []string {
-	return []string{TypeConversionAction, TypeCustomerConversionGoal, TypeCampaignBudget, TypeCampaign, TypeCampaignConversionGoal, TypeAdGroup, TypeKeyword, TypeResponsiveSearchAd, TypeCampaignLocation, TypeCampaignLanguage, TypeAsset, TypeCampaignAsset}
+	return []string{TypeConversionAction, TypeCustomerConversionGoal, TypeCampaignBudget, TypeCampaign, TypeCampaignConversionGoal, TypeAdGroup, TypeKeyword, TypeResponsiveSearchAd, TypeCampaignLocation, TypeCampaignLanguage, TypeCampaignNegativeKeyword, TypeAsset, TypeCampaignAsset}
 }
 
 // Outputs implements provider.OutputCatalog.
@@ -178,6 +179,8 @@ func (p *Provider) Validate(_ context.Context, res resource.Resource) error {
 		return p.validateCampaignLocation(res)
 	case TypeCampaignLanguage:
 		return p.validateCampaignLanguage(res)
+	case TypeCampaignNegativeKeyword:
+		return p.validateCampaignNegativeKeyword(res)
 	case TypeAsset:
 		return p.validateAsset(res)
 	case TypeCampaignAsset:
@@ -210,6 +213,8 @@ func (p *Provider) Read(ctx context.Context, res resource.Resource) (resource.Re
 		return p.readCampaignLocation(ctx, res)
 	case TypeCampaignLanguage:
 		return p.readCampaignLanguage(ctx, res)
+	case TypeCampaignNegativeKeyword:
+		return p.readCampaignNegativeKeyword(ctx, res)
 	case TypeAsset:
 		return p.readAsset(ctx, res)
 	case TypeCampaignAsset:
@@ -245,6 +250,8 @@ func (p *Provider) Create(ctx context.Context, res resource.Resource) (resource.
 		return p.createCampaignLocation(ctx, res)
 	case TypeCampaignLanguage:
 		return p.createCampaignLanguage(ctx, res)
+	case TypeCampaignNegativeKeyword:
+		return p.createCampaignNegativeKeyword(ctx, res)
 	case TypeAsset:
 		return p.createAsset(ctx, res)
 	case TypeCampaignAsset:
@@ -277,6 +284,8 @@ func (p *Provider) Update(ctx context.Context, desired resource.Resource, actual
 		return p.updateCampaignLocation(ctx, desired, actual)
 	case TypeCampaignLanguage:
 		return p.updateCampaignLanguage(ctx, desired, actual)
+	case TypeCampaignNegativeKeyword:
+		return p.updateCampaignNegativeKeyword(ctx, desired, actual)
 	case TypeAsset:
 		return p.updateAsset(ctx, desired, actual)
 	case TypeCampaignAsset:
@@ -309,6 +318,8 @@ func (p *Provider) Import(ctx context.Context, addr resource.Address, id string)
 		return p.importCampaignLocation(ctx, addr, id)
 	case TypeCampaignLanguage:
 		return p.importCampaignLanguage(ctx, addr, id)
+	case TypeCampaignNegativeKeyword:
+		return p.importCampaignNegativeKeyword(ctx, addr, id)
 	case TypeAsset:
 		return p.importAsset(ctx, addr, id)
 	case TypeCampaignAsset:
@@ -336,8 +347,8 @@ func (p *Provider) Import(ctx context.Context, addr resource.Address, id string)
 // store adGroupId~criterionId. Responsive search ads accept
 // adGroupId~adId or
 // customers/{customerId}/adGroupAds/{adGroupId}~{adId} and store
-// adGroupId~adId. Campaign location and language criteria
-// accept campaignId~criterionId or
+// adGroupId~adId. Campaign location, language, and negative-keyword
+// criteria accept campaignId~criterionId or
 // customers/{customerId}/campaignCriteria/{campaignId}~{criterionId} and
 // store campaignId~criterionId. Assets accept a numeric id or
 // customers/{customerId}/assets/{id} and store the numeric id.
@@ -365,7 +376,7 @@ func (p *Provider) NormalizeImportID(addr resource.Address, raw string) (string,
 		return p.canonicalKeywordImportID(addr, raw)
 	case TypeResponsiveSearchAd:
 		return p.canonicalRSAImportID(addr, raw)
-	case TypeCampaignLocation, TypeCampaignLanguage:
+	case TypeCampaignLocation, TypeCampaignLanguage, TypeCampaignNegativeKeyword:
 		return p.canonicalCampaignCriterionImportID(addr, raw)
 	case TypeAsset:
 		return p.canonicalAssetImportID(addr, raw)
@@ -399,6 +410,8 @@ func (p *Provider) NormalizeComparable(desired resource.Resource, live *resource
 		return p.normalizeCampaignLocationComparable(context.Background(), desired, live)
 	case TypeCampaignLanguage:
 		return p.normalizeCampaignLanguageComparable(context.Background(), desired, live)
+	case TypeCampaignNegativeKeyword:
+		return p.normalizeCampaignNegativeKeywordComparable(desired, live)
 	case TypeAsset:
 		return p.normalizeAssetComparable(desired, live)
 	case TypeCampaignAsset:

@@ -162,6 +162,24 @@ func (p *Provider) ValidateResourceSet(ctx context.Context, resources []resource
 		seenCanonicalLanguages[canonicalKey] = res.Address
 	}
 
+	seenCampaignNegatives := map[string]resource.Address{}
+	for _, res := range resources {
+		if res.Address.Provider != Name || res.Address.Type != TypeCampaignNegativeKeyword {
+			continue
+		}
+		key, err := campaignNegativeKeywordNaturalKey(res)
+		if err != nil {
+			continue
+		}
+		if other, ok := seenCampaignNegatives[key]; ok {
+			text, _ := requiredKeywordText(res)
+			matchType, _ := requiredKeywordMatchType(res)
+			ref, _ := requiredCampaignRef(res)
+			return fmt.Errorf("resource %s: duplicates %s; campaign negative keyword text %q with match type %s is already declared for campaign %s", res.Address, other, text, matchType, ref.Address)
+		}
+		seenCampaignNegatives[key] = res.Address
+	}
+
 	seenRSAs := map[string]resource.Address{}
 	for _, res := range resources {
 		if res.Address.Provider != Name || res.Address.Type != TypeResponsiveSearchAd {

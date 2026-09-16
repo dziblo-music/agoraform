@@ -168,6 +168,7 @@ still exits non-zero while those bindings remain.
 | `googleads.responsive_search_ad` | remove | `adGroupAds:mutate` `remove` | `status=REMOVED` | `REMOVED` or not found | remove the ad-group-ad relationship only |
 | `googleads.campaign_location` | remove | `campaignCriteria:mutate` `remove` | `status=REMOVED` | `REMOVED` or not found | mutate `remove` only |
 | `googleads.campaign_language` | remove | `campaignCriteria:mutate` `remove` | `status=REMOVED` | `REMOVED` or not found | mutate `remove` only |
+| `googleads.campaign_negative_keyword` | remove | `campaignCriteria:mutate` `remove` | `status=REMOVED` | `REMOVED` or not found | `remove` only; never update status to `ENABLED` |
 | `googleads.asset` | unsupported | none | object remains | not applicable | AssetService has no remove/delete operation; detach campaign-asset relationships instead |
 | `googleads.campaign_asset` | remove | `campaignAssets:mutate` `remove` | `status=REMOVED` | `REMOVED` or not found | detach the campaign relationship only |
 

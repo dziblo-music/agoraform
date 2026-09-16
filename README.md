@@ -535,6 +535,7 @@ agoraform import googleads.keyword.brand_exact 555666777~888999000
 agoraform import googleads.responsive_search_ad.brand 555666777~888999000
 agoraform import googleads.campaign_location.united_states 987654321~888999000
 agoraform import googleads.campaign_language.english 987654321~888999001
+agoraform import googleads.campaign_negative_keyword.jobs 987654321~888999002
 agoraform import googleads.campaign_conversion_goal.trial_signup 987654321~SIGNUP~WEBSITE
 ```
 
@@ -546,11 +547,12 @@ should produce no changes.
 Google Ads import accepts supported website conversion actions, supported
 `WEBSITE` customer conversion goals, daily Search campaign budgets, Search
 campaigns, Search ad groups, Search keywords including negatives,
-Responsive Search Ads, campaign location and language criteria, and
-campaign conversion goals. Import a campaign budget before the campaign,
-the campaign before an ad group, campaign conversion goal, location, or
-language, and the ad group before a keyword or Responsive Search Ad, so
-Agoraform can reconstruct logical `$ref`s.
+Responsive Search Ads, campaign location and language criteria, campaign
+negative keywords, and campaign conversion goals. Import a campaign budget
+before the campaign, the campaign before an ad group, campaign conversion
+goal, location, language, or campaign negative keyword, and the ad group
+before a keyword or Responsive Search Ad, so Agoraform can reconstruct
+logical `$ref`s.
 Unsupported conversion types, origins, channel types, Dynamic Search Ads
 settings, ad group types, ad types, criterion types, keyword-level URL
 or tracking settings, and budget periods fail with actionable diagnostics

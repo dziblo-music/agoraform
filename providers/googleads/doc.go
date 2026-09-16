@@ -11,7 +11,8 @@
 // (googleads.keyword), Responsive Search Ads
 // (googleads.responsive_search_ad), campaign location criteria
 // (googleads.campaign_location), campaign language criteria
-// (googleads.campaign_language), Search image and business-name assets
+// (googleads.campaign_language), campaign negative keyword criteria
+// (googleads.campaign_negative_keyword), Search image and business-name assets
 // (googleads.asset), and campaign-asset attachments
 // (googleads.campaign_asset). Other Google Ads resources remain
 // follow-up work. Destroy uses Google Ads mutate remove operations for

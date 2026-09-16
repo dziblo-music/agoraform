@@ -68,6 +68,27 @@ resources:
         $ref: googleads.campaign.search_acquisition
       language: en
 
+  - address: googleads.campaign_negative_keyword.jobs
+    attributes:
+      campaign:
+        $ref: googleads.campaign.search_acquisition
+      text: jobs
+      matchType: PHRASE
+
+  - address: googleads.campaign_negative_keyword.careers
+    attributes:
+      campaign:
+        $ref: googleads.campaign.search_acquisition
+      text: careers
+      matchType: PHRASE
+
+  - address: googleads.campaign_negative_keyword.login
+    attributes:
+      campaign:
+        $ref: googleads.campaign.search_acquisition
+      text: login
+      matchType: EXACT
+
   - address: googleads.ad_group.trial
     attributes:
       name: Trial
@@ -99,30 +120,6 @@ resources:
       text: online software
       matchType: BROAD
       status: PAUSED
-
-  - address: googleads.keyword.jobs_neg
-    attributes:
-      adGroup:
-        $ref: googleads.ad_group.trial
-      text: jobs
-      matchType: PHRASE
-      negative: true
-
-  - address: googleads.keyword.careers_neg
-    attributes:
-      adGroup:
-        $ref: googleads.ad_group.trial
-      text: careers
-      matchType: PHRASE
-      negative: true
-
-  - address: googleads.keyword.login_neg
-    attributes:
-      adGroup:
-        $ref: googleads.ad_group.trial
-      text: login
-      matchType: EXACT
-      negative: true
 
   - address: googleads.responsive_search_ad.trial
     attributes:

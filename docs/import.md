@@ -136,7 +136,7 @@ Import v0.4 Search resources one at a time. Parent resources must already
 be bound so Agoraform can reconstruct logical `$ref` values:
 
 ```text
-campaign_budget -> campaign -> ad_group | campaign_conversion_goal | campaign_location | campaign_language | campaign_asset
+campaign_budget -> campaign -> ad_group | campaign_conversion_goal | campaign_location | campaign_language | campaign_negative_keyword | campaign_asset
 ad_group -> keyword | responsive_search_ad
 asset -> campaign_asset
 ```
@@ -274,6 +274,27 @@ agoraform import googleads.campaign_language.english 987654321~888999001
 
 Non-language criteria fail with guidance instead of emitting a lossy
 language manifest.
+
+## Google Ads campaign negative keywords
+
+Import a campaign negative keyword criterion by its
+`campaignId~criterionId` identity, or by the Google Ads resource name
+`customers/{customerId}/campaignCriteria/{campaignId}~{criterionId}`.
+Agoraform stores `campaignId~criterionId` in local state as `remoteId`.
+Do not copy it into YAML. Generated YAML includes `campaign`, `text`,
+and `matchType` only; `negative` is implied by the resource type.
+
+Import the campaign first so Agoraform can reconstruct `campaign` as a
+logical `$ref`:
+
+```bash
+agoraform import googleads.campaign.brand 987654321
+agoraform import googleads.campaign_negative_keyword.jobs 987654321~888999002
+```
+
+Non-keyword criteria and positive campaign keywords fail with guidance
+instead of emitting a lossy campaign-negative manifest. Keyword text,
+match type, and campaign are immutable after the criterion exists.
 
 ## Google Ads assets
 

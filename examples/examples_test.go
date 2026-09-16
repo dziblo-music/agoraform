@@ -177,6 +177,7 @@ func TestGoogleAdsSearchExampleCoversCampaignWorkflow(t *testing.T) {
 		googleads.TypeCampaignConversionGoal,
 		googleads.TypeCampaignLocation,
 		googleads.TypeCampaignLanguage,
+		googleads.TypeCampaignNegativeKeyword,
 		googleads.TypeAdGroup,
 		googleads.TypeKeyword,
 		googleads.TypeResponsiveSearchAd,
@@ -230,6 +231,19 @@ func TestGoogleAdsSearchExampleCoversCampaignWorkflow(t *testing.T) {
 		t.Errorf("language campaign $ref = %s, want %s", got, campaign.Address)
 	}
 
+	campaignNegatives := byType[googleads.TypeCampaignNegativeKeyword]
+	if len(campaignNegatives) == 0 {
+		t.Error("expected at least one campaign negative keyword")
+	}
+	for _, kw := range campaignNegatives {
+		if got := requireRef(t, kw, googleads.AttrCampaign); got != campaign.Address.String() {
+			t.Errorf("%s campaign $ref = %s, want %s", kw.Address, got, campaign.Address)
+		}
+		if _, ok := kw.Attributes[googleads.AttrNegative]; ok {
+			t.Errorf("%s must omit implied negative", kw.Address)
+		}
+	}
+
 	rsa := onlyResource(t, byType, googleads.TypeResponsiveSearchAd)
 	requireStatus(t, rsa, "PAUSED")
 	if got := requireRef(t, rsa, googleads.AttrAdGroup); got != adGroup.Address.String() {
@@ -237,22 +251,16 @@ func TestGoogleAdsSearchExampleCoversCampaignWorkflow(t *testing.T) {
 	}
 
 	matchTypes := map[string]bool{}
-	negatives := 0
 	for _, kw := range byType[googleads.TypeKeyword] {
 		if got := requireRef(t, kw, googleads.AttrAdGroup); got != adGroup.Address.String() {
 			t.Errorf("%s adGroup $ref = %s, want %s", kw.Address, got, adGroup.Address)
 		}
-		negative, _ := kw.Attributes[googleads.AttrNegative].(bool)
-		if negative {
-			negatives++
+		if negative, _ := kw.Attributes[googleads.AttrNegative].(bool); negative {
 			continue
 		}
 		requireStatus(t, kw, "PAUSED")
 		matchType, _ := kw.Attributes[googleads.AttrMatchType].(string)
 		matchTypes[matchType] = true
-	}
-	if negatives == 0 {
-		t.Error("expected at least one negative keyword")
 	}
 	for _, matchType := range []string{"EXACT", "PHRASE", "BROAD"} {
 		if !matchTypes[matchType] {

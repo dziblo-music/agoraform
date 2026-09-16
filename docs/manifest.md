@@ -307,6 +307,7 @@ googleads.campaign_budget
         ├── googleads.campaign_conversion_goal
         ├── googleads.campaign_location
         ├── googleads.campaign_language
+        ├── googleads.campaign_negative_keyword
         ├── googleads.campaign_asset
         └── googleads.ad_group
               ├── googleads.keyword
@@ -513,8 +514,9 @@ allow negative ad-group criteria to be updated later. For an existing negative
 keyword, a requested status change fails during planning before any mutation.
 Positive keyword status remains mutable.
 
-Campaign-level negative keywords, Keyword Planner, audience or DSA
-criteria, and keyword-level URL or tracking overrides are out of scope. See the
+Campaign-level negative keywords use `googleads.campaign_negative_keyword`.
+Keyword Planner, audience or DSA criteria, and keyword-level URL or
+tracking overrides are out of scope. See the
 [Google Ads provider reference](../providers/googleads/README.md).
 
 ### `googleads.responsive_search_ad`
@@ -611,6 +613,33 @@ language are immutable after create.
 ```
 
 See the [Google Ads provider reference](../providers/googleads/README.md).
+
+### `googleads.campaign_negative_keyword`
+
+Campaign-level negative keyword criteria. Campaign negatives must
+reference a `googleads.campaign`. Match types are `EXACT`, `PHRASE`, and
+`BROAD`. Keyword text is normalized to lowercase without changing user
+intent. Campaign, text, and match type are immutable after create.
+`negative` is implied and must be omitted.
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `campaign` | yes | `$ref` to a `googleads.campaign`. |
+| `text` | yes | Keyword text without match-type punctuation. |
+| `matchType` | yes | `EXACT`, `PHRASE`, or `BROAD`. |
+
+```yaml
+- address: googleads.campaign_negative_keyword.jobs
+  attributes:
+    campaign:
+      $ref: googleads.campaign.brand
+    text: jobs
+    matchType: PHRASE
+```
+
+Use this resource for shared Search exclusions instead of duplicating
+the same negative on every ad group. See the
+[Google Ads provider reference](../providers/googleads/README.md).
 
 ### `googleads.asset`
 

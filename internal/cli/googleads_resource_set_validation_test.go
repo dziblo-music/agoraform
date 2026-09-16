@@ -158,6 +158,34 @@ resources:
       location: united states
 `
 
+const googleAdsDuplicateCampaignNegativeKeywordManifest = `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: googleads.campaign_budget.brand
+    attributes:
+      name: Brand daily budget
+      amount: 50
+      explicitlyShared: false
+  - address: googleads.campaign.brand
+    attributes:
+      name: Brand
+      budget:
+        $ref: googleads.campaign_budget.brand
+      bidding:
+        strategy: MANUAL_CPC
+  - address: googleads.campaign_negative_keyword.jobs
+    attributes:
+      campaign:
+        $ref: googleads.campaign.brand
+      text: Jobs
+      matchType: phrase
+  - address: googleads.campaign_negative_keyword.jobs_dup
+    attributes:
+      campaign:
+        $ref: googleads.campaign.brand
+      text: jobs
+      matchType: PHRASE
+`
+
 func TestValidateGoogleAdsCustomerGoalReferenceCategoryMismatch(t *testing.T) {
 	p, _ := googleAdsTestProvider(t)
 	reg := provider.NewRegistry()
@@ -250,5 +278,24 @@ func TestValidateGoogleAdsDuplicateLocations(t *testing.T) {
 	errOut := stderr.String()
 	if !strings.Contains(errOut, "duplicates") || !strings.Contains(strings.ToLower(errOut), "united states") {
 		t.Fatalf("stderr = %q, want duplicate location diagnostic", errOut)
+	}
+}
+
+func TestValidateGoogleAdsDuplicateCampaignNegativeKeywords(t *testing.T) {
+	p, _ := googleAdsTestProvider(t)
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeManifest(t, "agoraform.yaml", googleAdsDuplicateCampaignNegativeKeywordManifest)
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"validate", "-f", path}, reg)
+	if code != cli.ExitError {
+		t.Fatalf("exit code = %d, want %d", code, cli.ExitError)
+	}
+	errOut := stderr.String()
+	if !strings.Contains(errOut, "duplicates") || !strings.Contains(errOut, "PHRASE") {
+		t.Fatalf("stderr = %q, want duplicate campaign negative keyword diagnostic", errOut)
 	}
 }

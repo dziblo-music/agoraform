@@ -114,6 +114,14 @@ var destroyLifecycleByType = map[string]resourceDestroyLifecycle{
 		AlreadyTerminal: "status=REMOVED or not found",
 		Precondition:    "mutate remove only; never update status to ENABLED",
 	},
+	TypeCampaignNegativeKeyword: {
+		Capability:      provider.DestroyRemove,
+		Collection:      campaignCriteriaCollection,
+		MutateOperation: "remove",
+		TerminalState:   "status=REMOVED",
+		AlreadyTerminal: "status=REMOVED or not found",
+		Precondition:    "mutate remove only, including campaign negative keywords whose status cannot be updated; never update status to ENABLED",
+	},
 	TypeAsset: {
 		Capability:      provider.DestroyUnsupported,
 		AlreadyTerminal: "not applicable; object remains",
@@ -187,7 +195,7 @@ func (p *Provider) Destroy(ctx context.Context, res resource.Resource) (provider
 		return p.destroyComposite(ctx, res, spec, boundRSAIdentity, parseRSAID, adGroupAdResourceName, func(adGroupID, childID string) string {
 			return "SELECT ad_group_ad.resource_name, ad_group_ad.status FROM ad_group_ad WHERE ad_group.id = " + adGroupID + " AND ad_group_ad.ad.id = " + childID
 		}, "adGroupAd")
-	case TypeCampaignLocation, TypeCampaignLanguage:
+	case TypeCampaignLocation, TypeCampaignLanguage, TypeCampaignNegativeKeyword:
 		return p.destroyComposite(ctx, res, spec, boundCampaignCriterionIdentity, parseCampaignCriterionID, campaignCriterionResourceName, func(campaignID, childID string) string {
 			return "SELECT campaign_criterion.resource_name, campaign_criterion.status FROM campaign_criterion WHERE campaign.id = " + campaignID + " AND campaign_criterion.criterion_id = " + childID
 		}, "campaignCriterion")
