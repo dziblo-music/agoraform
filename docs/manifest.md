@@ -643,16 +643,21 @@ the same negative on every ad group. See the
 
 ### `googleads.asset`
 
-Search image uploads and business-name text. IMAGE assets use
-`source.file` under optional `assets.root`. TEXT assets use `text`.
-Creative production stays outside Agoraform. Image bytes never enter the
-manifest, plan, or state.
+Search image uploads, business-name text, sitelinks, and callouts. IMAGE
+assets use `source.file` under optional `assets.root`. TEXT assets use
+`text`. Sitelinks use `linkText` and `finalUrls`. Callouts use
+`calloutText`. Creative production stays outside Agoraform. Image bytes
+never enter the manifest, plan, or state.
 
 | Attribute | Required | Description |
 | --- | --- | --- |
-| `type` | yes | `IMAGE` or `TEXT`. |
+| `type` | yes | `IMAGE`, `TEXT`, `SITELINK`, or `CALLOUT`. |
 | `source.file` | IMAGE create | Project-relative JPEG, PNG, or GIF. |
 | `text` | TEXT | Business-name copy (at most 25 characters). |
+| `linkText` | SITELINK | Sitelink display text (at most 25 characters). |
+| `finalUrls` | SITELINK | Absolute http/https landing-page URLs. |
+| `description1` / `description2` | no | Optional paired sitelink description lines. |
+| `calloutText` | CALLOUT | Callout display text (at most 25 characters). |
 | `name` | no | Optional Google Ads friendly name. |
 
 ```yaml
@@ -661,19 +666,26 @@ manifest, plan, or state.
     type: IMAGE
     source:
       file: google/product-ui.png
+- address: googleads.asset.features_sitelink
+  attributes:
+    type: SITELINK
+    linkText: Features
+    finalUrls:
+      - https://example.com/features
 ```
 
 ### `googleads.campaign_asset`
 
 Attaches a managed asset to a Search campaign. Search images use
 `fieldType: AD_IMAGE`. Business logo and business name use
-`BUSINESS_LOGO` and `BUSINESS_NAME`.
+`BUSINESS_LOGO` and `BUSINESS_NAME`. Sitelinks and callouts use
+`SITELINK` and `CALLOUT`.
 
 | Attribute | Required | Description |
 | --- | --- | --- |
 | `campaign` | yes | `$ref` to a `googleads.campaign`. |
 | `asset` | yes | `$ref` to a `googleads.asset`. |
-| `fieldType` | yes | `AD_IMAGE`, `BUSINESS_LOGO`, or `BUSINESS_NAME`. |
+| `fieldType` | yes | `AD_IMAGE`, `BUSINESS_LOGO`, `BUSINESS_NAME`, `SITELINK`, or `CALLOUT`. |
 | `status` | no | `ENABLED` (default) or `PAUSED`. |
 
 ```yaml
@@ -684,6 +696,13 @@ Attaches a managed asset to a Search campaign. Search images use
     asset:
       $ref: googleads.asset.product_image
     fieldType: AD_IMAGE
+- address: googleads.campaign_asset.features_sitelink
+  attributes:
+    campaign:
+      $ref: googleads.campaign.brand
+    asset:
+      $ref: googleads.asset.features_sitelink
+    fieldType: SITELINK
 ```
 
 See the [Google Ads provider reference](../providers/googleads/README.md).

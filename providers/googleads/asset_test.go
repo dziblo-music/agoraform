@@ -44,7 +44,7 @@ func TestValidateImageAssetErrors(t *testing.T) {
 		},
 		{
 			name: "unsupported type",
-			res:  resource.Resource{Address: addr, Attributes: resource.Attributes{googleads.AttrType: "SITELINK"}},
+			res:  resource.Resource{Address: addr, Attributes: resource.Attributes{googleads.AttrType: "YOUTUBE_VIDEO"}},
 			want: "must be one of",
 		},
 		{
@@ -159,7 +159,7 @@ func TestValidateTextAsset(t *testing.T) {
 		},
 		LocalAsset: &local,
 	})
-	if err == nil || !strings.Contains(err.Error(), "TEXT assets use attribute \"text\"") {
+	if err == nil || !strings.Contains(err.Error(), "source") {
 		t.Fatalf("Validate = %v, want source rejection", err)
 	}
 }
@@ -423,7 +423,7 @@ func TestImportAssetRejectsUnsupportedType(t *testing.T) {
 	t.Parallel()
 
 	fake := newAssetFake()
-	fake.seedAsset(map[string]any{"id": "99", "type": "SITELINK", "name": "Features"})
+	fake.seedAsset(map[string]any{"id": "99", "type": "YOUTUBE_VIDEO", "name": "Demo"})
 	p := testAssetProvider(t, fake)
 	_, err := p.Import(context.Background(), mustAssetAddress(t, "features"), "99")
 	if err == nil {

@@ -89,6 +89,122 @@ resources:
       text: login
       matchType: EXACT
 
+  - address: googleads.asset.features_sitelink
+    attributes:
+      type: SITELINK
+      linkText: Features
+      finalUrls:
+        - https://example.com/features
+      description1: See product features
+      description2: Built for growing teams
+
+  - address: googleads.asset.pricing_sitelink
+    attributes:
+      type: SITELINK
+      linkText: Pricing
+      finalUrls:
+        - https://example.com/pricing
+      description1: Simple, transparent plans
+      description2: Start with a free trial
+
+  - address: googleads.asset.docs_sitelink
+    attributes:
+      type: SITELINK
+      linkText: Docs
+      finalUrls:
+        - https://example.com/docs
+
+  - address: googleads.asset.blog_sitelink
+    attributes:
+      type: SITELINK
+      linkText: Blog
+      finalUrls:
+        - https://example.com/blog
+
+  - address: googleads.campaign_asset.features_sitelink
+    attributes:
+      campaign:
+        $ref: googleads.campaign.search_acquisition
+      asset:
+        $ref: googleads.asset.features_sitelink
+      fieldType: SITELINK
+
+  - address: googleads.campaign_asset.pricing_sitelink
+    attributes:
+      campaign:
+        $ref: googleads.campaign.search_acquisition
+      asset:
+        $ref: googleads.asset.pricing_sitelink
+      fieldType: SITELINK
+
+  - address: googleads.campaign_asset.docs_sitelink
+    attributes:
+      campaign:
+        $ref: googleads.campaign.search_acquisition
+      asset:
+        $ref: googleads.asset.docs_sitelink
+      fieldType: SITELINK
+
+  - address: googleads.campaign_asset.blog_sitelink
+    attributes:
+      campaign:
+        $ref: googleads.campaign.search_acquisition
+      asset:
+        $ref: googleads.asset.blog_sitelink
+      fieldType: SITELINK
+
+  - address: googleads.asset.free_trial_callout
+    attributes:
+      type: CALLOUT
+      calloutText: Free trial
+
+  - address: googleads.asset.no_credit_card_callout
+    attributes:
+      type: CALLOUT
+      calloutText: No credit card
+
+  - address: googleads.asset.cancel_anytime_callout
+    attributes:
+      type: CALLOUT
+      calloutText: Cancel anytime
+
+  - address: googleads.asset.support_callout
+    attributes:
+      type: CALLOUT
+      calloutText: 24/7 support
+
+  - address: googleads.campaign_asset.free_trial_callout
+    attributes:
+      campaign:
+        $ref: googleads.campaign.search_acquisition
+      asset:
+        $ref: googleads.asset.free_trial_callout
+      fieldType: CALLOUT
+
+  - address: googleads.campaign_asset.no_credit_card_callout
+    attributes:
+      campaign:
+        $ref: googleads.campaign.search_acquisition
+      asset:
+        $ref: googleads.asset.no_credit_card_callout
+      fieldType: CALLOUT
+
+  - address: googleads.campaign_asset.cancel_anytime_callout
+    attributes:
+      campaign:
+        $ref: googleads.campaign.search_acquisition
+      asset:
+        $ref: googleads.asset.cancel_anytime_callout
+      fieldType: CALLOUT
+
+  - address: googleads.campaign_asset.support_callout
+    attributes:
+      campaign:
+        $ref: googleads.campaign.search_acquisition
+      asset:
+        $ref: googleads.asset.support_callout
+      fieldType: CALLOUT
+
   - address: googleads.ad_group.trial
     attributes:
       name: Trial

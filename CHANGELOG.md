@@ -12,6 +12,14 @@ prints the SemVer identifier without the prefix (`0.5.0`).
 
 ### Added
 
+- Google Ads Search sitelink and callout assets: `googleads.asset`
+  manages `SITELINK` and `CALLOUT` copy, and `googleads.campaign_asset`
+  attaches them to a Search campaign. Sitelink `linkText`, optional paired
+  descriptions, and `finalUrls`, plus callout `calloutText`, follow Google
+  Ads Asset / CampaignAsset lifecycle. Copy can be updated in place; type
+  changes fail planning. Destroy detaches campaign attachments first and
+  leaves shared assets bound.
+
 - Google Ads campaign-level negative keywords:
   `googleads.campaign_negative_keyword` maintains shared Search exclusions
   on a campaign without duplicating them across ad groups. Criteria

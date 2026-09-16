@@ -20,7 +20,8 @@ suite and contain no credentials or private deployment values.
 - [googleads-search](googleads-search/README.md) — primary v0.4.0
   quickstart: paused SaaS Search campaign from conversion measurement
   through budget, campaign, conversion-goal biddability, targeting,
-  ad group, keywords, and Responsive Search Ad, plus import/adoption.
+  sitelinks and callouts, ad group, keywords, and Responsive Search Ad,
+  plus import/adoption.
 - [googleads-conversion](googleads-conversion/README.md) — primary v0.3.0
   quickstart: website `SIGNUP` / Trial Started conversion action, customer
   conversion-goal biddability, import guidance, and the boundary between

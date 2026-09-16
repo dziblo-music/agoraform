@@ -298,17 +298,19 @@ match type, and campaign are immutable after the criterion exists.
 
 ## Google Ads assets
 
-Import an IMAGE or TEXT asset by its numeric asset ID, or by the Google Ads
-resource name `customers/{customerId}/assets/{id}`. Agoraform stores the
-numeric ID in local state as `remoteId`. Import does not invent a local
-`source.file` for remotely created images.
+Import an IMAGE, TEXT, SITELINK, or CALLOUT asset by its numeric asset
+ID, or by the Google Ads resource name
+`customers/{customerId}/assets/{id}`. Agoraform stores the numeric ID in
+local state as `remoteId`. Import does not invent a local `source.file`
+for remotely created images.
 
 ```bash
 agoraform import googleads.asset.product_image 123456789
+agoraform import googleads.asset.features_sitelink 555666777
 ```
 
 Unsupported asset types fail with guidance instead of emitting a lossy
-IMAGE/TEXT configuration.
+configuration.
 
 ## Google Ads campaign assets
 
@@ -326,10 +328,13 @@ logical `$ref` values:
 agoraform import googleads.campaign.brand 987654321
 agoraform import googleads.asset.product_image 123456789
 agoraform import googleads.campaign_asset.product_image 987654321~123456789~AD_IMAGE
+agoraform import googleads.asset.features_sitelink 555666777
+agoraform import googleads.campaign_asset.features_sitelink 987654321~555666777~SITELINK
 ```
 
 Unsupported field types fail with guidance. Supported Search attachments
-are `AD_IMAGE`, `BUSINESS_LOGO`, and `BUSINESS_NAME`.
+are `AD_IMAGE`, `BUSINESS_LOGO`, `BUSINESS_NAME`, `SITELINK`, and
+`CALLOUT`.
 
 ## Google Ads campaign conversion goals
 
