@@ -101,7 +101,7 @@ func CheckProviders(ctx context.Context, m *Manifest, reg *provider.Registry) er
 	if err := provider.ValidateOutputRefs(m.Resources, func(addr resource.Address) (provider.Reader, error) {
 		return reg.LookupFor(addr)
 	}); err != nil {
-		return fmt.Errorf("%s: %w", origin, err)
+		return m.graphError(err)
 	}
 	return nil
 }

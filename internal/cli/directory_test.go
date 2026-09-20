@@ -310,3 +310,37 @@ resources:
 		t.Fatalf("provider creates=%d updates=%d; want 1 and 0", creates, updates)
 	}
 }
+
+func TestValidateDirectoryOutputErrorNamesSource(t *testing.T) {
+	t.Parallel()
+	dir := writeConfigDir(t, map[string]string{
+		"parent.agoraform.yaml": `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.homepage
+    attributes:
+      title: Homepage
+`,
+		"child.agoraform.yaml": `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.banner
+    attributes:
+      title: Banner
+      label:
+        $ref: fake.widget.homepage
+        output: nonexistent
+`,
+	})
+	reg := provider.NewRegistry()
+	if err := reg.Register(fake.New()); err != nil {
+		t.Fatal(err)
+	}
+	streams, _, stderr := testStreams()
+	if code := cli.ExecuteWithRegistry(streams, []string{"validate", dir}, reg); code != cli.ExitError {
+		t.Fatalf("validate exit = %d; stderr=%q", code, stderr.String())
+	}
+	for _, want := range []string{"child.agoraform.yaml", "no declared output"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("stderr %q missing %q", stderr.String(), want)
+		}
+	}
+}
