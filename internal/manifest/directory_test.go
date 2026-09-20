@@ -255,8 +255,8 @@ resources:
 	if err == nil {
 		t.Fatal("Load missing cross-file ref succeeded")
 	}
-	if !strings.Contains(err.Error(), "unknown resource") {
-		t.Fatalf("error %q, want unknown resource", err)
+	if !strings.Contains(err.Error(), "unknown resource") || !strings.Contains(err.Error(), "child.agoraform.yaml") {
+		t.Fatalf("error %q, want source filename and unknown resource", err)
 	}
 }
 
@@ -415,4 +415,61 @@ func addresses(addrs []resource.Address) []string {
 		out[i] = addr.String()
 	}
 	return out
+}
+
+func TestLoadDirectoryCycleNamesSourceFiles(t *testing.T) {
+	t.Parallel()
+	dir := writeConfigDir(t, map[string]string{
+		"a.agoraform.yaml": `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.a
+    attributes:
+      parent:
+        $ref: fake.widget.b
+`,
+		"b.agoraform.yaml": `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.b
+    attributes:
+      parent:
+        $ref: fake.widget.a
+`,
+	})
+	_, err := manifest.Load(dir)
+	if err == nil {
+		t.Fatal("expected dependency cycle")
+	}
+	for _, want := range []string{"cyclic dependency", "a.agoraform.yaml", "b.agoraform.yaml"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q does not contain %q", err, want)
+		}
+	}
+}
+
+func TestDirectoryApplicationEventErrorNamesSource(t *testing.T) {
+	t.Parallel()
+	dir := writeConfigDir(t, map[string]string{
+		"resources.agoraform.yaml": `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: matomo.trigger.trial_started
+    attributes:
+      type: customEvent
+      event: trialStarted
+`,
+		"events.agoraform.yaml": `apiVersion: agoraform.io/v1alpha1
+applicationEvents:
+  trial_started:
+    matomo:
+      trigger:
+        $ref: matomo.trigger.missing
+`,
+	})
+	m, err := manifest.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = manifest.CheckApplicationEvents(m)
+	if err == nil || !strings.Contains(err.Error(), "events.agoraform.yaml") || !strings.Contains(err.Error(), "unknown resource") {
+		t.Fatalf("error = %v, want event source filename and missing reference", err)
+	}
 }

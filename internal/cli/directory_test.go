@@ -244,3 +244,69 @@ func writeConfigDir(t *testing.T, files map[string]string) string {
 	}
 	return dir
 }
+
+func TestValidateDirectoryProviderErrorNamesSource(t *testing.T) {
+	t.Parallel()
+	dir := writeConfigDir(t, map[string]string{
+		"invalid.agoraform.yaml": `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.banner
+    attributes:
+      color: red
+`,
+	})
+	reg := provider.NewRegistry()
+	if err := reg.Register(fake.New()); err != nil {
+		t.Fatal(err)
+	}
+	streams, _, stderr := testStreams()
+	if code := cli.ExecuteWithRegistry(streams, []string{"validate", dir}, reg); code != cli.ExitError {
+		t.Fatalf("validate exit = %d; stderr=%q", code, stderr.String())
+	}
+	for _, want := range []string{"invalid.agoraform.yaml", "missing required attribute"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("stderr %q missing %q", stderr.String(), want)
+		}
+	}
+}
+
+func TestSplitSingleFileKeepsStateAndProducesNoChanges(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	original := filepath.Join(dir, "agoraform.yaml")
+	contents := `apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.homepage
+    attributes:
+      title: Homepage banner
+`
+	if err := os.WriteFile(original, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p := fake.New()
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+	streams, _, stderr := testStreams()
+	if code := cli.ExecuteWithRegistry(streams, []string{"apply", "-f", original}, reg); code != cli.ExitOK {
+		t.Fatalf("single-file apply exit = %d; stderr=%q", code, stderr.String())
+	}
+	if err := os.WriteFile(filepath.Join(dir, "resources.agoraform.yaml"), []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(original); err != nil {
+		t.Fatal(err)
+	}
+	streams, stdout, stderr := testStreams()
+	if code := cli.ExecuteWithRegistry(streams, []string{"plan", dir}, reg); code != cli.ExitOK {
+		t.Fatalf("directory plan exit = %d; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "No changes.") {
+		t.Fatalf("directory plan = %q, want no changes", stdout.String())
+	}
+	_, creates, updates, _ := p.Calls()
+	if creates != 1 || updates != 0 {
+		t.Fatalf("provider creates=%d updates=%d; want 1 and 0", creates, updates)
+	}
+}
