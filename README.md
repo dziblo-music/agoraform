@@ -597,14 +597,14 @@ See [Matomo Tag Manager publication](docs/matomo-publishing.md).
 
 ## Commands
 
-Default manifest path: `agoraform.yaml`.
+Default path: `agoraform.yaml`. Pass a directory explicitly (for example, `agoraform plan .`) to merge `*.agoraform.yaml` and `*.agoraform.yml` files.
 
 ```bash
-agoraform validate [-f path/to/manifest.yaml]
-agoraform plan [-f path/to/manifest.yaml]
-agoraform apply [-f path/to/manifest.yaml]
-agoraform import [-f path/to/manifest.yaml] ADDRESS REMOTE-ID
-agoraform destroy [-f path/to/manifest.yaml]
+agoraform validate [-f path]
+agoraform plan [-f path]
+agoraform apply [-f path]
+agoraform import [-f path] ADDRESS REMOTE-ID
+agoraform destroy [-f path]
 ```
 
 | Command | Purpose |

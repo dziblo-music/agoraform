@@ -29,6 +29,7 @@ review and add to manifest
 ```bash
 agoraform import ADDRESS REMOTE-ID
 agoraform import -f path/to/agoraform.yaml ADDRESS REMOTE-ID
+agoraform import -f path/to/campaign/ ADDRESS REMOTE-ID
 ```
 
 Example:
@@ -42,9 +43,9 @@ agoraform import matomo.goal.trial_started 12
 a Matomo goal id or Tag Manager draft object id.
 
 `--file` / `-f` locates local state the same way `plan` and `apply` do: next
-to the named manifest. The default manifest path is `agoraform.yaml`, so
-identity is written to `agoraform.state.json` in the current directory. Import
-does not read or rewrite the manifest file.
+to the named manifest, or inside a configuration directory. The default
+path is `agoraform.yaml`, so identity is written to `agoraform.state.json`
+in the current directory. Import does not read or rewrite the manifest.
 
 ## What import does
 

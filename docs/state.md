@@ -28,7 +28,10 @@ v0.1 therefore keeps a local file next to the manifest.
 
 The default file is `agoraform.state.json` in the same directory as the
 manifest. `agoraform plan -f site/agoraform.yaml` reads
-`site/agoraform.state.json`. A missing file is empty state, not an error.
+`site/agoraform.state.json`. For a configuration directory,
+`agoraform plan site/` reads `site/agoraform.state.json` — one state file for
+the merged configuration, not one file per YAML document. A missing file is
+empty state, not an error.
 
 The state file is machine/account-local management metadata and should not
 normally be committed to Git. The repository `.gitignore` ignores

@@ -25,10 +25,11 @@ type Manifest struct {
 	// 	Origin is the source path or label used in diagnostics.
 	Origin string
 
-	// BaseDir is the directory containing the manifest file. It is populated
-	// by LoadFile and used to resolve source.file paths against the manifest
-	// directory and optional assets.root. Empty when the manifest is parsed
-	// from an in-memory source.
+	// BaseDir is the directory containing the manifest file, or the
+	// configuration directory for a multi-file load. It is populated by Load
+	// and LoadFile and used to resolve source.file paths against the
+	// configuration directory and optional assets.root. Empty when the
+	// manifest is parsed from an in-memory source.
 	BaseDir string
 
 	// APIVersion is the schema version declared in the file.
@@ -51,6 +52,16 @@ type Manifest struct {
 	// connect its event emission to the managed marketing infrastructure.
 	// An omitted or empty block is valid.
 	ApplicationEvents map[string]ApplicationEvent
+
+	// Files lists the source YAML documents that were merged into this
+	// configuration, in lexical filename order. A single-file load contains
+	// one path. File names have no effect on dependency ordering.
+	Files []string
+
+	// Source ownership is retained for filename-aware diagnostics after merge.
+	// These maps are not serialized into YAML or state.
+	resourceOrigins map[string]string
+	eventOrigins    map[string]string
 }
 
 // Assets is provider-neutral local file source configuration.
@@ -73,8 +84,10 @@ type rawResource struct {
 	Attributes map[string]any `yaml:"attributes"`
 }
 
-// Parse decodes and structurally validates a YAML manifest.
-func Parse(data []byte, origin string) (*Manifest, error) {
+// parseDocument decodes and structurally validates a YAML manifest without
+// resolving $ref dependencies. Directory loads use this so cross-file
+// references can be checked after merge.
+func parseDocument(data []byte, origin string) (*Manifest, error) {
 	if origin == "" {
 		origin = "manifest"
 	}
@@ -142,10 +155,6 @@ func Parse(data []byte, origin string) (*Manifest, error) {
 		})
 	}
 
-	if _, err := graph.Build(resources); err != nil {
-		return nil, fmt.Errorf("%s: %w", origin, err)
-	}
-
 	appEvents, err := parseApplicationEvents(origin, raw.ApplicationEvents)
 	if err != nil {
 		return nil, err
@@ -158,7 +167,37 @@ func Parse(data []byte, origin string) (*Manifest, error) {
 		Resources:         resources,
 		Assets:            assets,
 		ApplicationEvents: appEvents,
+		Files:             []string{origin},
 	}, nil
+}
+
+// Parse decodes and structurally validates a YAML manifest.
+func Parse(data []byte, origin string) (*Manifest, error) {
+	m, err := parseDocument(data, origin)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := graph.Build(m.Resources); err != nil {
+		return nil, fmt.Errorf("%s: %w", origin, err)
+	}
+	return m, nil
+}
+
+// Load reads configuration from path. A YAML file is loaded as a single
+// manifest. A directory is loaded as one logical configuration merged from
+// every *.agoraform.yaml and *.agoraform.yml file in that directory.
+func Load(path string) (*Manifest, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if looksLikeManifestFile(path) {
+			return LoadFile(path)
+		}
+		return nil, fmt.Errorf("read configuration %s: %w", path, err)
+	}
+	if info.IsDir() {
+		return loadDir(path)
+	}
+	return LoadFile(path)
 }
 
 // LoadFile reads and parses a manifest from disk.

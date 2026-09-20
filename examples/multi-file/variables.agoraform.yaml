@@ -1,0 +1,9 @@
+# Data Layer variable used by the trial-started tag.
+
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: matomo.variable.user_id
+    attributes:
+      type: dataLayer
+      key: userId
+      name: Trial user ID

@@ -22,7 +22,7 @@ func newDestroyCommand(reg *provider.Registry) *cobra.Command {
 	var autoApprove bool
 
 	cmd := &cobra.Command{
-		Use:   "destroy [file]",
+		Use:   "destroy [path]",
 		Short: "Destroy managed resources in reverse dependency order",
 		Long: `Destroy managed resources using the same manifest graph and local
 identity state as plan and apply.
@@ -41,6 +41,10 @@ Providers may report destroy as unsupported or provider-owned: those
 resources remain in state, do not block supported teardown, and cause a
 non-zero exit after supported operations complete.
 
+A file path loads that document only. A directory path merges every
+*.agoraform.yaml and *.agoraform.yml file in that directory into one
+logical configuration.
+
 Interactive terminals require typing "yes" after the plan is shown.
 Non-interactive sessions must pass --auto-approve. Declining confirmation
 exits successfully with no mutations.
@@ -50,7 +54,7 @@ Exit codes:
   1  destroy failed, or supported teardown left unsupported resources
   3  invalid invocation
 
-The default manifest path is agoraform.yaml.`,
+The default path is agoraform.yaml.`,
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 1 {
 				return usageError{err: fmt.Errorf("accepts at most 1 arg(s), received %d", len(args))}
@@ -63,7 +67,7 @@ The default manifest path is agoraform.yaml.`,
 				return usageError{err: err}
 			}
 
-			m, err := manifest.LoadFile(path)
+			m, err := manifest.Load(path)
 			if err != nil {
 				return err
 			}
@@ -74,7 +78,7 @@ The default manifest path is agoraform.yaml.`,
 				return fmt.Errorf("destroy requires a registered provider; none are registered")
 			}
 
-			st, err := state.Load(state.PathForManifest(path))
+			st, err := state.Load(state.PathForConfig(path))
 			if err != nil {
 				return err
 			}
@@ -88,7 +92,7 @@ The default manifest path is agoraform.yaml.`,
 		},
 	}
 
-	cmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Path to the Agoraform manifest (default agoraform.yaml)")
+	cmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Path to the Agoraform manifest or configuration directory (default agoraform.yaml)")
 	cmd.Flags().BoolVar(&autoApprove, "auto-approve", false, "Skip interactive confirmation")
 	return cmd
 }

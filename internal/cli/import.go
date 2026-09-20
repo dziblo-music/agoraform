@@ -33,9 +33,10 @@ omitted from generated configuration.
 The generated YAML is for review. Import does not rewrite an existing
 manifest. Add the printed resource to your configuration, then run plan.
 
-Use --file to locate the local state file next to a manifest. The default
-manifest path is agoraform.yaml, so state is written to agoraform.state.json
-in the current directory. The manifest file itself is not read.
+Use --file to locate the local state file next to a manifest or
+configuration directory. The default path is agoraform.yaml, so state is
+written to agoraform.state.json in the current directory. The manifest
+itself is not read. A directory path uses one state file in that directory.
 
 Exit codes:
   0  import succeeded
@@ -59,7 +60,7 @@ Exit codes:
 				return fmt.Errorf("import requires a registered provider; none are registered")
 			}
 
-			st, err := state.Load(state.PathForManifest(path))
+			st, err := state.Load(state.PathForConfig(path))
 			if err != nil {
 				return err
 			}
@@ -86,7 +87,7 @@ Exit codes:
 		},
 	}
 
-	cmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Path to the Agoraform manifest used to locate local state (default agoraform.yaml)")
+	cmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Path to the Agoraform manifest or configuration directory used to locate local state (default agoraform.yaml)")
 	return cmd
 }
 

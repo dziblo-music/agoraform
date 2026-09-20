@@ -28,9 +28,13 @@ manifest
 agoraform plan
 agoraform plan -f path/to/manifest.yaml
 agoraform plan path/to/manifest.yaml
+agoraform plan .
+agoraform plan path/to/campaign/
 ```
 
-The default manifest is `agoraform.yaml`.
+The default path is `agoraform.yaml`. A directory path merges
+`*.agoraform.yaml` and `*.agoraform.yml` files in that directory. See
+[multi-file configuration](manifest.md#multi-file-configuration).
 
 Plan loads and validates the manifest, configures registered providers with
 non-secret provider desired state, validates connectivity, reads local identity

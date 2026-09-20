@@ -12,6 +12,14 @@ prints the SemVer identifier without the prefix (`0.5.0`).
 
 ### Added
 
+- Multi-file configuration: `validate`, `plan`, `apply`, `destroy`,
+  `integrations`, and `import -f` accept a directory of `*.agoraform.yaml`
+  / `*.agoraform.yml` files merged into one logical configuration with
+  cross-file `$ref` resolution and a single `agoraform.state.json`. Explicit
+  file paths still load only that document. See
+  [multi-file configuration](docs/manifest.md#multi-file-configuration) and
+  [examples/multi-file](examples/multi-file/README.md).
+
 - Matomo Tag Manager SPA pageview tracking: `matomo.trigger` supports
   `pageView` and `historyChange` templates, and `matomo.tag`
   `type: matomoAnalytics` accepts `trackingType: pageview` with optional
