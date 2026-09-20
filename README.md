@@ -597,7 +597,7 @@ See [Matomo Tag Manager publication](docs/matomo-publishing.md).
 
 ## Commands
 
-Default path: `agoraform.yaml`, or a directory of `*.agoraform.yaml` files.
+Default path: `agoraform.yaml`. Pass a directory explicitly (for example, `agoraform plan .`) to merge `*.agoraform.yaml` and `*.agoraform.yml` files.
 
 ```bash
 agoraform validate [-f path]

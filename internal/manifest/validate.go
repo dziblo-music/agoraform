@@ -63,20 +63,24 @@ func CheckProviders(ctx context.Context, m *Manifest, reg *provider.Registry) er
 	resourceSetValidators := make(map[string]provider.ResourceSetValidator)
 	for i, res := range m.Resources {
 		path := fmt.Sprintf("resources[%d]", i)
+		resourceOrigin := origin
+		if source := m.resourceOrigins[res.Address.String()]; source != "" {
+			resourceOrigin = source
+		}
 		p, err := reg.LookupFor(res.Address)
 		if err != nil {
-			return fmt.Errorf("%s: %s: %s: %w", origin, path, res.Address, err)
+			return fmt.Errorf("%s: %s: %s: %w", resourceOrigin, path, res.Address, err)
 		}
 		if _, ok := checked[p.Name()]; !ok {
 			checked[p.Name()] = struct{}{}
 			if c, ok := p.(provider.ConnectionChecker); ok {
 				if err := c.CheckConnection(ctx); err != nil {
-					return fmt.Errorf("%s: %s: provider %q: %w", origin, path, p.Name(), err)
+					return fmt.Errorf("%s: %s: provider %q: %w", resourceOrigin, path, p.Name(), err)
 				}
 			}
 		}
 		if err := p.Validate(ctx, res); err != nil {
-			return fmt.Errorf("%s: %s: %w", origin, path, err)
+			return fmt.Errorf("%s: %s: %w", resourceOrigin, path, err)
 		}
 		if validator, ok := p.(provider.ResourceSetValidator); ok {
 			resourceSetValidators[p.Name()] = validator

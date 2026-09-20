@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -45,17 +46,23 @@ func localEnvDirectory(args []string) string {
 }
 
 func configDirectory(path string) string {
-	path = strings.TrimRight(strings.TrimSpace(path), `/\`)
-	if path == "" || path == "." {
+	path = strings.TrimSpace(path)
+	if path == "" {
 		return "."
 	}
+	// Match manifest.Load's filesystem-based file/directory decision. A
+	// directory can itself end in .yaml or .yml; do not infer its type
+	// from the extension or strip root directory separators.
+	if info, err := os.Stat(path); err == nil {
+		if info.IsDir() {
+			return path
+		}
+		return filepath.Dir(path)
+	}
+	// Retain single-file behavior for paths that do not exist yet.
 	ext := strings.ToLower(filepath.Ext(path))
 	if ext == ".yaml" || ext == ".yml" {
-		dir := filepath.Dir(path)
-		if dir == "" || dir == "." {
-			return "."
-		}
-		return dir
+		return filepath.Dir(path)
 	}
 	return path
 }

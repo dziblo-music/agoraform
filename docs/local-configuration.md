@@ -108,14 +108,16 @@ campaign/
 └── .agoraform.env
 ```
 
-Run Agoraform from that directory:
+Run Agoraform from that directory by explicitly selecting directory mode:
 
 ```bash
-agoraform validate
-agoraform plan
-agoraform apply
-agoraform plan
+agoraform validate .
+agoraform plan .
+agoraform apply .
+agoraform plan .
 ```
+
+Without an explicit directory argument, Agoraform still looks only for the default `agoraform.yaml` file; it does not automatically discover neighboring files.
 
 Or select a manifest or configuration directory from elsewhere:
 

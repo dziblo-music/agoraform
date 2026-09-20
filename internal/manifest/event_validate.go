@@ -23,10 +23,10 @@ func CheckApplicationEvents(m *Manifest) error {
 	if origin == "" {
 		origin = "manifest"
 	}
-	return validateApplicationEvents(origin, m.ApplicationEvents, m.Resources)
+	return validateApplicationEvents(origin, m.ApplicationEvents, m.Resources, m.eventOrigins)
 }
 
-func validateApplicationEvents(origin string, events map[string]ApplicationEvent, resources []resource.Resource) error {
+func validateApplicationEvents(origin string, events map[string]ApplicationEvent, resources []resource.Resource, eventOrigins map[string]string) error {
 	if len(events) == 0 {
 		return nil
 	}
@@ -37,7 +37,11 @@ func validateApplicationEvents(origin string, events map[string]ApplicationEvent
 
 	for _, name := range ApplicationEventNames(events) {
 		evt := events[name]
-		path := fmt.Sprintf("%s: applicationEvents.%s", origin, name)
+		eventOrigin := origin
+		if source := eventOrigins[name]; source != "" {
+			eventOrigin = source
+		}
+		path := fmt.Sprintf("%s: applicationEvents.%s", eventOrigin, name)
 		if err := validateMatomoBinding(path, evt.Matomo, byAddr); err != nil {
 			return err
 		}

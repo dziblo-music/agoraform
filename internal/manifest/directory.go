@@ -44,7 +44,7 @@ func loadDir(dir string) (*Manifest, error) {
 	}
 
 	if _, err := graph.Build(merged.Resources); err != nil {
-		return nil, fmt.Errorf("%s: %w", dir, err)
+		return nil, merged.graphError(err)
 	}
 
 	abs, err := filepath.Abs(dir)
@@ -103,6 +103,8 @@ func mergeManifests(dir string, files []*Manifest) (*Manifest, error) {
 	providerOrigin := make(map[string]string)
 	eventOrigin := make(map[string]string)
 	resourceOrigin := make(map[string]string)
+	merged.resourceOrigins = resourceOrigin
+	merged.eventOrigins = eventOrigin
 	var assetsOrigin string
 
 	for _, src := range files {
@@ -206,4 +208,37 @@ func displayName(path string) string {
 		return path
 	}
 	return name
+}
+
+// graphError preserves source filenames when cross-file references or cycles
+// are rejected after the logical configuration has been merged.
+func (m *Manifest) graphError(err error) error {
+	message := err.Error()
+	const resourcePrefix = "resource \""
+	if strings.HasPrefix(message, resourcePrefix) {
+		remainder := strings.TrimPrefix(message, resourcePrefix)
+		if end := strings.IndexByte(remainder, '"'); end >= 0 {
+			if source := m.resourceOrigins[remainder[:end]]; source != "" {
+				return fmt.Errorf("%s: %w", source, err)
+			}
+		}
+	}
+	const cyclePrefix = "cyclic dependency: "
+	if strings.HasPrefix(message, cyclePrefix) {
+		seen := make(map[string]struct{})
+		for _, address := range strings.Split(strings.TrimPrefix(message, cyclePrefix), " -> ") {
+			if source := m.resourceOrigins[address]; source != "" {
+				seen[displayName(source)] = struct{}{}
+			}
+		}
+		if len(seen) > 0 {
+			files := make([]string, 0, len(seen))
+			for source := range seen {
+				files = append(files, source)
+			}
+			sort.Strings(files)
+			return fmt.Errorf("%s: %w (source files: %s)", m.Origin, err, strings.Join(files, ", "))
+		}
+	}
+	return fmt.Errorf("%s: %w", m.Origin, err)
 }

@@ -57,6 +57,11 @@ type Manifest struct {
 	// configuration, in lexical filename order. A single-file load contains
 	// one path. File names have no effect on dependency ordering.
 	Files []string
+
+	// Source ownership is retained for filename-aware diagnostics after merge.
+	// These maps are not serialized into YAML or state.
+	resourceOrigins map[string]string
+	eventOrigins    map[string]string
 }
 
 // Assets is provider-neutral local file source configuration.
