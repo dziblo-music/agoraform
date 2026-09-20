@@ -17,6 +17,10 @@ func TestLocalEnvDirectory(t *testing.T) {
 		{name: "import file flag", args: []string{"import", "-f", "campaign/agoraform.yaml", "matomo.goal.signup", "1"}, want: "campaign"},
 		{name: "import default", args: []string{"import", "matomo.goal.signup", "1"}, want: "."},
 		{name: "root command", args: []string{"--version"}, want: "."},
+		{name: "positional directory", args: []string{"validate", "campaign"}, want: "campaign"},
+		{name: "directory file flag", args: []string{"plan", "-f", "campaign"}, want: "campaign"},
+		{name: "destroy positional directory", args: []string{"destroy", "campaign"}, want: "campaign"},
+		{name: "integrations positional manifest", args: []string{"integrations", "campaign/agoraform.yaml"}, want: "campaign"},
 	}
 
 	for _, tt := range tests {

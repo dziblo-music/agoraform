@@ -85,6 +85,67 @@ func TestManifestsRemainValid(t *testing.T) {
 	}
 }
 
+func TestMultiFileExampleRemainsValid(t *testing.T) {
+	t.Parallel()
+
+	m, err := manifest.Load("multi-file")
+	if err != nil {
+		t.Fatalf("load multi-file example: %v", err)
+	}
+	if len(m.Files) != 3 {
+		t.Fatalf("multi-file Files = %d, want 3: %v", len(m.Files), m.Files)
+	}
+
+	want := []string{
+		"matomo.variable.user_id",
+		"matomo.trigger.trial_started",
+		"matomo.tag.trial_started",
+	}
+	got := make(map[string]struct{}, len(m.Resources))
+	for _, res := range m.Resources {
+		got[res.Address.String()] = struct{}{}
+	}
+	for _, addr := range want {
+		if _, ok := got[addr]; !ok {
+			t.Fatalf("missing %s in merged multi-file example", addr)
+		}
+	}
+
+	providers := exampleProviders(m)
+	for name, cfg := range m.Providers {
+		p, ok := providers[name]
+		if !ok {
+			t.Fatalf("unsupported example provider %q", name)
+		}
+		if configurator, ok := p.(provider.Configurator); ok {
+			if err := configurator.Configure(cfg); err != nil {
+				t.Fatalf("validate provider configuration: %v", err)
+			}
+		}
+	}
+	for _, res := range m.Resources {
+		p, ok := providers[res.Address.Provider]
+		if !ok {
+			t.Fatalf("unsupported example provider %q", res.Address.Provider)
+		}
+		if err := p.Validate(context.Background(), res); err != nil {
+			t.Fatalf("validate %s: %v", res.Address, err)
+		}
+	}
+
+	g, err := graph.Build(m.Resources)
+	if err != nil {
+		t.Fatalf("graph.Build: %v", err)
+	}
+	order := make([]string, 0, len(g.Order()))
+	for _, addr := range g.Order() {
+		order = append(order, addr.String())
+	}
+	if len(order) == 0 || order[len(order)-1] != "matomo.tag.trial_started" {
+		t.Fatalf("execution order = %v, want tag last", order)
+	}
+}
+
 func exampleManifestPaths(t *testing.T) []string {
 	t.Helper()
 	var paths []string

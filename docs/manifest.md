@@ -116,6 +116,8 @@ automatically selectable.
 Agoraform validates references and builds a directed dependency graph. Missing
 references, self-references, and cycles fail before remote mutations.
 Cross-provider output references create the same kind of dependency edge.
+In a configuration directory, `$ref` values may target resources declared in
+other `*.agoraform.yaml` files; they are resolved after the files are merged.
 
 At apply time, logical references are resolved in dependency order. Those
 provider-native values are not written back into the manifest.
@@ -135,9 +137,11 @@ provider resources during `plan` and `apply`. Creative production — generating
 editing, transcoding, resizing, or optimizing files — stays outside Agoraform.
 
 `assets.root` is optional and resolved relative to the selected manifest
-directory, including when you pass `-f`. When omitted, `source.file` paths
-resolve against the manifest directory itself. Agoraform never uploads every
-file in that directory; provider resources must name the file they consume.
+directory, including when you pass `-f`. For a configuration directory, paths
+resolve against that directory after the files are merged. When omitted,
+`source.file` paths resolve against the manifest directory itself. Agoraform
+never uploads every file in that directory; provider resources must name the
+file they consume.
 
 ```yaml
 apiVersion: agoraform.io/v1alpha1
@@ -1044,13 +1048,78 @@ providers:
 
 Unknown provider configuration fields are rejected.
 
+## Multi-file configuration
+
+A large campaign can be split across YAML files while remaining one logical
+configuration, one dependency graph, and one local state file.
+
+```bash
+agoraform validate .
+agoraform plan path/to/campaign/
+agoraform apply -f path/to/campaign/
+agoraform destroy path/to/campaign/
+```
+
+When the path is a directory, Agoraform discovers only:
+
+- `*.agoraform.yaml`
+- `*.agoraform.yml`
+
+Discovery is not recursive. Neighboring files such as `agoraform.yaml`,
+`README.md`, and nested subdirectories are ignored. Passing an explicit file
+still loads that document only and does not pull in siblings.
+
+Recommended layout:
+
+```text
+campaign/
+├── providers.agoraform.yaml
+├── matomo.agoraform.yaml
+├── google-ads.agoraform.yaml
+└── meta-ads.agoraform.yaml
+```
+
+Each file is a complete v1alpha1 document (`apiVersion` is required). After
+every file is parsed, Agoraform merges providers, `assets`,
+`applicationEvents`, and resources, then resolves `$ref` values. A resource
+in `meta-ads.agoraform.yaml` may reference a resource declared in another
+file with the same `$ref` syntax used in a single file.
+
+Merge rules:
+
+- `apiVersion` values must be compatible. Unsupported versions fail with the
+  source filename.
+- Duplicate resource addresses fail and name both source files.
+- Duplicate `applicationEvents` names fail and name both source files.
+- The same provider may appear in more than one file only when the
+  declarations are identical. Conflicting provider fields fail and name both
+  source files.
+- `assets.root` may be declared once, or identically in more than one file.
+  Conflicting roots fail.
+- File names and lexical file order have no effect on dependency order or
+  apply/destroy execution. Resources still run prerequisite-first.
+
+State for a directory is `agoraform.state.json` inside that directory, not
+one state file per YAML document. `.agoraform.env` is loaded from the same
+directory.
+
+The default path remains the single file `agoraform.yaml`. Directory mode
+does not implicitly replace that default. See the
+[multi-file example](../examples/multi-file/README.md).
+
 ## Validation
 
 ```bash
 agoraform validate
 agoraform validate -f path/to/manifest.yaml
 agoraform validate path/to/manifest.yaml
+agoraform validate .
+agoraform validate path/to/campaign/
 ```
+
+A file path loads that document only. A directory path merges every
+`*.agoraform.yaml` and `*.agoraform.yml` file in that directory into one
+logical configuration. The default path remains `agoraform.yaml`.
 
 Validation covers:
 

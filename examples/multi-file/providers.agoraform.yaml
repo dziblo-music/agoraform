@@ -1,0 +1,7 @@
+# Matomo Tag Manager publication desired state for the multi-file example.
+
+apiVersion: agoraform.io/v1alpha1
+providers:
+  matomo:
+    publish: true
+    environment: live

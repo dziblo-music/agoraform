@@ -22,7 +22,7 @@ func newPlanCommand(reg *provider.Registry) *cobra.Command {
 	var fileFlag string
 
 	cmd := &cobra.Command{
-		Use:   "plan [file]",
+		Use:   "plan [path]",
 		Short: "Show the changes required to reconcile declared and live configuration",
 		Long: `Read live resources through registered providers and show the
 changes required to reach the desired manifest state. Application integration
@@ -32,7 +32,11 @@ instrumentation but are not remote provider resources.
 plan only validates configuration and reads remote state. It never creates,
 updates, imports, or performs provider finalization actions. Persisted
 identities and last-applied integration fingerprints are read from
-agoraform.state.json next to the manifest.
+agoraform.state.json next to the manifest or configuration directory.
+
+A file path loads that document only. A directory path merges every
+*.agoraform.yaml and *.agoraform.yml file in that directory into one
+logical configuration.
 
 Exit codes:
   0  plan succeeded and no changes are required
@@ -40,7 +44,7 @@ Exit codes:
   2  plan succeeded and changes are present
   3  invalid invocation
 
-The default manifest path is agoraform.yaml.`,
+The default path is agoraform.yaml.`,
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 1 {
 				return usageError{err: fmt.Errorf("accepts at most 1 arg(s), received %d", len(args))}
@@ -53,7 +57,7 @@ The default manifest path is agoraform.yaml.`,
 				return usageError{err: err}
 			}
 
-			m, err := manifest.LoadFile(path)
+			m, err := manifest.Load(path)
 			if err != nil {
 				return err
 			}
@@ -64,7 +68,7 @@ The default manifest path is agoraform.yaml.`,
 				return fmt.Errorf("plan requires a registered provider; none are registered")
 			}
 
-			st, err := state.Load(state.PathForManifest(path))
+			st, err := state.Load(state.PathForConfig(path))
 			if err != nil {
 				return err
 			}
@@ -98,6 +102,6 @@ The default manifest path is agoraform.yaml.`,
 		},
 	}
 
-	cmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Path to the Agoraform manifest (default agoraform.yaml)")
+	cmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Path to the Agoraform manifest or configuration directory (default agoraform.yaml)")
 	return cmd
 }

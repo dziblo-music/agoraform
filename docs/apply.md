@@ -37,9 +37,13 @@ Apply complete
 agoraform apply
 agoraform apply -f path/to/manifest.yaml
 agoraform apply path/to/manifest.yaml
+agoraform apply .
+agoraform apply path/to/campaign/
 ```
 
-The default manifest is `agoraform.yaml`.
+The default path is `agoraform.yaml`. A directory path merges
+`*.agoraform.yaml` and `*.agoraform.yml` files in that directory. See
+[multi-file configuration](manifest.md#multi-file-configuration).
 
 ## Resource execution
 

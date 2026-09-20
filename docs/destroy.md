@@ -42,10 +42,13 @@ Destroy complete
 ```bash
 agoraform destroy
 agoraform destroy -f path/to/manifest.yaml
+agoraform destroy path/to/campaign/
 agoraform destroy --auto-approve
 ```
 
-The default manifest is `agoraform.yaml`.
+The default path is `agoraform.yaml`. A directory path merges
+`*.agoraform.yaml` and `*.agoraform.yml` files in that directory. See
+[multi-file configuration](manifest.md#multi-file-configuration).
 
 ## Confirmation
 

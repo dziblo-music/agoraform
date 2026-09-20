@@ -389,6 +389,30 @@ func TestPathForManifest(t *testing.T) {
 	}
 }
 
+func TestPathForConfigUsesDirectory(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	got := PathForConfig(dir)
+	want := filepath.Join(dir, DefaultFilename)
+	if got != want {
+		t.Fatalf("PathForConfig(dir) = %q, want %q", got, want)
+	}
+
+	file := filepath.Join(dir, "agoraform.yaml")
+	if err := os.WriteFile(file, []byte("unused"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got = PathForConfig(file)
+	if got != want {
+		t.Fatalf("PathForConfig(file) = %q, want %q", got, want)
+	}
+
+	if got := PathForConfig("agoraform.yaml"); got != DefaultFilename {
+		t.Fatalf("PathForConfig(agoraform.yaml) = %q", got)
+	}
+}
+
 func TestAddressesAreDeterministic(t *testing.T) {
 	t.Parallel()
 

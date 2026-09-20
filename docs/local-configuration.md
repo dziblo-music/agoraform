@@ -5,7 +5,13 @@ Agoraform keeps marketing desired state and provider credentials separate.
 - `agoraform.yaml` is the version-controlled declaration of marketing resources.
 - `.agoraform.env` is optional local configuration for credentials and connection details and must not be committed.
 
-When Agoraform starts, it looks for `.agoraform.env` next to the selected manifest. With the default `agoraform.yaml`, that is the current directory. With `-f path/to/agoraform.yaml` or a positional manifest path, Agoraform loads `path/to/.agoraform.env`. If the file is absent, existing environment-variable behavior is unchanged.
+When Agoraform starts, it looks for `.agoraform.env` next to the selected
+manifest or configuration directory. With the default `agoraform.yaml`, that
+is the current directory. With `-f path/to/agoraform.yaml` or a positional
+manifest path, Agoraform loads `path/to/.agoraform.env`. With
+`-f path/to/campaign/` or a positional directory, it loads
+`path/to/campaign/.agoraform.env`. If the file is absent, existing
+environment-variable behavior is unchanged.
 
 ## File format
 
@@ -89,8 +95,17 @@ A typical project looks like:
 
 ```text
 campaign/
-├── agoraform.yaml       # committed
+├── agoraform.yaml       # committed single-file layout
 └── .agoraform.env       # local only, ignored by Git
+```
+
+A split configuration uses the same secrets file next to the directory:
+
+```text
+campaign/
+├── providers.agoraform.yaml
+├── matomo.agoraform.yaml
+└── .agoraform.env
 ```
 
 Run Agoraform from that directory:
@@ -102,10 +117,11 @@ agoraform apply
 agoraform plan
 ```
 
-Or select a manifest from elsewhere:
+Or select a manifest or configuration directory from elsewhere:
 
 ```bash
 agoraform plan -f campaign/agoraform.yaml
+agoraform plan -f campaign/
 ```
 
 Agoraform will still use `campaign/.agoraform.env`.

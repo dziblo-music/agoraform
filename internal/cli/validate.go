@@ -12,16 +12,19 @@ func newValidateCommand(reg *provider.Registry) *cobra.Command {
 	var fileFlag string
 
 	cmd := &cobra.Command{
-		Use:   "validate [file]",
+		Use:   "validate [path]",
 		Short: "Validate configuration files and provider settings",
-		Long: `Validate an Agoraform YAML manifest.
+		Long: `Validate an Agoraform YAML manifest or configuration directory.
 
-The command loads the manifest, checks the v0.1 schema, resource addresses,
-duplicate logical names, resource references, and dependency cycles. When
-providers are registered, it also checks resource types, provider
-connection settings, and provider-specific required fields.
+The command loads the configuration, checks the v0.1 schema, resource
+addresses, duplicate logical names, resource references, and dependency
+cycles. When providers are registered, it also checks resource types,
+provider connection settings, and provider-specific required fields.
 
-The default manifest path is agoraform.yaml.`,
+A file path loads that document only. A directory path merges every
+*.agoraform.yaml and *.agoraform.yml file in that directory into one
+logical configuration. Cross-file $ref values are resolved after merge.
+The default path is agoraform.yaml.`,
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 1 {
 				return usageError{err: fmt.Errorf("accepts at most 1 arg(s), received %d", len(args))}
@@ -34,7 +37,7 @@ The default manifest path is agoraform.yaml.`,
 				return usageError{err: err}
 			}
 
-			m, err := manifest.LoadFile(path)
+			m, err := manifest.Load(path)
 			if err != nil {
 				return err
 			}
@@ -52,7 +55,7 @@ The default manifest path is agoraform.yaml.`,
 		},
 	}
 
-	cmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Path to the Agoraform manifest (default agoraform.yaml)")
+	cmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Path to the Agoraform manifest or configuration directory (default agoraform.yaml)")
 	return cmd
 }
 

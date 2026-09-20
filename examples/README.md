@@ -31,6 +31,8 @@ suite and contain no credentials or private deployment values.
   selected by `MATOMO_CONTAINER_ID`, with a Data Layer variable, Custom Event
   trigger, Matomo Analytics event tag, optional managed Matomo Configuration
   variable, logical references, import guidance, and declarative publication.
+- [multi-file](multi-file/README.md) — same Matomo conversion workflow split
+  across `*.agoraform.yaml` files and applied as one logical configuration.
 - [agoraform.yaml](agoraform.yaml) — minimal `matomo.goal` example retained from
   v0.1.0.
 

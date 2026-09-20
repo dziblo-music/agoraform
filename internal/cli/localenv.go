@@ -7,14 +7,14 @@ import (
 
 func localEnvDirectory(args []string) string {
 	if path, ok := manifestFileFlag(args); ok {
-		return filepath.Dir(path)
+		return configDirectory(path)
 	}
 
 	commandIndex := -1
 	command := ""
 	for i, arg := range args {
 		switch arg {
-		case "validate", "plan", "apply", "import":
+		case "validate", "plan", "apply", "destroy", "integrations", "import":
 			commandIndex = i
 			command = arg
 		}
@@ -31,17 +31,33 @@ func localEnvDirectory(args []string) string {
 		arg := args[i]
 		if arg == "--" {
 			if i+1 < len(args) {
-				return filepath.Dir(args[i+1])
+				return configDirectory(args[i+1])
 			}
 			break
 		}
 		if strings.HasPrefix(arg, "-") {
 			continue
 		}
-		return filepath.Dir(arg)
+		return configDirectory(arg)
 	}
 
 	return "."
+}
+
+func configDirectory(path string) string {
+	path = strings.TrimRight(strings.TrimSpace(path), `/\`)
+	if path == "" || path == "." {
+		return "."
+	}
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext == ".yaml" || ext == ".yml" {
+		dir := filepath.Dir(path)
+		if dir == "" || dir == "." {
+			return "."
+		}
+		return dir
+	}
+	return path
 }
 
 func manifestFileFlag(args []string) (string, bool) {

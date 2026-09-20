@@ -41,6 +41,21 @@ func PathForManifest(manifestPath string) string {
 	return filepath.Join(dir, DefaultFilename)
 }
 
+// PathForConfig returns the default state path for a manifest file or
+// configuration directory. Directory configurations use one state file
+// inside that directory.
+func PathForConfig(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return DefaultFilename
+	}
+	info, err := os.Stat(path)
+	if err == nil && info.IsDir() {
+		return filepath.Join(path, DefaultFilename)
+	}
+	return PathForManifest(path)
+}
+
 // Load reads state from path. A missing file is an empty store.
 func Load(path string) (*Store, error) {
 	st, err := New(path)
