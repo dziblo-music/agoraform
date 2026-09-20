@@ -70,10 +70,10 @@ applicationEvents:
 `
 	parts := map[string]string{
 		"providers.agoraform.yaml": providers,
-		"matomo.agoraform.yaml": matomoFile,
+		"matomo.agoraform.yaml":    matomoFile,
 		"googleads.agoraform.yaml": googleFile,
-		"meta.agoraform.yaml": metaFile,
-		"events.agoraform.yaml": eventsFile,
+		"meta.agoraform.yaml":      metaFile,
+		"events.agoraform.yaml":    eventsFile,
 	}
 	for name, contents := range parts {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(contents), 0o600); err != nil {
