@@ -369,6 +369,17 @@ func decodeAnyMap(raw json.RawMessage) (map[string]any, error) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return map[string]any{}, nil
 	}
+	// Matomo encodes unused Tag Manager template parameters as [] instead of {}.
+	if raw[0] == '[' {
+		var items []json.RawMessage
+		if err := json.Unmarshal(raw, &items); err != nil {
+			return nil, err
+		}
+		if len(items) == 0 {
+			return map[string]any{}, nil
+		}
+		return nil, fmt.Errorf("expected JSON object, got array")
+	}
 	var object map[string]any
 	if err := json.Unmarshal(raw, &object); err != nil {
 		return nil, err

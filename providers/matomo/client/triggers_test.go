@@ -53,6 +53,91 @@ func TestGetContainerTriggersArray(t *testing.T) {
 	}
 }
 
+func TestGetContainerTriggersEmptyParametersArray(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `[
+			{
+				"idtrigger": 1,
+				"idcontainerversion": 1,
+				"idsite": 1,
+				"type": "PageView",
+				"name": "Pageview",
+				"status": "active",
+				"parameters": [],
+				"conditions": []
+			},
+			{
+				"idtrigger": 3,
+				"idcontainerversion": 1,
+				"idsite": 1,
+				"type": "HistoryChange",
+				"name": "History Change",
+				"status": "active",
+				"parameters": [],
+				"conditions": []
+			},
+			{
+				"idtrigger": 22,
+				"idcontainerversion": 1,
+				"idsite": 1,
+				"type": "CustomEvent",
+				"name": "Trial Started",
+				"status": "active",
+				"parameters": {"eventName": "trialStarted"},
+				"conditions": [{"comparison":"equals","actual":"DLV - Analytics Delivery","expected":"true"}]
+			}
+		]`)
+	}))
+	t.Cleanup(srv.Close)
+
+	c := mustTagClient(t, srv)
+	triggers, err := c.TagManager().GetContainerTriggers(context.Background(), "1")
+	if err != nil {
+		t.Fatalf("GetContainerTriggers: %v", err)
+	}
+	if len(triggers) != 3 {
+		t.Fatalf("len(triggers) = %d, want 3", len(triggers))
+	}
+	byID := map[string]client.Trigger{}
+	for _, tr := range triggers {
+		byID[tr.IDTrigger] = tr
+	}
+	pageview := byID["1"]
+	if pageview.Type != "PageView" || pageview.Name != "Pageview" || len(pageview.Parameters) != 0 {
+		t.Fatalf("pageview = %+v", pageview)
+	}
+	history := byID["3"]
+	if history.Type != "HistoryChange" || len(history.Parameters) != 0 {
+		t.Fatalf("history = %+v", history)
+	}
+	custom := byID["22"]
+	if custom.Type != "CustomEvent" || custom.Parameters["eventName"] != "trialStarted" {
+		t.Fatalf("custom = %+v", custom)
+	}
+}
+
+func TestGetContainerTriggersNonEmptyParametersArray(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `[{
+			"idtrigger": 1,
+			"type": "PageView",
+			"name": "Pageview",
+			"parameters": ["unexpected"]
+		}]`)
+	}))
+	t.Cleanup(srv.Close)
+
+	c := mustTagClient(t, srv)
+	_, err := c.TagManager().GetContainerTriggers(context.Background(), "1")
+	if err == nil || !strings.Contains(err.Error(), "malformed") {
+		t.Fatalf("GetContainerTriggers = %v, want malformed", err)
+	}
+}
+
 func TestGetContainerTriggersEmpty(t *testing.T) {
 	t.Parallel()
 

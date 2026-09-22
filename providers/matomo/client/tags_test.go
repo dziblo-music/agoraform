@@ -91,6 +91,35 @@ func TestGetContainerTagsSnakeCaseTriggers(t *testing.T) {
 	}
 }
 
+func TestGetContainerTagsEmptyParametersArray(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `[{
+			"idtag": 4,
+			"idcontainerversion": 1,
+			"type": "Matomo",
+			"name": "Matomo Analytics",
+			"status": "active",
+			"parameters": [],
+			"fire_trigger_ids": [1, 3]
+		}]`)
+	}))
+	t.Cleanup(srv.Close)
+
+	c := mustTagClient(t, srv)
+	tags, err := c.TagManager().GetContainerTags(context.Background(), "1")
+	if err != nil {
+		t.Fatalf("GetContainerTags: %v", err)
+	}
+	if len(tags) != 1 {
+		t.Fatalf("len(tags) = %d, want 1", len(tags))
+	}
+	if tags[0].IDTag != "4" || tags[0].Name != "Matomo Analytics" || len(tags[0].Parameters) != 0 {
+		t.Fatalf("tag = %+v", tags[0])
+	}
+}
+
 func TestGetContainerTagsEmpty(t *testing.T) {
 	t.Parallel()
 
