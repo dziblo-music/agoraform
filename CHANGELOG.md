@@ -10,6 +10,15 @@ prints the SemVer identifier without the prefix (`0.5.0`).
 
 ## [Unreleased]
 
+### Fixed
+
+- Matomo Tag Manager list/import decode accepts empty `"parameters": []`
+  on triggers, tags, and variables. Matomo encodes unused template
+  parameters as an empty array; treating that as a map made
+  `agoraform import matomo.trigger.*` fail with
+  `TagManager.getContainerTriggers: malformed JSON response` whenever the
+  draft also contained native Pageview or History Change triggers.
+
 ### Added
 
 - Multi-file configuration: `validate`, `plan`, `apply`, `destroy`,

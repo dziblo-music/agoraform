@@ -401,6 +401,11 @@ Import a Tag Manager trigger by its numeric `idtrigger` in the configured
 container draft. That id is stored in local state as `remoteId`. Do not
 copy it into YAML. `type` remains immutable for a managed trigger.
 
+Matomo encodes unused template parameters on native triggers such as
+Pageview and History Change as an empty JSON array. Import treats that
+encoding as an empty parameter map so listing the draft can still locate
+the requested Custom Event trigger.
+
 ## Matomo tags
 
 Import a Tag Manager tag by its numeric `idtag` in the configured container

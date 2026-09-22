@@ -369,12 +369,8 @@ func decodeVariableID(raw json.RawMessage) (string, error) {
 }
 
 func decodeStringMap(raw json.RawMessage) (map[string]string, error) {
-	raw = bytes.TrimSpace(raw)
-	if len(raw) == 0 || string(raw) == "null" {
-		return map[string]string{}, nil
-	}
-	var object map[string]any
-	if err := json.Unmarshal(raw, &object); err != nil {
+	object, err := decodeAnyMap(raw)
+	if err != nil {
 		return nil, err
 	}
 	out := make(map[string]string, len(object))
