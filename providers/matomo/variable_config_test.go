@@ -355,8 +355,8 @@ func TestPlanMatomoConfigurationIgnoresTrailingSlashURLDrift(t *testing.T) {
 		Name: "Matomo Configuration",
 		Type: "MatomoConfiguration",
 		Parameters: map[string]any{
-			"matomoUrl":         "https://matomo.example.com/",
-			"idSite":            "1",
+			"matomoUrl":        "https://matomo.example.com/",
+			"idSite":           "1",
 			"customDimensions": []any{},
 		},
 	})
