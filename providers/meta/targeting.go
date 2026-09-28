@@ -19,7 +19,7 @@ const (
 	targetExcludedCustomAudiences = "excludedCustomAudiences"
 	targetInterests               = "interests"
 
-	customAudienceFields = "id,name,subtype,usage_restriction,use_in_campaigns"
+	customAudienceFields = "id,name,subtype,usage_restriction"
 )
 
 // targetingEntity is a stable Meta identifier with an optional display name.
@@ -280,7 +280,6 @@ func (p *Provider) ensureCustomAudience(ctx context.Context, addr resource.Addre
 		Name             string `json:"name"`
 		Subtype          string `json:"subtype"`
 		UsageRestriction string `json:"usage_restriction"`
-		UseInCampaigns   *bool  `json:"use_in_campaigns"`
 	}
 	if err := c.Get(ctx, id, url.Values{"fields": {customAudienceFields}}, &item); err != nil {
 		return classifyTargetingReadError(addr, field, "custom audience", id, err)
@@ -295,9 +294,6 @@ func (p *Provider) ensureCustomAudience(ctx context.Context, addr resource.Addre
 	}
 	if _, unsupported := unsupportedCustomAudienceSubtypes[subtype]; unsupported {
 		return fmt.Errorf("resource %s: targeting.%s: custom audience %s has unsupported subtype %s", addr, field, id, subtype)
-	}
-	if item.UseInCampaigns != nil && !*item.UseInCampaigns {
-		return fmt.Errorf("resource %s: targeting.%s: custom audience %s cannot be used in campaigns", addr, field, id)
 	}
 	usage := strings.ToUpper(strings.TrimSpace(item.UsageRestriction))
 	switch usage {
