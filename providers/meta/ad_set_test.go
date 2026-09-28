@@ -353,9 +353,13 @@ func TestImportAdSetIgnoresEmptyTargetingAutomation(t *testing.T) {
 	p := testProvider(t, httpSrv)
 	p.SetIdentityCatalog(adSetCatalog(t))
 	st, err := state.Load(filepath.Join(t.TempDir(), "agoraform.state.json"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	result, err := importer.Run(context.Background(), adSetAddress(t, "instagram"), testAdSetID, func(resource.Address) (provider.Provider, error) { return p, nil }, st)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if strings.Contains(result.YAML, "targeting_automation") {
 		t.Fatalf("YAML must not expose empty Meta targeting_automation:\n%s", result.YAML)
 	}
