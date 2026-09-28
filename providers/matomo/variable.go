@@ -482,7 +482,7 @@ func comparableMatomoConfiguration(attrs resource.Attributes) (resource.Attribut
 	out := resource.Attributes{
 		AttrType:      variableTypeMatomoConfiguration,
 		AttrName:      name,
-		AttrMatomoURL: matomoURL,
+		AttrMatomoURL: strings.TrimRight(matomoURL, "/"),
 		AttrSiteID:    siteID,
 	}
 	if _, ok := attrs[AttrEnableLinkTracking]; ok {
