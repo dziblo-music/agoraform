@@ -128,6 +128,14 @@ func TestCreateVideoAdCreativeRoundTripsExternalVideo(t *testing.T) {
 	if _, exists := created.Attributes[meta.AttrImageHash]; exists {
 		t.Fatalf("video creative unexpectedly contains imageHash: %#v", created.Attributes)
 	}
+	srv.mu.Lock()
+	story := srv.creatives[testCreativeID]["object_story_spec"].(graphObject)
+	videoData := story["video_data"].(graphObject)
+	gotThumbnail := videoData["image_url"]
+	srv.mu.Unlock()
+	if gotThumbnail != "https://example.com/video-thumbnail.jpg" {
+		t.Fatalf("video creative image_url = %v, want generated thumbnail URL", gotThumbnail)
+	}
 }
 
 func TestAdCreativeImmutableContentFailsPlanningWithoutMutation(t *testing.T) {
