@@ -176,6 +176,7 @@ func TestCreateAndReadCampaignAsset(t *testing.T) {
 	if got.HasChanges() {
 		t.Fatalf("unchanged campaign asset produced changes: %+v", got.Changes)
 	}
+	assertCampaignAssetQueriesSelectCampaignID(t, fake.queries)
 }
 
 func TestCreateBusinessLogoAndNameAttachments(t *testing.T) {
@@ -499,5 +500,28 @@ func TestDestroyCampaignAssetAndPreserveAsset(t *testing.T) {
 	ops := fake.operations()
 	if len(ops) != 1 || ops[0].collection != "campaignAssets" || ops[0].kind != "remove" {
 		t.Fatalf("operations = %+v, want only campaignAssets remove", ops)
+	}
+	assertCampaignAssetQueriesSelectCampaignID(t, fake.queries)
+}
+
+func assertCampaignAssetQueriesSelectCampaignID(t *testing.T, queries []string) {
+	t.Helper()
+	var saw bool
+	for _, query := range queries {
+		lower := strings.ToLower(query)
+		if !strings.Contains(lower, "from campaign_asset") {
+			continue
+		}
+		saw = true
+		selectClause := lower
+		if where := strings.Index(lower, " where "); where >= 0 {
+			selectClause = lower[:where]
+		}
+		if !strings.Contains(selectClause, "campaign.id") {
+			t.Fatalf("campaign_asset query must select campaign.id when campaign is filtered:\n%s", query)
+		}
+	}
+	if !saw {
+		t.Fatal("expected a campaign_asset query")
 	}
 }

@@ -38,6 +38,7 @@ type assetFake struct {
 	mutateStatus int
 	searchBody   string
 	lastMutate   string
+	queries      []string
 }
 
 func newAssetFake() *assetFake {
@@ -74,6 +75,9 @@ func (f *assetFake) handler(w http.ResponseWriter, r *http.Request) {
 			Query string `json:"query"`
 		}
 		_ = json.Unmarshal(body, &req)
+		if req.Query != "" {
+			f.queries = append(f.queries, req.Query)
+		}
 		if strings.Contains(strings.ToLower(req.Query), "from customer ") {
 			_ = json.NewEncoder(w).Encode(map[string]any{"results": []any{map[string]any{"customer": map[string]any{"id": testCustomerID}}}})
 			return

@@ -12,6 +12,11 @@ prints the SemVer identifier without the prefix (`0.5.0`).
 
 ### Fixed
 
+- Google Ads campaign-asset reads select `campaign.id`. On `campaign_asset`,
+  campaign is a segmenting resource, so filtering `campaign.id` without
+  selecting it returns
+  `EXPECTED_REFERENCED_FIELD_IN_SELECT_CLAUSE` and blocks plan and apply.
+
 - Matomo Tag Manager list/import decode accepts empty `"parameters": []`
   on triggers, tags, and variables. Matomo encodes unused template
   parameters as an empty array; treating that as a map made
