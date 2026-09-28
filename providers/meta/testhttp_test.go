@@ -518,7 +518,7 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(failure.status)
 		_, _ = io.WriteString(w, failure.body)
 	case r.Method == http.MethodGet && s.audiences[path] != nil:
-		if fields := r.URL.Query().Get("fields"); fields != "id,name,subtype,usage_restriction" {
+		if fields := r.URL.Query().Get("fields"); fields != "id,name,subtype" {
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = io.WriteString(w, `{"error":{"message":"unsupported custom audience fields","code":100}}`)
 			return
