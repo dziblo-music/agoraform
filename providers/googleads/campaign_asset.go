@@ -72,8 +72,12 @@ var (
 		campaignAssetPaused:  {},
 	}
 
+	// campaign is a segmenting resource of campaign_asset. GAQL rejects a
+	// WHERE clause that references campaign.id unless that field is selected
+	// (EXPECTED_REFERENCED_FIELD_IN_SELECT_CLAUSE).
 	campaignAssetSelect = strings.Join([]string{
 		"SELECT",
+		"campaign.id,",
 		"campaign_asset.resource_name,",
 		"campaign_asset.campaign,",
 		"campaign_asset.asset,",

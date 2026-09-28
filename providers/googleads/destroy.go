@@ -258,7 +258,7 @@ func (p *Provider) destroyCampaignAsset(ctx context.Context, res resource.Resour
 		return provider.DestroyResult{}, err
 	}
 	query := strings.Join([]string{
-		"SELECT campaign_asset.resource_name, campaign_asset.status FROM campaign_asset WHERE",
+		"SELECT campaign.id, campaign_asset.resource_name, campaign_asset.status FROM campaign_asset WHERE",
 		"campaign.id = " + campaignID,
 		"AND campaign_asset.asset = " + gaqlString(assetResourceName(c.CustomerID(), assetID)),
 		"AND campaign_asset.field_type = " + gaqlString(fieldType),
