@@ -155,6 +155,19 @@ func TestCreateReadUpdateAndNoOpAdSet(t *testing.T) {
 	if created.Identity.ID != testAdSetID || created.Attributes[meta.AttrStatus] != "PAUSED" {
 		t.Fatalf("created=%#v", created)
 	}
+	promoted, ok := srv.adSetField(testAdSetID, "promoted_object").(graphObject)
+	if !ok {
+		t.Fatalf("promoted_object = %#v", srv.adSetField(testAdSetID, "promoted_object"))
+	}
+	if got := promoted["custom_conversion_id"]; got != testConvID {
+		t.Fatalf("custom_conversion_id = %v, want %s", got, testConvID)
+	}
+	if _, ok := promoted["pixel_id"]; ok {
+		t.Fatalf("promoted_object must not include pixel_id: %#v", promoted)
+	}
+	if got := created.Attributes[meta.AttrPixel]; got != (resource.Ref{Address: pixelAddress(t, "website")}) {
+		t.Fatalf("pixel reconstructed from custom conversion = %#v", got)
+	}
 	targeting := created.Attributes[meta.AttrTargeting].(map[string]any)
 	if got := targeting["publisherPlatforms"].([]any)[0]; got != "INSTAGRAM" {
 		t.Fatalf("platform=%v", got)
