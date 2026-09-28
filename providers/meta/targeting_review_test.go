@@ -25,7 +25,7 @@ func TestCreateAdSetCustomAudienceReadUsesSupportedV26Fields(t *testing.T) {
 	srv := newGraphServer(t)
 	seedTargetingReferenceDependencies(srv)
 	srv.seedAudience(testAudienceIncludeID, graphObject{
-		"subtype":           "CUSTOM",
+		"subtype": "CUSTOM",
 	})
 	httpSrv := srv.start()
 	defer httpSrv.Close()
@@ -46,8 +46,8 @@ func TestCreateAdSetAllowsSharedCustomAudience(t *testing.T) {
 	srv := newGraphServer(t)
 	seedTargetingReferenceDependencies(srv)
 	srv.seedAudience(testAudienceIncludeID, graphObject{
-		"account_id":        "999888777666555",
-		"subtype":           "CUSTOM",
+		"account_id": "999888777666555",
+		"subtype":    "CUSTOM",
 	})
 	httpSrv := srv.start()
 	defer httpSrv.Close()
