@@ -381,6 +381,34 @@ func TestImportAdSetRejectsNonEmptyTargetingAutomation(t *testing.T) {
 	}
 }
 
+func TestImportAdSetNormalizesMetaDefaultTargetingExpansion(t *testing.T) {
+	t.Parallel()
+	srv := newGraphServer(t)
+	targeting := instagramTargetingAPI()
+	targeting["age_range"] = []any{18, 65}
+	targeting["targeting_automation"] = graphObject{"advantage_audience": 1}
+	geo := targeting["geo_locations"].(graphObject)
+	geo["location_types"] = []any{"frequently_in", "home", "recent"}
+	srv.seedAdSet(testAdSetID, graphObject{"status": "ACTIVE", "configured_status": "ACTIVE", "effective_status": "ACTIVE", "lifetime_budget": "50000", "start_time": "2026-09-01T00:00:00-0500", "end_time": "2026-10-01T00:00:00-0500", "targeting": targeting})
+	httpSrv := srv.start()
+	defer httpSrv.Close()
+	p := testProvider(t, httpSrv)
+	p.SetIdentityCatalog(adSetCatalog(t))
+	st, err := state.Load(filepath.Join(t.TempDir(), "agoraform.state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := importer.Run(context.Background(), adSetAddress(t, "instagram"), testAdSetID, func(resource.Address) (provider.Provider, error) { return p, nil }, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ignored := range []string{"age_range", "targeting_automation", "location_types"} {
+		if strings.Contains(result.YAML, ignored) {
+			t.Fatalf("YAML must not expose Meta-derived %s:\n%s", ignored, result.YAML)
+		}
+	}
+}
+
 func TestImportAdSetRejectsUnboundRelationships(t *testing.T) {
 	t.Parallel()
 	srv := newGraphServer(t)
