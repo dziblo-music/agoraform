@@ -378,22 +378,23 @@ func (p *Provider) remoteAdSet(ctx context.Context, desired resource.Resource, i
 		if err != nil {
 			return resource.RemoteResource{}, fmt.Errorf("remote ad set %s has invalid promoted_object: %w", id, err)
 		}
-		pixelID, ok := objectIDFromAny(promoted["pixel_id"])
-		if !ok {
-			return resource.RemoteResource{}, fmt.Errorf("remote ad set %s promoted_object is missing pixel_id", id)
-		}
 		conversionID, ok := objectIDFromAny(promoted["custom_conversion_id"])
 		if !ok {
 			return resource.RemoteResource{}, fmt.Errorf("remote ad set %s promoted_object is missing custom_conversion_id", id)
-		}
-		pixel, err = p.managedRefAttr(ctx, TypePixel, OutputPixelID, pixelID, desired.Attributes[AttrPixel])
-		if err != nil {
-			return resource.RemoteResource{}, fmt.Errorf("remote ad set %s pixel relationship: %w", id, err)
 		}
 		conversion, err = p.managedRefAttr(ctx, TypeCustomConversion, OutputCustomConversionID, conversionID, desired.Attributes[AttrCustomConversion])
 		if err != nil {
 			return resource.RemoteResource{}, fmt.Errorf("remote ad set %s custom conversion relationship: %w", id, err)
 		}
+		conversionLive, err := p.readCustomConversionByID(ctx, resource.Resource{Address: conversion.Address, Attributes: resource.Attributes{AttrPixel: desired.Attributes[AttrPixel]}}, conversionID)
+		if err != nil {
+			return resource.RemoteResource{}, fmt.Errorf("remote ad set %s custom conversion %s: %w", id, conversionID, err)
+		}
+		pixelRef := logicalRef(conversionLive.Attributes[AttrPixel])
+		if pixelRef.IsZero() {
+			return resource.RemoteResource{}, fmt.Errorf("remote ad set %s custom conversion %s has no managed pixel relationship", id, conversionID)
+		}
+		pixel = resource.Ref{Address: pixelRef.Address}
 	}
 	targeting, err := normalizeRemoteTargeting(desired.Address, item.Targeting)
 	if err != nil {
@@ -951,15 +952,11 @@ func (p *Provider) adSetForm(ctx context.Context, a normalizedAdSet) (url.Values
 	raw, _ := json.Marshal(targetingAPIObject(a.Targeting))
 	form.Set("targeting", string(raw))
 	if a.OptimizationGoal == "OFFSITE_CONVERSIONS" {
-		pixelID, e := p.refID(a.Pixel, OutputPixelID)
-		if e != nil {
-			return nil, fmt.Errorf("pixel %w", e)
-		}
 		conversionID, e := p.refID(a.CustomConversion, OutputCustomConversionID)
 		if e != nil {
 			return nil, fmt.Errorf("customConversion %w", e)
 		}
-		promoted, _ := json.Marshal(map[string]string{"pixel_id": pixelID, "custom_conversion_id": conversionID})
+		promoted, _ := json.Marshal(map[string]string{"custom_conversion_id": conversionID})
 		form.Set("promoted_object", string(promoted))
 	}
 	return form, nil
