@@ -276,9 +276,9 @@ func (p *Provider) ensureCustomAudience(ctx context.Context, addr resource.Addre
 		return err
 	}
 	var item struct {
-		ID               string `json:"id"`
-		Name             string `json:"name"`
-		Subtype          string `json:"subtype"`
+		ID      string `json:"id"`
+		Name    string `json:"name"`
+		Subtype string `json:"subtype"`
 	}
 	if err := c.Get(ctx, id, url.Values{"fields": {customAudienceFields}}, &item); err != nil {
 		return classifyTargetingReadError(addr, field, "custom audience", id, err)
