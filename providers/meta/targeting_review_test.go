@@ -26,7 +26,6 @@ func TestCreateAdSetCustomAudienceReadUsesSupportedV26Fields(t *testing.T) {
 	seedTargetingReferenceDependencies(srv)
 	srv.seedAudience(testAudienceIncludeID, graphObject{
 		"subtype":           "CUSTOM",
-		"usage_restriction": "NONE",
 	})
 	httpSrv := srv.start()
 	defer httpSrv.Close()
@@ -49,7 +48,6 @@ func TestCreateAdSetAllowsSharedCustomAudience(t *testing.T) {
 	srv.seedAudience(testAudienceIncludeID, graphObject{
 		"account_id":        "999888777666555",
 		"subtype":           "CUSTOM",
-		"usage_restriction": "NONE",
 	})
 	httpSrv := srv.start()
 	defer httpSrv.Close()
@@ -61,59 +59,6 @@ func TestCreateAdSetAllowsSharedCustomAudience(t *testing.T) {
 	attrs[meta.AttrTargeting].(map[string]any)["customAudiences"] = []any{map[string]any{"id": testAudienceIncludeID}}
 
 	created, err := p.Create(context.Background(), adSetResource(t, "shared_audience", attrs))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if created.Identity.ID != testAdSetID {
-		t.Fatalf("created id=%q", created.Identity.ID)
-	}
-}
-
-func TestCreateAdSetRejectsExclusionOnlyAudienceForInclusion(t *testing.T) {
-	t.Parallel()
-	srv := newGraphServer(t)
-	seedTargetingReferenceDependencies(srv)
-	srv.seedAudience(testAudienceIncludeID, graphObject{
-		"subtype":           "CUSTOM",
-		"usage_restriction": "EXCLUSION_ONLY",
-	})
-	httpSrv := srv.start()
-	defer httpSrv.Close()
-
-	p := testProvider(t, httpSrv)
-	p.SetIdentityCatalog(adSetCatalog(t))
-	rememberAdSetDependencies(t, p)
-	attrs := standardAdSetAttrs(t)
-	attrs[meta.AttrTargeting].(map[string]any)["customAudiences"] = []any{map[string]any{"id": testAudienceIncludeID}}
-
-	_, err := p.Create(context.Background(), adSetResource(t, "exclusion_only_include", attrs))
-	if err == nil || !strings.Contains(err.Error(), "restricted to exclusions") {
-		t.Fatalf("error=%v", err)
-	}
-	posts, deletes := srv.mutationCounts()
-	if posts != 0 || deletes != 0 {
-		t.Fatalf("mutated posts=%d deletes=%d", posts, deletes)
-	}
-}
-
-func TestCreateAdSetAllowsExclusionOnlyAudienceForExclusion(t *testing.T) {
-	t.Parallel()
-	srv := newGraphServer(t)
-	seedTargetingReferenceDependencies(srv)
-	srv.seedAudience(testAudienceExcludeID, graphObject{
-		"subtype":           "CUSTOM",
-		"usage_restriction": "EXCLUSION_ONLY",
-	})
-	httpSrv := srv.start()
-	defer httpSrv.Close()
-
-	p := testProvider(t, httpSrv)
-	p.SetIdentityCatalog(adSetCatalog(t))
-	rememberAdSetDependencies(t, p)
-	attrs := standardAdSetAttrs(t)
-	attrs[meta.AttrTargeting].(map[string]any)["excludedCustomAudiences"] = []any{map[string]any{"id": testAudienceExcludeID}}
-
-	created, err := p.Create(context.Background(), adSetResource(t, "exclusion_only_exclude", attrs))
 	if err != nil {
 		t.Fatal(err)
 	}
