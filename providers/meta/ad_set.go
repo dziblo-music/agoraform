@@ -682,6 +682,36 @@ func normalizeTargeting(res resource.Resource) (normalizedTargeting, error) {
 	return normalizedTargeting{Countries: countries, Regions: regions, AgeMin: ageMin, AgeMax: ageMax, Genders: genders, Locales: locales, PublisherPlatforms: platforms, InstagramPositions: positions, DevicePlatforms: devices, CustomAudiences: customAudiences, ExcludedCustomAudiences: excluded, Interests: interests}, nil
 }
 
+func isDefaultTargetingAutomation(v any) bool {
+	if isEmptyTargetingValue(v) {
+		return true
+	}
+	m, ok := stringMap(v)
+	if !ok || len(m) != 1 {
+		return false
+	}
+	value, ok := m["advantage_audience"]
+	if !ok {
+		return false
+	}
+	n, err := coerceFloat(value)
+	return err == nil && n == 1
+}
+
+func isDefaultLocationTypes(v any) bool {
+	items, err := remoteStrings(v)
+	if err != nil || len(items) != 3 {
+		return false
+	}
+	got := make([]string, len(items))
+	for i, item := range items {
+		got[i] = strings.ToLower(strings.TrimSpace(item))
+	}
+	sort.Strings(got)
+	want := []string{"frequently_in", "home", "recent"}
+	return reflect.DeepEqual(got, want)
+}
+
 func normalizeRemoteTargeting(addr resource.Address, raw json.RawMessage) (normalizedTargeting, error) {
 	m, err := decodeJSONObject(raw)
 	if err != nil {
@@ -696,17 +726,20 @@ func normalizeRemoteTargeting(addr resource.Address, raw json.RawMessage) (norma
 	if exclusions, ok := m["exclusions"]; ok && !isEmptyTargetingValue(exclusions) {
 		return normalizedTargeting{}, fmt.Errorf("unsupported provider field %q", "exclusions")
 	}
-	if automation, ok := m["targeting_automation"]; ok && !isEmptyTargetingValue(automation) {
-		return normalizedTargeting{}, fmt.Errorf("unsupported provider field %q has non-empty value", "targeting_automation")
+	if automation, ok := m["targeting_automation"]; ok && !isDefaultTargetingAutomation(automation) {
+		return normalizedTargeting{}, fmt.Errorf("unsupported provider field %q has non-default value", "targeting_automation")
 	}
 	geo, ok := stringMap(m["geo_locations"])
 	if !ok {
 		return normalizedTargeting{}, fmt.Errorf("geo_locations must be an object")
 	}
 	for key := range geo {
-		if key != "countries" && key != "regions" {
+		if key != "countries" && key != "regions" && key != "location_types" {
 			return normalizedTargeting{}, fmt.Errorf("unsupported geo_locations field %q", key)
 		}
+	}
+	if locationTypes, ok := geo["location_types"]; ok && !isDefaultLocationTypes(locationTypes) {
+		return normalizedTargeting{}, fmt.Errorf("unsupported geo_locations field %q has non-default value", "location_types")
 	}
 	countries, err := remoteStrings(geo["countries"])
 	if err != nil {
