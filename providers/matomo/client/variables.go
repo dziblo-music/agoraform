@@ -201,10 +201,21 @@ func mergeVariableParameters(preserved, managed map[string]any) (map[string]any,
 	for k, v := range managed {
 		out[k] = v
 	}
+	normalizeKnownDefaultEmptyVariableParameters(out)
 	if err := validatePreservableVariableParameters(out); err != nil {
 		return nil, fmt.Errorf("matomo: remote variable parameters cannot be preserved without loss: %w", err)
 	}
 	return out, nil
+}
+
+// normalizeKnownDefaultEmptyVariableParameters drops remote values that Matomo
+// reports as empty collections even though omitting them from a replacement-style
+// update has the same semantics. Keep this allowlist narrow: unknown empty
+// collections still fail validation rather than being silently discarded.
+func normalizeKnownDefaultEmptyVariableParameters(parameters map[string]any) {
+	if dimensions, ok := parameters["customDimensions"].([]any); ok && len(dimensions) == 0 {
+		delete(parameters, "customDimensions")
+	}
 }
 
 // CloneJSONMap returns a JSON round-trip copy of in. Non-JSON values fail
