@@ -369,7 +369,7 @@ func TestImportAdSetRejectsNonEmptyTargetingAutomation(t *testing.T) {
 	t.Parallel()
 	srv := newGraphServer(t)
 	targeting := instagramTargetingAPI()
-	targeting["targeting_automation"] = graphObject{"advantage_audience": 1}
+	targeting["targeting_automation"] = graphObject{"advantage_audience": 0}
 	srv.seedAdSet(testAdSetID, graphObject{"lifetime_budget": "50000", "start_time": "2026-09-01T00:00:00Z", "end_time": "2026-10-01T00:00:00Z", "targeting": targeting})
 	httpSrv := srv.start()
 	defer httpSrv.Close()
