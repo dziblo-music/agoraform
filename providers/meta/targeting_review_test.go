@@ -20,6 +20,42 @@ func TestValidateAdSetRejectsNumericStringTargetingEntity(t *testing.T) {
 	}
 }
 
+func TestCreateAdSetCustomAudienceReadUsesSupportedV26Fields(t *testing.T) {
+	t.Parallel()
+	srv := newGraphServer(t)
+	seedTargetingReferenceDependencies(srv)
+	srv.seedAudience(testAudienceIncludeID, graphObject{
+		"subtype":           "CUSTOM",
+		"usage_restriction": "NONE",
+	})
+	httpSrv := srv.start()
+	defer httpSrv.Close()
+
+	p := testProvider(t, httpSrv)
+	p.SetIdentityCatalog(adSetCatalog(t))
+	rememberAdSetDependencies(t, p)
+	attrs := standardAdSetAttrs(t)
+	attrs[meta.AttrTargeting].(map[string]any)["customAudiences"] = []any{map[string]any{"id": testAudienceIncludeID}}
+
+	if _, err := p.Create(context.Background(), adSetResource(t, "supported_audience_fields", attrs)); err != nil {
+		t.Fatal(err)
+	}
+	for _, request := range srv.requests() {
+		if request.Path != "/"+testAudienceIncludeID {
+			continue
+		}
+		fields := request.Query.Get("fields")
+		if fields != "id,name,subtype,usage_restriction" {
+			t.Fatalf("custom audience fields=%q", fields)
+		}
+		if strings.Contains(fields, "use_in_campaigns") {
+			t.Fatalf("custom audience request still includes removed field use_in_campaigns: %q", fields)
+		}
+		return
+	}
+	t.Fatal("custom audience read request was not observed")
+}
+
 func TestCreateAdSetAllowsSharedCustomAudience(t *testing.T) {
 	t.Parallel()
 	srv := newGraphServer(t)
@@ -28,7 +64,6 @@ func TestCreateAdSetAllowsSharedCustomAudience(t *testing.T) {
 		"account_id":        "999888777666555",
 		"subtype":           "CUSTOM",
 		"usage_restriction": "NONE",
-		"use_in_campaigns":  true,
 	})
 	httpSrv := srv.start()
 	defer httpSrv.Close()
@@ -55,7 +90,6 @@ func TestCreateAdSetRejectsExclusionOnlyAudienceForInclusion(t *testing.T) {
 	srv.seedAudience(testAudienceIncludeID, graphObject{
 		"subtype":           "CUSTOM",
 		"usage_restriction": "EXCLUSION_ONLY",
-		"use_in_campaigns":  true,
 	})
 	httpSrv := srv.start()
 	defer httpSrv.Close()
@@ -83,7 +117,6 @@ func TestCreateAdSetAllowsExclusionOnlyAudienceForExclusion(t *testing.T) {
 	srv.seedAudience(testAudienceExcludeID, graphObject{
 		"subtype":           "CUSTOM",
 		"usage_restriction": "EXCLUSION_ONLY",
-		"use_in_campaigns":  true,
 	})
 	httpSrv := srv.start()
 	defer httpSrv.Close()
@@ -100,34 +133,6 @@ func TestCreateAdSetAllowsExclusionOnlyAudienceForExclusion(t *testing.T) {
 	}
 	if created.Identity.ID != testAdSetID {
 		t.Fatalf("created id=%q", created.Identity.ID)
-	}
-}
-
-func TestCreateAdSetRejectsAudienceDisabledForCampaigns(t *testing.T) {
-	t.Parallel()
-	srv := newGraphServer(t)
-	seedTargetingReferenceDependencies(srv)
-	srv.seedAudience(testAudienceIncludeID, graphObject{
-		"subtype":           "CUSTOM",
-		"usage_restriction": "NONE",
-		"use_in_campaigns":  false,
-	})
-	httpSrv := srv.start()
-	defer httpSrv.Close()
-
-	p := testProvider(t, httpSrv)
-	p.SetIdentityCatalog(adSetCatalog(t))
-	rememberAdSetDependencies(t, p)
-	attrs := standardAdSetAttrs(t)
-	attrs[meta.AttrTargeting].(map[string]any)["customAudiences"] = []any{map[string]any{"id": testAudienceIncludeID}}
-
-	_, err := p.Create(context.Background(), adSetResource(t, "disabled_audience", attrs))
-	if err == nil || !strings.Contains(err.Error(), "cannot be used in campaigns") {
-		t.Fatalf("error=%v", err)
-	}
-	posts, deletes := srv.mutationCounts()
-	if posts != 0 || deletes != 0 {
-		t.Fatalf("mutated posts=%d deletes=%d", posts, deletes)
 	}
 }
 
