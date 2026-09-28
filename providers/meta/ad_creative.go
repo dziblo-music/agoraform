@@ -599,7 +599,7 @@ func (p *Provider) videoThumbnailURL(ctx context.Context, videoID string) (strin
 			} `json:"data"`
 		} `json:"thumbnails"`
 	}
-	if err := c.Get(ctx, videoID, url.Values{"fields": {"thumbnails"}} , &response); err != nil {
+	if err := c.Get(ctx, videoID, url.Values{"fields": {"thumbnails"}}, &response); err != nil {
 		return "", err
 	}
 	var fallback string
