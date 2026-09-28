@@ -128,6 +128,29 @@ func TestAPIErrorMappingAndRedaction(t *testing.T) {
 	assertNoToken(t, err.Error())
 }
 
+func TestAPIErrorIncludesUserFacingDetailsAndRedactsSecrets(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"error":{"message":"Invalid parameter","type":"OAuthException","code":100,"error_subcode":1760021,"error_user_title":"Invalid event source","error_user_msg":"The Pixel `+testToken+` cannot be used for this custom conversion.","fbtrace_id":"trace-789"}}`)
+	}))
+	defer server.Close()
+	c := newClient(t, server.URL, server.Client(), time.Second)
+	err := c.Post(context.Background(), c.AdAccountID()+"/customconversions", url.Values{"name": {"Trial Started"}}, &struct{}{})
+	var apiErr *client.Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("error = %T %v, want *client.Error", err, err)
+	}
+	if apiErr.UserTitle != "Invalid event source" || !strings.Contains(apiErr.UserMessage, "[redacted]") {
+		t.Fatalf("unexpected user-facing details: %#v", apiErr)
+	}
+	got := err.Error()
+	if !strings.Contains(got, "Invalid event source") || !strings.Contains(got, "cannot be used for this custom conversion") {
+		t.Fatalf("error omitted Meta user-facing details: %q", got)
+	}
+	assertNoToken(t, got)
+}
+
 func TestAuthenticationAndPermissionClassification(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
