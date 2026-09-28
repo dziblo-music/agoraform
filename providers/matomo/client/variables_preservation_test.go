@@ -66,3 +66,42 @@ func TestUpdateContainerVariableRejectsLossyPreservedParametersBeforeMutation(t 
 		})
 	}
 }
+
+func TestUpdateContainerVariableOmitsDefaultEmptyCustomDimensions(t *testing.T) {
+	var form map[string][]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("ParseForm: %v", err)
+		}
+		form = r.PostForm
+		_, _ = w.Write([]byte(`null`))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := mustTagClient(t, srv)
+	err := c.TagManager().UpdateContainerVariable(context.Background(), "9", "20", client.VariableInput{
+		Type: "MatomoConfiguration",
+		Name: "Matomo Configuration",
+		Parameters: map[string]any{
+			"matomoUrl": "https://matomo.example.com",
+			"idSite":    "1",
+		},
+	}, client.VariablePreservedFields{
+		Parameters: map[string]any{
+			"customDimensions": []any{},
+			"enableDoNotTrack": true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateContainerVariable: %v", err)
+	}
+	if form == nil {
+		t.Fatal("update request was not made")
+	}
+	if _, ok := form["parameters[customDimensions]"]; ok {
+		t.Fatalf("empty customDimensions should be omitted: %v", form)
+	}
+	if got := form["parameters[enableDoNotTrack]"]; len(got) != 1 || got[0] != "1" {
+		t.Fatalf("unmanaged parameter not preserved: %v", form)
+	}
+}
