@@ -687,7 +687,7 @@ func normalizeRemoteTargeting(addr resource.Address, raw json.RawMessage) (norma
 	if err != nil {
 		return normalizedTargeting{}, err
 	}
-	allowed := map[string]struct{}{"geo_locations": {}, "age_min": {}, "age_max": {}, "age_range": {}, "genders": {}, "locales": {}, "publisher_platforms": {}, "instagram_positions": {}, "device_platforms": {}, "custom_audiences": {}, "excluded_custom_audiences": {}, "flexible_spec": {}, "interests": {}, "exclusions": {}}
+	allowed := map[string]struct{}{"geo_locations": {}, "age_min": {}, "age_max": {}, "age_range": {}, "targeting_automation": {}, "genders": {}, "locales": {}, "publisher_platforms": {}, "instagram_positions": {}, "device_platforms": {}, "custom_audiences": {}, "excluded_custom_audiences": {}, "flexible_spec": {}, "interests": {}, "exclusions": {}}
 	for key := range m {
 		if _, ok := allowed[key]; !ok {
 			return normalizedTargeting{}, fmt.Errorf("unsupported provider field %q", key)
@@ -695,6 +695,9 @@ func normalizeRemoteTargeting(addr resource.Address, raw json.RawMessage) (norma
 	}
 	if exclusions, ok := m["exclusions"]; ok && !isEmptyTargetingValue(exclusions) {
 		return normalizedTargeting{}, fmt.Errorf("unsupported provider field %q", "exclusions")
+	}
+	if automation, ok := m["targeting_automation"]; ok && !isEmptyTargetingValue(automation) {
+		return normalizedTargeting{}, fmt.Errorf("unsupported provider field %q has non-empty value", "targeting_automation")
 	}
 	geo, ok := stringMap(m["geo_locations"])
 	if !ok {

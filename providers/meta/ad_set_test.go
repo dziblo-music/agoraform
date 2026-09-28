@@ -342,6 +342,45 @@ func TestImportAdSetIgnoresDerivedAgeRange(t *testing.T) {
 	}
 }
 
+func TestImportAdSetIgnoresEmptyTargetingAutomation(t *testing.T) {
+	t.Parallel()
+	srv := newGraphServer(t)
+	targeting := instagramTargetingAPI()
+	targeting["targeting_automation"] = graphObject{}
+	srv.seedAdSet(testAdSetID, graphObject{"status": "ACTIVE", "configured_status": "ACTIVE", "effective_status": "ACTIVE", "lifetime_budget": "50000", "start_time": "2026-09-01T00:00:00-0500", "end_time": "2026-10-01T00:00:00-0500", "targeting": targeting})
+	httpSrv := srv.start()
+	defer httpSrv.Close()
+	p := testProvider(t, httpSrv)
+	p.SetIdentityCatalog(adSetCatalog(t))
+	st, err := state.Load(filepath.Join(t.TempDir(), "agoraform.state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := importer.Run(context.Background(), adSetAddress(t, "instagram"), testAdSetID, func(resource.Address) (provider.Provider, error) { return p, nil }, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(result.YAML, "targeting_automation") {
+		t.Fatalf("YAML must not expose empty Meta targeting_automation:\n%s", result.YAML)
+	}
+}
+
+func TestImportAdSetRejectsNonEmptyTargetingAutomation(t *testing.T) {
+	t.Parallel()
+	srv := newGraphServer(t)
+	targeting := instagramTargetingAPI()
+	targeting["targeting_automation"] = graphObject{"advantage_audience": 1}
+	srv.seedAdSet(testAdSetID, graphObject{"lifetime_budget": "50000", "start_time": "2026-09-01T00:00:00Z", "end_time": "2026-10-01T00:00:00Z", "targeting": targeting})
+	httpSrv := srv.start()
+	defer httpSrv.Close()
+	p := testProvider(t, httpSrv)
+	p.SetIdentityCatalog(adSetCatalog(t))
+	_, err := p.Import(context.Background(), adSetAddress(t, "instagram"), testAdSetID)
+	if err == nil || !strings.Contains(err.Error(), "targeting_automation") {
+		t.Fatalf("error=%v", err)
+	}
+}
+
 func TestImportAdSetRejectsUnboundRelationships(t *testing.T) {
 	t.Parallel()
 	srv := newGraphServer(t)
