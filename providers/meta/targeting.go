@@ -19,7 +19,7 @@ const (
 	targetExcludedCustomAudiences = "excludedCustomAudiences"
 	targetInterests               = "interests"
 
-	customAudienceFields = "id,name,subtype,usage_restriction"
+	customAudienceFields = "id,name,subtype"
 )
 
 // targetingEntity is a stable Meta identifier with an optional display name.
@@ -279,7 +279,6 @@ func (p *Provider) ensureCustomAudience(ctx context.Context, addr resource.Addre
 		ID               string `json:"id"`
 		Name             string `json:"name"`
 		Subtype          string `json:"subtype"`
-		UsageRestriction string `json:"usage_restriction"`
 	}
 	if err := c.Get(ctx, id, url.Values{"fields": {customAudienceFields}}, &item); err != nil {
 		return classifyTargetingReadError(addr, field, "custom audience", id, err)
@@ -294,16 +293,6 @@ func (p *Provider) ensureCustomAudience(ctx context.Context, addr resource.Addre
 	}
 	if _, unsupported := unsupportedCustomAudienceSubtypes[subtype]; unsupported {
 		return fmt.Errorf("resource %s: targeting.%s: custom audience %s has unsupported subtype %s", addr, field, id, subtype)
-	}
-	usage := strings.ToUpper(strings.TrimSpace(item.UsageRestriction))
-	switch usage {
-	case "", "NONE", "NO_DERIVATIVES":
-	case "EXCLUSION_ONLY":
-		if field == targetCustomAudiences {
-			return fmt.Errorf("resource %s: targeting.%s: custom audience %s is restricted to exclusions and cannot be used for inclusion", addr, field, id)
-		}
-	default:
-		return fmt.Errorf("resource %s: targeting.%s: custom audience %s has unsupported usage restriction %s", addr, field, id, usage)
 	}
 	return nil
 }
