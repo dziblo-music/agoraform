@@ -316,6 +316,32 @@ func TestImportAdSetReconstructsRelationshipsAndCanonicalTargeting(t *testing.T)
 	}
 }
 
+func TestImportAdSetIgnoresDerivedAgeRange(t *testing.T) {
+	t.Parallel()
+	srv := newGraphServer(t)
+	targeting := instagramTargetingAPI()
+	targeting["age_range"] = []any{18, 65}
+	srv.seedAdSet(testAdSetID, graphObject{"status": "ACTIVE", "configured_status": "ACTIVE", "effective_status": "ACTIVE", "lifetime_budget": "50000", "start_time": "2026-09-01T00:00:00-0500", "end_time": "2026-10-01T00:00:00-0500", "targeting": targeting})
+	httpSrv := srv.start()
+	defer httpSrv.Close()
+	p := testProvider(t, httpSrv)
+	p.SetIdentityCatalog(adSetCatalog(t))
+	st, err := state.Load(filepath.Join(t.TempDir(), "agoraform.state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := importer.Run(context.Background(), adSetAddress(t, "instagram"), testAdSetID, func(resource.Address) (provider.Provider, error) { return p, nil }, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.YAML, "ageMin: 18") || !strings.Contains(result.YAML, "ageMax: 65") {
+		t.Fatalf("YAML did not preserve canonical age bounds:\n%s", result.YAML)
+	}
+	if strings.Contains(result.YAML, "age_range") {
+		t.Fatalf("YAML must not expose Meta-derived age_range:\n%s", result.YAML)
+	}
+}
+
 func TestImportAdSetRejectsUnboundRelationships(t *testing.T) {
 	t.Parallel()
 	srv := newGraphServer(t)
