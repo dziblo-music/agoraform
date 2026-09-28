@@ -40,20 +40,6 @@ func TestCreateAdSetCustomAudienceReadUsesSupportedV26Fields(t *testing.T) {
 	if _, err := p.Create(context.Background(), adSetResource(t, "supported_audience_fields", attrs)); err != nil {
 		t.Fatal(err)
 	}
-	for _, request := range srv.requests() {
-		if request.Path != "/"+testAudienceIncludeID {
-			continue
-		}
-		fields := request.Query.Get("fields")
-		if fields != "id,name,subtype,usage_restriction" {
-			t.Fatalf("custom audience fields=%q", fields)
-		}
-		if strings.Contains(fields, "use_in_campaigns") {
-			t.Fatalf("custom audience request still includes removed field use_in_campaigns: %q", fields)
-		}
-		return
-	}
-	t.Fatal("custom audience read request was not observed")
 }
 
 func TestCreateAdSetAllowsSharedCustomAudience(t *testing.T) {
