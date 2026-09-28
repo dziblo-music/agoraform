@@ -57,6 +57,22 @@ func (e *Error) Error() string {
 		b.WriteString(": ")
 		b.WriteString(e.err.Error())
 	}
+	if e.UserTitle != "" || e.UserMessage != "" {
+		b.WriteString(" [Meta")
+		if e.UserTitle != "" {
+			b.WriteString(": ")
+			b.WriteString(e.UserTitle)
+		}
+		if e.UserMessage != "" {
+			if e.UserTitle != "" {
+				b.WriteString(" — ")
+			} else {
+				b.WriteString(": ")
+			}
+			b.WriteString(e.UserMessage)
+		}
+		b.WriteString("]")
+	}
 	if e.RequestID != "" {
 		b.WriteString(" (request-id ")
 		b.WriteString(e.RequestID)
