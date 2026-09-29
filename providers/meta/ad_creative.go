@@ -62,6 +62,7 @@ type normalizedAdCreative struct {
 	ManagedImage       resource.Ref // set when image: {$ref: meta.image.*} is declared
 	HasManagedImage    bool         // true when image: ref is used instead of imageHash:
 	VideoID            string
+	ThumbnailURL       string       // create-time Meta-generated thumbnail; not configuration/state
 	ManagedVideo       resource.Ref // set when video: {$ref: meta.video.*} is declared
 	HasManagedVideo    bool         // true when video: ref is used instead of videoId:
 	Mode               string
@@ -123,6 +124,13 @@ func (p *Provider) createAdCreative(ctx context.Context, res resource.Resource) 
 		return resource.RemoteResource{}, fmt.Errorf("meta: create %s: resource already has persisted identity %q", res.Address, res.Identity.ID)
 	}
 	normalized, _ := normalizeAdCreative(res)
+	if normalized.Mode == creativeModeVideo {
+		thumbnailURL, err := p.videoThumbnailURL(ctx, normalized.VideoID)
+		if err != nil {
+			return resource.RemoteResource{}, fmt.Errorf("meta: create %s: resolve video thumbnail: %w", res.Address, err)
+		}
+		normalized.ThumbnailURL = thumbnailURL
+	}
 	form, err := adCreativeForm(normalized)
 	if err != nil {
 		return resource.RemoteResource{}, fmt.Errorf("meta: create %s: %w", res.Address, err)
@@ -555,7 +563,10 @@ func adCreativeForm(c normalizedAdCreative) (url.Values, error) {
 		}
 		story["link_data"] = data
 	} else {
-		data := map[string]any{"video_id": c.VideoID, "message": c.PrimaryText, "title": c.Headline, "call_to_action": cta}
+		if c.ThumbnailURL == "" {
+			return nil, fmt.Errorf("video thumbnail is not available")
+		}
+		data := map[string]any{"video_id": c.VideoID, "image_url": c.ThumbnailURL, "message": c.PrimaryText, "title": c.Headline, "call_to_action": cta}
 		if c.HasDescription {
 			data["link_description"] = c.Description
 		}
@@ -570,6 +581,47 @@ func adCreativeForm(c normalizedAdCreative) (url.Values, error) {
 		form.Set("url_tags", c.URLTags)
 	}
 	return form, nil
+}
+
+func (p *Provider) videoThumbnailURL(ctx context.Context, videoID string) (string, error) {
+	if strings.TrimSpace(videoID) == "" {
+		return "", fmt.Errorf("video id is not available; ensure the meta.video resource finished processing before this ad creative")
+	}
+	c, err := p.Client()
+	if err != nil {
+		return "", err
+	}
+	var response struct {
+		Thumbnails struct {
+			Data []struct {
+				URI         string `json:"uri"`
+				IsPreferred bool   `json:"is_preferred"`
+			} `json:"data"`
+		} `json:"thumbnails"`
+	}
+	if err := c.Get(ctx, videoID, url.Values{"fields": {"thumbnails"}}, &response); err != nil {
+		return "", err
+	}
+	var fallback string
+	for _, thumbnail := range response.Thumbnails.Data {
+		uri := strings.TrimSpace(thumbnail.URI)
+		if uri == "" {
+			continue
+		}
+		if err := validateDestinationURL(uri); err != nil {
+			continue
+		}
+		if thumbnail.IsPreferred {
+			return uri, nil
+		}
+		if fallback == "" {
+			fallback = uri
+		}
+	}
+	if fallback != "" {
+		return fallback, nil
+	}
+	return "", fmt.Errorf("Meta returned no usable thumbnail for video %s", videoID)
 }
 
 func validateAdCreativeTransition(addr resource.Address, want, got normalizedAdCreative) error {

@@ -486,6 +486,10 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, s.campaigns[path])
 	case r.Method == http.MethodGet && s.adSets[path] != nil:
 		writeJSON(w, s.adSets[path])
+	case r.Method == http.MethodGet && path == testVideoID && r.URL.Query().Get("fields") == "thumbnails":
+		writeJSON(w, graphObject{"thumbnails": graphObject{"data": []graphObject{
+			{"uri": "https://example.com/video-thumbnail.jpg", "is_preferred": true},
+		}}})
 	case r.Method == http.MethodGet && s.videos[path] != nil:
 		if s.videoStatusError {
 			writeJSON(w, graphObject{
