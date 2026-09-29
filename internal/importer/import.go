@@ -167,9 +167,17 @@ func Run(ctx context.Context, addr resource.Address, remoteID string, lookup Loo
 // reference-only binding. release must be set to convert an existing managed
 // binding; the remote object is never mutated.
 func RunExternal(ctx context.Context, addr resource.Address, remoteID string, lookup Lookup, st ExternalStore, release bool) (Result, error) {
-	live, canonicalID, _, err := readImport(ctx, addr, remoteID, lookup, st)
+	live, canonicalID, p, err := readImport(ctx, addr, remoteID, lookup, st)
 	if err != nil {
 		return Result{}, err
+	}
+	external := resource.Resource{
+		Address:    addr,
+		Ownership:  resource.OwnershipExternal,
+		ExternalID: canonicalID,
+	}
+	if err := provider.ValidateExternal(p, external); err != nil {
+		return Result{}, fmt.Errorf("import %s: %w", addr, err)
 	}
 	existing, bound, ownership, err := currentOwnership(st, addr)
 	if err != nil {
