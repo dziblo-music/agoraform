@@ -991,7 +991,7 @@ managed `meta.image` / `meta.video`:
 
 | Attribute | Required | Description |
 | --- | --- | --- |
-| `name` | yes | Creative name. |
+| `name` | yes | Creative name. Meta may append a generated `YYYY-MM-DD-<32 hex>` suffix after create. Agoraform keeps that remote name on read and import, and treats it as equal to this configured name when planning. |
 | `pageId` | yes | Literal numeric ID of an externally administered Facebook Page. |
 | `instagramUserId` | no | Literal numeric ID of an externally administered Instagram account. |
 | `destinationUrl` | yes | Absolute HTTP(S) landing-page URL. |
@@ -1004,6 +1004,7 @@ managed `meta.image` / `meta.video`:
 
 Only `name` is mutable. To change identity, copy, destination, CTA, media, or
 URL tags, declare a new creative and update the ad's `creative` reference.
+A genuine rename still plans an update. Meta's generated suffix does not.
 
 ### `meta.ad`
 

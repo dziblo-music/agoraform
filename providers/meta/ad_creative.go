@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"net/url"
 	"reflect"
+	"regexp"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/dziblo-music/agoraform/internal/provider"
@@ -36,6 +38,9 @@ var (
 	adCreativeCallToActions = map[string]struct{}{
 		"GET_STARTED": {}, "LEARN_MORE": {}, "SIGN_UP": {},
 	}
+	// metaGeneratedCreativeSuffix is the name suffix Meta appends after create:
+	// YYYY-MM-DD-<32 hex characters>.
+	metaGeneratedCreativeSuffix = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})-([0-9a-fA-F]{32})$`)
 )
 
 type adCreative struct {
@@ -256,7 +261,14 @@ func (p *Provider) normalizeAdCreativeComparable(desired resource.Resource, live
 	// Normalize the comparable views so that a managed image ref and an
 	// explicit imageHash with the same hash produce no diff.
 	wantAttrs = adCreativeComparableAttributes(want)
-	return wantAttrs, adCreativeComparableAttributes(got), nil
+	gotAttrs := adCreativeComparableAttributes(got)
+	// Meta appends a generated suffix to the stored creative name. Keep the
+	// remote name for reads and imports, but compare it as the configured name
+	// so plan does not propose a perpetual rename.
+	if equivalentMetaCreativeName(want.Name, got.Name) {
+		gotAttrs[AttrName] = want.Name
+	}
+	return wantAttrs, gotAttrs, nil
 }
 
 func (p *Provider) readAdCreativeByID(ctx context.Context, addr resource.Address, id string) (resource.RemoteResource, error) {
@@ -542,6 +554,31 @@ func adCreativeComparableAttributes(c normalizedAdCreative) resource.Attributes 
 		out[AttrURLTags] = c.URLTags
 	}
 	return out
+}
+
+// equivalentMetaCreativeName reports whether remote is the configured creative
+// name or that name plus Meta's provider-generated suffix.
+func equivalentMetaCreativeName(desired, remote string) bool {
+	if desired == remote {
+		return true
+	}
+	prefix := desired + " "
+	if !strings.HasPrefix(remote, prefix) {
+		return false
+	}
+	suffix := strings.TrimPrefix(remote, prefix)
+	return isMetaGeneratedCreativeSuffix(suffix)
+}
+
+// isMetaGeneratedCreativeSuffix reports whether suffix is exactly
+// YYYY-MM-DD-<32 hex characters> and the date is a real calendar day.
+func isMetaGeneratedCreativeSuffix(suffix string) bool {
+	match := metaGeneratedCreativeSuffix.FindStringSubmatch(suffix)
+	if match == nil {
+		return false
+	}
+	_, err := time.Parse("2006-01-02", match[1])
+	return err == nil
 }
 
 func adCreativeForm(c normalizedAdCreative) (url.Values, error) {

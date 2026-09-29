@@ -3,10 +3,12 @@ package meta_test
 import (
 	"context"
 	"errors"
+	"io"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/dziblo-music/agoraform/internal/apply"
 	"github.com/dziblo-music/agoraform/internal/importer"
 	"github.com/dziblo-music/agoraform/internal/plan"
 	"github.com/dziblo-music/agoraform/internal/provider"
@@ -162,6 +164,150 @@ func TestAdCreativeImmutableContentFailsPlanningWithoutMutation(t *testing.T) {
 	posts, deletes := srv.mutationCounts()
 	if posts != 0 || deletes != 0 {
 		t.Fatalf("plan mutated posts=%d deletes=%d", posts, deletes)
+	}
+}
+
+func TestAdCreativeNameDriftComparison(t *testing.T) {
+	t.Parallel()
+	const configured = "IG_V1_Spreadsheet"
+	const generated = "2026-09-29-8c94bf54cfdbc6682f9d8db4647fe9b5"
+	tests := []struct {
+		name       string
+		remoteName string
+		wantUpdate bool
+	}{
+		{name: "exact", remoteName: configured},
+		{name: "meta suffix", remoteName: configured + " " + generated},
+		{name: "uppercase hex suffix", remoteName: configured + " 2026-09-29-8C94BF54CFDBC6682F9D8DB4647FE9B5"},
+		{name: "renamed base", remoteName: configured + "_NEW", wantUpdate: true},
+		{name: "different base with meta suffix", remoteName: "IG_V1_Spreadsheet_NEW " + generated, wantUpdate: true},
+		{name: "arbitrary suffix", remoteName: configured + " extra", wantUpdate: true},
+		{name: "short hex", remoteName: configured + " 2026-09-29-8c94bf54", wantUpdate: true},
+		{name: "invalid calendar date", remoteName: configured + " 2026-02-31-" + generated[len("2026-09-29-"):], wantUpdate: true},
+		{name: "non-hex", remoteName: configured + " 2026-09-29-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", wantUpdate: true},
+		{name: "trailing junk", remoteName: configured + " " + generated + " extra", wantUpdate: true},
+		{name: "missing space", remoteName: configured + generated, wantUpdate: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			srv := newGraphServer(t)
+			srv.seedCreative(testCreativeID, graphObject{"name": tc.remoteName})
+			httpSrv := srv.start()
+			defer httpSrv.Close()
+			p := testProvider(t, httpSrv)
+			st, err := state.Load(filepath.Join(t.TempDir(), "agoraform.state.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			addr := creativeAddress(t, "ig_v1_spreadsheet")
+			if err := st.Bind(addr, resource.Identity{ID: testCreativeID}); err != nil {
+				t.Fatal(err)
+			}
+			attrs := standardImageCreativeAttrs()
+			attrs[meta.AttrName] = configured
+			got, err := plan.BuildWithState(context.Background(), []resource.Resource{{Address: addr, Attributes: attrs}}, func(resource.Address) (provider.Reader, error) { return p, nil }, st)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got.Changes) != 1 {
+				t.Fatalf("changes=%d", len(got.Changes))
+			}
+			change := got.Changes[0]
+			if tc.wantUpdate {
+				if change.Action != plan.ActionUpdate || len(change.Diffs) != 1 || change.Diffs[0].Path != meta.AttrName || change.Diffs[0].Before != tc.remoteName || change.Diffs[0].After != configured {
+					t.Fatalf("change=%#v", change)
+				}
+				return
+			}
+			if change.Action != plan.ActionUnchanged {
+				t.Fatalf("action=%s diffs=%#v", change.Action, change.Diffs)
+			}
+			formatted := plan.Format(got)
+			if !strings.Contains(formatted, "Plan: 0 to create, 0 to update, 0 to destroy.") {
+				t.Fatalf("plan:\n%s", formatted)
+			}
+		})
+	}
+}
+
+func TestApplyThenPlanIgnoresMetaCreativeNameSuffix(t *testing.T) {
+	t.Parallel()
+	const configured = "IG_V1_Spreadsheet"
+	const remoteName = "IG_V1_Spreadsheet 2026-09-29-8c94bf54cfdbc6682f9d8db4647fe9b5"
+	srv := newGraphServer(t)
+	httpSrv := srv.start()
+	defer httpSrv.Close()
+	p := testProvider(t, httpSrv)
+	st, err := state.Load(filepath.Join(t.TempDir(), "agoraform.state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	attrs := standardImageCreativeAttrs()
+	attrs[meta.AttrName] = configured
+	res := creativeResource(t, "ig_v1_spreadsheet", attrs)
+	lookup := func(resource.Address) (provider.Provider, error) { return p, nil }
+	if _, err := apply.Run(context.Background(), []resource.Resource{res}, lookup, st, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	posts, deletes := srv.mutationCounts()
+	if posts != 1 || deletes != 0 {
+		t.Fatalf("after apply posts=%d deletes=%d", posts, deletes)
+	}
+	srv.mu.Lock()
+	srv.creatives[testCreativeID]["name"] = remoteName
+	srv.mu.Unlock()
+
+	got, err := plan.BuildWithState(context.Background(), []resource.Resource{res}, func(resource.Address) (provider.Reader, error) { return p, nil }, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	formatted := plan.Format(got)
+	if !strings.Contains(formatted, "Plan: 0 to create, 0 to update, 0 to destroy.") {
+		t.Fatalf("plan:\n%s", formatted)
+	}
+	if _, err := apply.Run(context.Background(), []resource.Resource{res}, lookup, st, io.Discard); err != nil {
+		t.Fatalf("second apply: %v", err)
+	}
+	posts, deletes = srv.mutationCounts()
+	if posts != 1 || deletes != 0 {
+		t.Fatalf("second apply posts=%d deletes=%d", posts, deletes)
+	}
+	srv.mu.Lock()
+	stored, _ := srv.creatives[testCreativeID]["name"].(string)
+	srv.mu.Unlock()
+	if stored != remoteName {
+		t.Fatalf("remote name=%q, want Meta suffix preserved", stored)
+	}
+}
+
+func TestReadAndImportAdCreativeRetainMetaGeneratedName(t *testing.T) {
+	t.Parallel()
+	const remoteName = "IG_V1_Spreadsheet 2026-09-29-8c94bf54cfdbc6682f9d8db4647fe9b5"
+	srv := newGraphServer(t)
+	srv.seedCreative(testCreativeID, graphObject{"name": remoteName})
+	httpSrv := srv.start()
+	defer httpSrv.Close()
+	p := testProvider(t, httpSrv)
+	res := creativeResource(t, "ig_v1_spreadsheet", standardImageCreativeAttrs())
+	res.Identity = resource.Identity{ID: testCreativeID}
+	live, err := p.Read(context.Background(), res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if live.Attributes[meta.AttrName] != remoteName {
+		t.Fatalf("read name=%v, want remote name", live.Attributes[meta.AttrName])
+	}
+	st, err := state.Load(filepath.Join(t.TempDir(), "agoraform.state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := importer.Run(context.Background(), res.Address, testCreativeID, func(resource.Address) (provider.Provider, error) { return p, nil }, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.YAML, remoteName) {
+		t.Fatalf("import dropped Meta name:\n%s", result.YAML)
 	}
 }
 
