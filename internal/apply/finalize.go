@@ -149,7 +149,7 @@ func attachCatalogFinalizations(ctx context.Context, catalog *providerCatalog, p
 func pendingChanges(p *plan.Plan) []provider.PendingChange {
 	pending := make([]provider.PendingChange, 0, len(p.Changes))
 	for _, change := range p.Changes {
-		if change.Action == plan.ActionUnchanged {
+		if change.Action == plan.ActionUnchanged || change.Action == plan.ActionExternal {
 			continue
 		}
 		pending = append(pending, provider.PendingChange{

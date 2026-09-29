@@ -63,6 +63,7 @@ and history are out of scope.
 | `provider` | Provider name. Must match the address provider segment. |
 | `remoteId` | Opaque provider-native identity. |
 | `fingerprint` | Optional non-secret content fingerprint. |
+| `ownership` | `managed` or `external`. Omitted means managed, including legacy files. |
 
 Provider-native IDs are not assumed to be globally unique across all resource
 types. Duplicate ownership is rejected within the same provider and resource
@@ -122,11 +123,16 @@ A successful apply or import followed by plan resolves the same remote
 object from state rather than rediscovering it by a mutable field such as
 name. See [import.md](import.md).
 
-`agoraform destroy` removes a state binding only after the provider confirms
-the remote object was destroyed, removed, or is already absent. Failed and
-unattempted resources keep their identities. State entries that are not in
-the manifest are preserved; destroy does not prune them. See
-[destroy.md](destroy.md).
+`agoraform destroy` removes a managed state binding only after the provider
+confirms the remote object was destroyed, removed, or is already absent.
+Failed and unattempted resources keep their identities. State entries that
+are not in the manifest are preserved; destroy does not prune them.
+
+An `ownership: external` binding is reference-only. Destroy removes that
+local binding only when the resource is still declared, and it never asks
+the provider to delete or archive the remote object. The marker in state,
+not the current manifest text, is what protects the object. See
+[destroy.md](destroy.md) and [external-resources.md](external-resources.md).
 
 ## Recovery
 

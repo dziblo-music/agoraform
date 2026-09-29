@@ -37,6 +37,7 @@ type Persistence interface {
 type Result struct {
 	Created   int
 	Updated   int
+	External  int
 	Finalized int
 }
 
@@ -174,6 +175,11 @@ func Execute(ctx context.Context, p *plan.Plan, desired []resource.Resource, loo
 		switch change.Action {
 		case plan.ActionUnchanged:
 			continue
+		case plan.ActionExternal:
+			if err := bindExternal(change, st, out); err != nil {
+				return result, err
+			}
+			result.External++
 		case plan.ActionCreate:
 			desiredRes, err := resolveDesired(byAddr[change.Address.String()], runtime, specs)
 			if err != nil {
@@ -348,7 +354,7 @@ func preflight(changes []plan.Change, byAddr map[string]resource.Resource, looku
 	mutating := 0
 	for _, change := range changes {
 		switch change.Action {
-		case plan.ActionUnchanged:
+		case plan.ActionUnchanged, plan.ActionExternal:
 			continue
 		case plan.ActionCreate, plan.ActionUpdate:
 			if _, ok := byAddr[change.Address.String()]; !ok {
@@ -361,6 +367,24 @@ func preflight(changes []plan.Change, byAddr map[string]resource.Resource, looku
 	}
 	if mutating > 0 && lookup == nil {
 		return fmt.Errorf("apply: provider lookup is required")
+	}
+	return nil
+}
+
+func bindExternal(change plan.Change, st Store, out io.Writer) error {
+	addr := change.Address
+	fmt.Fprintf(out, "%s: binding external reference...\n", addr)
+	recorder, ok := st.(interface {
+		RecordExternal(addr resource.Address, id resource.Identity) error
+	})
+	if !ok {
+		return applyError(addr, "external", fmt.Errorf("state store cannot record external ownership"))
+	}
+	if change.Identity.IsZero() {
+		return applyError(addr, "external", fmt.Errorf("missing external identity"))
+	}
+	if err := recorder.RecordExternal(addr, change.Identity); err != nil {
+		return applyError(addr, "external", err)
 	}
 	return nil
 }
@@ -464,12 +488,16 @@ func applyError(addr resource.Address, op string, err error) error {
 
 // Format renders a successful apply result as deterministic terminal text.
 func Format(r Result) string {
+	summary := fmt.Sprintf("%d created, %d updated", r.Created, r.Updated)
+	if r.External > 0 {
+		summary += fmt.Sprintf(", %d external", r.External)
+	}
 	if r.Finalized == 0 {
-		return fmt.Sprintf("Apply complete! %d created, %d updated.\n", r.Created, r.Updated)
+		return fmt.Sprintf("Apply complete! %s.\n", summary)
 	}
 	actionLabel := "provider actions"
 	if r.Finalized == 1 {
 		actionLabel = "provider action"
 	}
-	return fmt.Sprintf("Apply complete! %d created, %d updated, %d %s completed.\n", r.Created, r.Updated, r.Finalized, actionLabel)
+	return fmt.Sprintf("Apply complete! %s, %d %s completed.\n", summary, r.Finalized, actionLabel)
 }

@@ -15,6 +15,7 @@ func Format(p *Plan) string {
 		mutations []Change
 		skipped   []Change
 		unmanaged []Change
+		external  []Change
 	)
 	for _, c := range p.Changes {
 		switch c.Kind {
@@ -24,11 +25,13 @@ func Format(p *Plan) string {
 			skipped = append(skipped, c)
 		case KindNotManaged:
 			unmanaged = append(unmanaged, c)
+		case KindExternal:
+			external = append(external, c)
 		}
 	}
 
 	var b strings.Builder
-	if len(mutations) == 0 && len(p.Finalizations) == 0 && len(skipped) == 0 && len(unmanaged) == 0 && len(p.Preserved) == 0 {
+	if len(mutations) == 0 && len(p.Finalizations) == 0 && len(skipped) == 0 && len(unmanaged) == 0 && len(external) == 0 && len(p.Preserved) == 0 {
 		b.WriteString("No managed resources to destroy.\n\n")
 	} else {
 		if len(mutations) > 0 {
@@ -60,6 +63,13 @@ func Format(p *Plan) string {
 			}
 			b.WriteByte('\n')
 		}
+		if len(external) > 0 {
+			b.WriteString("The following external resources are reference-only. Agoraform will remove only the local binding and will not change the remote object:\n\n")
+			for _, c := range external {
+				fmt.Fprintf(&b, "- %s (external)\n", c.Address)
+			}
+			b.WriteByte('\n')
+		}
 		if len(unmanaged) > 0 {
 			b.WriteString("The following resources are not managed in local state and will not be changed:\n\n")
 			for _, c := range unmanaged {
@@ -77,6 +87,9 @@ func Format(p *Plan) string {
 	}
 
 	fmt.Fprintf(&b, "Destroy: %d to destroy", len(mutations))
+	if n := len(external); n > 0 {
+		fmt.Fprintf(&b, ", %d external", n)
+	}
 	if n := len(skipped); n > 0 {
 		fmt.Fprintf(&b, ", %d unsupported", n)
 	}
@@ -124,6 +137,13 @@ func FormatResult(r Result) string {
 	}
 	if r.Removed > 0 {
 		parts = append(parts, fmt.Sprintf("%d removed", r.Removed))
+	}
+	if r.ExternalReleased > 0 {
+		label := "external bindings released"
+		if r.ExternalReleased == 1 {
+			label = "external binding released"
+		}
+		parts = append(parts, fmt.Sprintf("%d %s", r.ExternalReleased, label))
 	}
 	if r.Finalized > 0 {
 		actionLabel := "provider actions"

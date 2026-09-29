@@ -24,7 +24,7 @@ resources:
 | `apiVersion` | yes | Must be `agoraform.io/v1alpha1`. |
 | `providers` | no | Non-secret provider-specific desired state. |
 | `assets` | no | Optional local-file source configuration. |
-| `resources` | no | Desired managed resources. Omitted/empty is valid. |
+| `resources` | no | Desired resources. Omitted/empty is valid. A resource is managed unless `lifecycle.ownership` is `external`. |
 | `applicationEvents` | no | Provider-neutral instrumentation contracts. See [Application instrumentation contracts](application-events.md). |
 
 Provider credentials, tokens, passwords, and other secrets must never be put
@@ -121,6 +121,25 @@ other `*.agoraform.yaml` files; they are resolved after the files are merged.
 
 At apply time, logical references are resolved in dependency order. Those
 provider-native values are not written back into the manifest.
+
+## External resources
+
+A resource can name an existing object without Agoraform taking lifecycle
+ownership. Set `lifecycle.ownership: external` and `lifecycle.id` to the
+provider-native identity. Managed resources use normal `$ref` values. Plan,
+apply, and destroy never create, update, or delete that object.
+
+```yaml
+resources:
+  - address: matomo.container.main
+    lifecycle:
+      ownership: external
+      id: Aa000001
+```
+
+External resources cannot declare `attributes`. See
+[External resources](external-resources.md) for import, destroy, and
+ownership changes.
 
 ## Resource attributes
 

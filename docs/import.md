@@ -30,6 +30,9 @@ review and add to manifest
 agoraform import ADDRESS REMOTE-ID
 agoraform import -f path/to/agoraform.yaml ADDRESS REMOTE-ID
 agoraform import -f path/to/campaign/ ADDRESS REMOTE-ID
+agoraform import --external ADDRESS REMOTE-ID
+agoraform import --external --release ADDRESS REMOTE-ID
+agoraform import --adopt ADDRESS
 ```
 
 Example:
@@ -57,6 +60,44 @@ in the current directory. Import does not read or rewrite the manifest.
    state.
 
 Import never creates, updates, or deletes the remote resource.
+
+## External binding
+
+A normal import takes managed ownership. Destroy can later delete that object.
+
+`--external` binds the same remote object as a reference-only resource.
+State records `ownership: external`. The printed YAML is a `lifecycle` block,
+not a managed attribute schema. Plan and apply read the object for `$ref`
+consumers and never create or update it. Destroy removes only the local binding.
+
+```bash
+agoraform import --external matomo.container.main Aa000001
+```
+
+```yaml
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: matomo.container.main
+    lifecycle:
+      ownership: external
+      id: Aa000001
+```
+
+`--external` refuses to convert a managed binding. Confirm that migration
+with `--release`. The remote id must be the one already stored, and the remote
+object is not modified:
+
+```bash
+agoraform import --external --release matomo.container.main Aa000001
+```
+
+`--adopt ADDRESS` is the opposite migration. It reads the external object,
+sets ownership to `managed`, and prints managed YAML. Remove the `lifecycle`
+block from the manifest. Adopt does not modify the remote object and does not
+recreate it if it is missing.
+
+A normal import of an external binding fails and tells you to adopt it.
+See [External resources](external-resources.md).
 
 ## Generated configuration
 

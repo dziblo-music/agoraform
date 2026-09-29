@@ -79,7 +79,11 @@ func CheckProviders(ctx context.Context, m *Manifest, reg *provider.Registry) er
 				}
 			}
 		}
-		if err := p.Validate(ctx, res); err != nil {
+		if res.IsExternal() {
+			if err := provider.ValidateExternal(p, res); err != nil {
+				return fmt.Errorf("%s: %s: %w", resourceOrigin, path, err)
+			}
+		} else if err := p.Validate(ctx, res); err != nil {
 			return fmt.Errorf("%s: %s: %w", resourceOrigin, path, err)
 		}
 		if validator, ok := p.(provider.ResourceSetValidator); ok {

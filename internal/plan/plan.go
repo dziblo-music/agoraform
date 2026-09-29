@@ -17,6 +17,11 @@ const (
 
 	// ActionUnchanged means desired and live configurable state match.
 	ActionUnchanged Action = "unchanged"
+
+	// ActionExternal means the resource is a reference-only binding.
+	// Plan reads it and may refresh computed outputs. Apply persists that
+	// binding. Neither command creates, updates, or deletes the remote object.
+	ActionExternal Action = "external"
 )
 
 // AttributeDiff is a single comparable attribute path that would change.
@@ -67,10 +72,21 @@ type Plan struct {
 }
 
 // HasChanges reports whether the plan contains any create, adopt, update, or
-// provider finalization action.
+// provider finalization action. External references are reads, not changes.
 func (p Plan) HasChanges() bool {
 	create, update, _ := p.Counts()
 	return create+p.AdoptionCount()+update > 0 || len(p.Finalizations) > 0
+}
+
+// ExternalCount returns how many resources are reference-only bindings.
+func (p Plan) ExternalCount() int {
+	n := 0
+	for _, c := range p.Changes {
+		if c.Action == ActionExternal {
+			n++
+		}
+	}
+	return n
 }
 
 // Counts returns how many resources would be created, updated, or destroyed.

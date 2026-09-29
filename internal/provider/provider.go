@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/dziblo-music/agoraform/internal/resource"
 )
@@ -153,6 +154,38 @@ type Provider interface {
 	// Callers that accept aliases should implement ImportIDNormalizer so
 	// Import receives the canonical identity stored in local state.
 	Import(ctx context.Context, addr resource.Address, id string) (resource.RemoteResource, error)
+}
+
+// ExternalReader is the optional read capability for reference-only resources.
+//
+// Core enforces the no-mutation lifecycle. Providers only resolve an existing
+// object. SupportsExternal must be false for resource types that cannot be
+// read deterministically. ReadExternal must not create, update, or delete.
+type ExternalReader interface {
+	SupportsExternal(resourceType string) bool
+	ReadExternal(ctx context.Context, addr resource.Address, id string) (resource.RemoteResource, error)
+}
+
+// ValidateExternal checks that res may be declared as reference-only.
+//
+// External resources do not carry managed attribute schema. The provider must
+// explicitly support the resource type.
+func ValidateExternal(p Reader, res resource.Resource) error {
+	if !res.IsExternal() {
+		return nil
+	}
+	if len(res.Attributes) > 0 {
+		return fmt.Errorf("resource %s: external resources are reference-only and cannot declare attributes; set lifecycle.id to the provider-native identity", res.Address)
+	}
+	reader, ok := p.(ExternalReader)
+	if !ok || reader == nil || !reader.SupportsExternal(res.Address.Type) {
+		name := ""
+		if p != nil {
+			name = p.Name()
+		}
+		return fmt.Errorf("resource %s: provider %q does not support external ownership for type %q", res.Address, name, res.Address.Type)
+	}
+	return nil
 }
 
 // ImportIDNormalizer is an optional provider hook that rewrites a

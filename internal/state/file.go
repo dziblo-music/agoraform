@@ -56,10 +56,15 @@ func (e *DuplicateIdentityError) OwnerOtherThan(addr resource.Address) string {
 }
 
 // Record is the persisted management metadata for one logical resource.
+//
+// Ownership is omitted for legacy managed bindings. Explicit "managed" and
+// "external" values are preserved. Destroy trusts this marker rather than the
+// current manifest when deciding whether a remote object may be mutated.
 type Record struct {
 	Provider    string `json:"provider"`
 	RemoteID    string `json:"remoteId"`
 	Fingerprint string `json:"fingerprint,omitempty"`
+	Ownership   string `json:"ownership,omitempty"`
 }
 
 type file struct {
@@ -156,6 +161,9 @@ func validateRecord(addr resource.Address, rec Record) error {
 	}
 	if provider != addr.Provider {
 		return fmt.Errorf("resource %s: stored provider %q does not match address provider %q", addr, provider, addr.Provider)
+	}
+	if _, err := resource.ParseOwnership(rec.Ownership); err != nil {
+		return fmt.Errorf("resource %s: %w", addr, err)
 	}
 	return nil
 }

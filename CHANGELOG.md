@@ -31,6 +31,15 @@ prints the SemVer identifier without the prefix (`0.5.0`).
 
 ### Added
 
+- External resources. A manifest can declare `lifecycle.ownership: external`
+  and reference an existing object through `$ref` without Agoraform creating,
+  updating, or destroying it. `agoraform import --external` binds that
+  reference, `--external --release` stops managing an adopted object without
+  deleting it, and `import --adopt` takes managed ownership explicitly.
+  Ownership is stored in local state. Matomo containers, Google Ads campaigns,
+  and Meta campaigns can be referenced this way. See
+  [External resources](docs/external-resources.md).
+
 - Multi-file configuration: `validate`, `plan`, `apply`, `destroy`,
   `integrations`, and `import -f` accept a directory of `*.agoraform.yaml`
   / `*.agoraform.yml` files merged into one logical configuration with

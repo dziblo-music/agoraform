@@ -24,16 +24,25 @@ MATOMO_CONTAINER_ID   required for Tag Manager resources/publication when no mat
 
 Tokens never belong in the manifest, logs, plan output, or local state.
 
-Agoraform supports two explicit Tag Manager container modes:
+Agoraform supports three explicit Tag Manager container modes:
 
-1. **Externally managed container** — omit `matomo.container` and set
-   `MATOMO_CONTAINER_ID` to an existing container, as in v0.2.0.
-2. **Agoraform-managed container** — declare one `matomo.container` resource
-   and omit `MATOMO_CONTAINER_ID`. Child Tag Manager resources must reference
-   that container with `container: { $ref: matomo.container.* }`.
+1. **Reference-only container** — declare one `matomo.container` with
+   `lifecycle.ownership: external` and `lifecycle.id` set to the existing
+   container id, or bind it with `agoraform import --external`. Child Tag
+   Manager resources reference it with `container: { $ref: matomo.container.* }`.
+   Plan, apply, and destroy never create, update, or delete that container.
+   Omit `MATOMO_CONTAINER_ID`. See
+   [External resources](../../docs/external-resources.md).
+2. **Environment-selected container** — omit `matomo.container` and set
+   `MATOMO_CONTAINER_ID` to an existing container, as in v0.2.0. Children
+   omit `container`. This is not a logical resource other files can `$ref`.
+3. **Agoraform-managed container** — declare one `matomo.container` resource
+   without `lifecycle.ownership: external`, and omit `MATOMO_CONTAINER_ID`.
+   Child Tag Manager resources must reference that container with
+   `container: { $ref: matomo.container.* }`. Destroy can delete it.
 
-Mixing a managed container with `MATOMO_CONTAINER_ID` is rejected before
-mutation. v0.5.0 supports at most one managed Matomo container per manifest.
+Mixing a declared container with `MATOMO_CONTAINER_ID` is rejected before
+mutation. v0.5.0 supports at most one Matomo container resource per manifest.
 
 ## Declarative provider configuration
 
@@ -108,13 +117,20 @@ Provider-native container IDs, draft version IDs, publication state, and
 unmanaged Matomo flags such as `ignoreGtmDataLayer` remain computed. Agoraform
 preserves those flags on update.
 
-Container deletion is implemented by `agoraform destroy` for containers that
-are present in the manifest and bound in local state. Containers selected
-only by `MATOMO_CONTAINER_ID` are never deleted. Import an existing
-container with:
+Container deletion is implemented by `agoraform destroy` for managed
+containers that are present in the manifest and bound in local state.
+Containers selected only by `MATOMO_CONTAINER_ID`, and containers bound with
+`lifecycle.ownership: external`, are never deleted. Import a container you
+intend to manage with:
 
 ```text
 agoraform import matomo.container.main CONTAINER_ID
+```
+
+Bind a container you only need to reference with:
+
+```text
+agoraform import --external matomo.container.main CONTAINER_ID
 ```
 
 ### `matomo.variable`

@@ -32,28 +32,41 @@ func Format(p *Plan) string {
 	countPlan := Plan{Changes: changes}
 	create, update, destroy := countPlan.Counts()
 	adopt := countPlan.AdoptionCount()
+	external := countPlan.ExternalCount()
 
 	var b strings.Builder
-	if create+adopt+update == 0 && len(finalizations) == 0 {
+	if create+adopt+update == 0 && len(finalizations) == 0 && external == 0 {
 		b.WriteString("No changes. Desired configuration matches live resources.\n\n")
 	} else {
-		b.WriteString("Agoraform will perform the following actions:\n\n")
-		for _, c := range changes {
-			if c.Action == ActionUnchanged {
-				continue
+		if create+adopt+update > 0 || len(finalizations) > 0 {
+			b.WriteString("Agoraform will perform the following actions:\n\n")
+			for _, c := range changes {
+				if c.Action == ActionUnchanged || c.Action == ActionExternal {
+					continue
+				}
+				writeChange(&b, c)
+				b.WriteByte('\n')
 			}
-			writeChange(&b, c)
-			b.WriteByte('\n')
+			for _, f := range finalizations {
+				fmt.Fprintf(&b, "> %s: %s", f.Address, f.Action)
+				if f.Target != "" {
+					fmt.Fprintf(&b, " -> %s", f.Target)
+				}
+				if f.Conditional {
+					b.WriteString(" [conditional]")
+				}
+				b.WriteString("\n\n")
+			}
 		}
-		for _, f := range finalizations {
-			fmt.Fprintf(&b, "> %s: %s", f.Address, f.Action)
-			if f.Target != "" {
-				fmt.Fprintf(&b, " -> %s", f.Target)
+		if external > 0 {
+			b.WriteString("External references (read-only; not created, updated, or destroyed):\n\n")
+			for _, c := range changes {
+				if c.Action != ActionExternal {
+					continue
+				}
+				fmt.Fprintf(&b, "= %s\n", c.Address)
 			}
-			if f.Conditional {
-				b.WriteString(" [conditional]")
-			}
-			b.WriteString("\n\n")
+			b.WriteByte('\n')
 		}
 	}
 
@@ -61,6 +74,9 @@ func Format(p *Plan) string {
 		fmt.Fprintf(&b, "Plan: %d to create, %d to adopt, %d to update, %d to destroy", create, adopt, update, destroy)
 	} else {
 		fmt.Fprintf(&b, "Plan: %d to create, %d to update, %d to destroy", create, update, destroy)
+	}
+	if external > 0 {
+		fmt.Fprintf(&b, ", %d external", external)
 	}
 	if len(finalizations) > 0 {
 		fmt.Fprintf(&b, ", %d provider action", len(finalizations))

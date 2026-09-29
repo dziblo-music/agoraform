@@ -59,17 +59,19 @@ type Provider struct {
 	resources  map[string]resource.RemoteResource // keyed by address.String()
 	byID       map[string]string                  // identity ID -> address.String()
 
-	reads    int
-	creates  int
-	updates  int
-	imports  int
-	destroys int
+	reads     int
+	creates   int
+	updates   int
+	imports   int
+	destroys  int
+	ambiguous map[string]struct{}
 }
 
 var (
-	_ provider.Provider      = (*Provider)(nil)
-	_ provider.Destroyer     = (*Provider)(nil)
-	_ provider.OutputCatalog = (*Provider)(nil)
+	_ provider.Provider       = (*Provider)(nil)
+	_ provider.Destroyer      = (*Provider)(nil)
+	_ provider.OutputCatalog  = (*Provider)(nil)
+	_ provider.ExternalReader = (*Provider)(nil)
 )
 
 // New returns an empty fake provider.
@@ -149,6 +151,49 @@ func (p *Provider) Destroys() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.destroys
+}
+
+// MarkAmbiguousExternal makes ReadExternal report that id matches more than
+// one remote object. Tests use this to prove ambiguous lookup fails closed.
+func (p *Provider) MarkAmbiguousExternal(id string) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.ambiguous == nil {
+		p.ambiguous = map[string]struct{}{}
+	}
+	p.ambiguous[id] = struct{}{}
+}
+
+// SupportsExternal implements provider.ExternalReader.
+// Only fake.widget can be referenced without lifecycle ownership.
+func (p *Provider) SupportsExternal(resourceType string) bool {
+	return resourceType == TypeWidget
+}
+
+// ReadExternal implements provider.ExternalReader.
+func (p *Provider) ReadExternal(_ context.Context, addr resource.Address, id string) (resource.RemoteResource, error) {
+	if !p.SupportsExternal(addr.Type) {
+		return resource.RemoteResource{}, fmt.Errorf("fake: %s does not support external ownership", addr)
+	}
+	if id == "" {
+		return resource.RemoteResource{}, fmt.Errorf("fake: external %s: remote identifier is empty", addr)
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.reads++
+	if _, ambiguous := p.ambiguous[id]; ambiguous {
+		return resource.RemoteResource{}, fmt.Errorf("fake: read external %s: multiple remote widgets match %q", addr, id)
+	}
+	currentAddr, ok := p.byID[id]
+	if !ok {
+		return resource.RemoteResource{}, provider.ErrNotFound
+	}
+	remote := cloneRemote(p.resources[currentAddr])
+	remote.Address = addr
+	return remote, nil
 }
 
 // DestroyCapability implements provider.Destroyer.
