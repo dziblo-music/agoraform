@@ -155,3 +155,43 @@ func TestImportReleaseAndAdoptOwnership(t *testing.T) {
 		t.Fatalf("adopt mutated provider creates=%d updates=%d destroys=%d", creates, updates, p.Destroys())
 	}
 }
+
+
+func TestImportExternalRejectsUnsupportedResourceTypeBeforeStateWrite(t *testing.T) {
+	t.Parallel()
+
+	p := &unsupportedExternalProvider{Provider: fake.New()}
+	addr := mustCLIAddress(t, "fake.widget.homepage")
+	if err := p.Seed(resource.RemoteResource{
+		Address:    addr,
+		Identity:   resource.Identity{ID: "widget-1"},
+		Attributes: resource.Attributes{fake.AttrTitle: "Homepage"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(t.TempDir(), "agoraform.yaml")
+
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"import", "--external", "-f", manifestPath, "fake.widget.homepage", "widget-1"}, reg)
+	if code == cli.ExitOK || !strings.Contains(stderr.String(), "does not support external ownership") {
+		t.Fatalf("unsupported external import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+
+	st, err := state.Load(state.PathForManifest(manifestPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, bound, err := st.Identity(addr); err != nil || bound {
+		t.Fatalf("unsupported external import wrote state: bound=%v err=%v", bound, err)
+	}
+}
+
+type unsupportedExternalProvider struct {
+	*fake.Provider
+}
+
+func (*unsupportedExternalProvider) SupportsExternal(string) bool { return false }
