@@ -156,7 +156,6 @@ func TestImportReleaseAndAdoptOwnership(t *testing.T) {
 	}
 }
 
-
 func TestImportExternalRejectsUnsupportedResourceTypeBeforeStateWrite(t *testing.T) {
 	t.Parallel()
 
