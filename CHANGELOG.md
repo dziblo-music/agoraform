@@ -12,6 +12,11 @@ prints the SemVer identifier without the prefix (`0.5.0`).
 
 ### Fixed
 
+- Meta ad creative names no longer drift after apply. Meta appends a
+  generated `YYYY-MM-DD-<32 hex>` suffix to the stored creative name;
+  Agoraform treats that suffix as the configured name during plan and
+  still returns Meta's actual name on read and import.
+
 - Google Ads campaign-asset reads select `campaign.id`. On `campaign_asset`,
   campaign is a segmenting resource, so filtering `campaign.id` without
   selecting it returns
