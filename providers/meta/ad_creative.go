@@ -62,7 +62,7 @@ type normalizedAdCreative struct {
 	ManagedImage       resource.Ref // set when image: {$ref: meta.image.*} is declared
 	HasManagedImage    bool         // true when image: ref is used instead of imageHash:
 	VideoID            string
-	ThumbnailURL        string // create-time Meta-generated thumbnail; not configuration/state
+	ThumbnailURL       string       // create-time Meta-generated thumbnail; not configuration/state
 	ManagedVideo       resource.Ref // set when video: {$ref: meta.video.*} is declared
 	HasManagedVideo    bool         // true when video: ref is used instead of videoId:
 	Mode               string
