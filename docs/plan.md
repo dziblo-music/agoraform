@@ -88,12 +88,19 @@ A plan containing only a provider action still exits with code `2` because
 | create | desired resource is absent remotely |
 | update | configurable attributes differ |
 | unchanged | desired and comparable remote state match |
+| external | reference-only resource was read; it is not created, updated, or deleted |
 
 `plan` and `apply` never destroy resources. Removing a resource from the
 manifest does not plan a deletion; identities that exist only in local state
 are preserved. Use `agoraform destroy` to tear down managed resources that
 are present in both the manifest and local state. Unmanaged remote objects
 are ignored.
+
+External resources appear in the plan as read-only references. They do not
+count as changes. A missing external object fails the plan instead of becoming
+a create. Changing `lifecycle.ownership` in the manifest does not adopt or
+release a resource; plan tells you which import command performs that
+migration. See [External resources](external-resources.md).
 
 ## Google Ads safety and replacement
 

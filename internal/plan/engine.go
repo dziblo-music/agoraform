@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/dziblo-music/agoraform/internal/graph"
 	"github.com/dziblo-music/agoraform/internal/provider"
@@ -74,18 +75,21 @@ func BuildWithState(ctx context.Context, desired []resource.Resource, lookup Loo
 	}
 
 	knownOutputs := make(map[string]resource.Attributes, len(desired))
+	seenExternal := make(map[string]string)
 	changes := make([]Change, 0, len(desired))
 	for _, addr := range g.Order() {
 		res := byAddr[addr.String()]
-		change, err := planResource(ctx, res, lookup, identities, knownOutputs)
+		change, err := planResource(ctx, res, lookup, identities, knownOutputs, seenExternal)
 		if err != nil {
 			return nil, err
 		}
-		// Only outputs from unchanged prerequisites are safe to substitute while
-		// planning dependents. An updating prerequisite may produce a different
-		// output after convergence, so keeping its current live value would let a
-		// dependent incorrectly plan as unchanged and then skip re-resolution.
-		if change.Action == ActionUnchanged && !change.Identity.IsZero() {
+		// Only outputs from unchanged or external prerequisites are safe to
+		// substitute while planning dependents. An updating prerequisite may
+		// produce a different output after convergence, so keeping its current
+		// live value would let a dependent incorrectly plan as unchanged and
+		// then skip re-resolution. External resources are never reconciled, so
+		// their latest read is the output view dependents may use.
+		if (change.Action == ActionUnchanged || change.Action == ActionExternal) && !change.Identity.IsZero() {
 			knownOutputs[addr.String()] = change.Computed.Clone()
 		}
 		changes = append(changes, change)
@@ -123,10 +127,17 @@ func validateProviderResourceSets(ctx context.Context, desired []resource.Resour
 	return nil
 }
 
-func planResource(ctx context.Context, res resource.Resource, lookup Lookup, identities Identities, knownOutputs map[string]resource.Attributes) (Change, error) {
+func planResource(ctx context.Context, res resource.Resource, lookup Lookup, identities Identities, knownOutputs map[string]resource.Attributes, seenExternal map[string]string) (Change, error) {
 	addr := res.Address
 	bound, err := attachIdentity(addr, &res, identities)
 	if err != nil {
+		return Change{}, fmt.Errorf("plan %s: %w", addr, err)
+	}
+	stored, storedBound, err := storedOwnership(identities, addr)
+	if err != nil {
+		return Change{}, fmt.Errorf("plan %s: %w", addr, err)
+	}
+	if err := resource.OwnershipConflict(addr, res.Ownership, stored, storedBound); err != nil {
 		return Change{}, fmt.Errorf("plan %s: %w", addr, err)
 	}
 
@@ -136,6 +147,10 @@ func planResource(ctx context.Context, res resource.Resource, lookup Lookup, ide
 	}
 	if reader == nil {
 		return Change{}, fmt.Errorf("plan %s: provider reader is nil", addr)
+	}
+
+	if res.IsExternal() || stored.IsExternal() {
+		return planExternal(ctx, res, reader, bound, seenExternal)
 	}
 
 	if err := reader.Validate(ctx, res); err != nil {
@@ -200,6 +215,97 @@ func planResource(ctx context.Context, res resource.Resource, lookup Lookup, ide
 		Diffs:    diffs,
 		Computed: live.Computed.Clone(),
 	}, nil
+}
+
+func planExternal(ctx context.Context, res resource.Resource, reader provider.Reader, bound bool, seenExternal map[string]string) (Change, error) {
+	addr := res.Address
+	if err := provider.ValidateExternal(reader, res); err != nil {
+		return Change{}, fmt.Errorf("plan %s: %w", addr, err)
+	}
+	external, ok := reader.(provider.ExternalReader)
+	if !ok {
+		return Change{}, fmt.Errorf("plan %s: provider does not support external ownership", addr)
+	}
+	id, err := resolveExternalID(reader, res, bound)
+	if err != nil {
+		return Change{}, fmt.Errorf("plan %s: %w", addr, err)
+	}
+	dupKey := addr.Provider + "\x00" + addr.Type + "\x00" + id
+	if other, exists := seenExternal[dupKey]; exists {
+		return Change{}, fmt.Errorf("plan %s: external resources %s and %s both reference remote identity %q for %s.%s; lookup is ambiguous", addr, other, addr, id, addr.Provider, addr.Type)
+	}
+	seenExternal[dupKey] = addr.String()
+
+	live, err := external.ReadExternal(ctx, addr, id)
+	if errors.Is(err, provider.ErrNotFound) {
+		return Change{}, fmt.Errorf("plan %s: external resource %q was not found; refusing to create a replacement: %w", addr, id, err)
+	}
+	if err != nil {
+		return Change{}, fmt.Errorf("plan %s: read external resource: %w", addr, err)
+	}
+	if live.Address != addr {
+		return Change{}, fmt.Errorf("plan %s: provider returned logical address %s for external resource %s", addr, live.Address, addr)
+	}
+	if live.Identity.IsZero() {
+		return Change{}, fmt.Errorf("plan %s: provider returned no identity for external resource %q", addr, id)
+	}
+	if live.Identity.ID != id {
+		return Change{}, fmt.Errorf("plan %s: provider returned identity %q for external identity %q; refusing to bind a different remote resource", addr, live.Identity.ID, id)
+	}
+	return Change{
+		Address:   addr,
+		Action:    ActionExternal,
+		Identity:  live.Identity,
+		Operation: string(resource.OwnershipExternal),
+		Computed:  live.Computed.Clone(),
+	}, nil
+}
+
+func resolveExternalID(reader provider.Reader, res resource.Resource, bound bool) (string, error) {
+	manifestID := strings.TrimSpace(res.ExternalID)
+	if manifestID != "" {
+		if normalizer, ok := reader.(provider.ImportIDNormalizer); ok {
+			normalized, err := normalizer.NormalizeImportID(res.Address, manifestID)
+			if err != nil {
+				return "", err
+			}
+			manifestID = strings.TrimSpace(normalized)
+			if manifestID == "" {
+				return "", fmt.Errorf("lifecycle.id normalized to an empty identity")
+			}
+		}
+	}
+	stateID := ""
+	if bound {
+		stateID = strings.TrimSpace(res.Identity.ID)
+	}
+	if stateID != "" && manifestID != "" && stateID != manifestID {
+		return "", fmt.Errorf("lifecycle.id %q does not match persisted identity %q", manifestID, stateID)
+	}
+	if stateID != "" {
+		return stateID, nil
+	}
+	if manifestID != "" {
+		return manifestID, nil
+	}
+	return "", fmt.Errorf("external resource has no identity; set lifecycle.id or run `agoraform import --external %s REMOTE-ID`", res.Address)
+}
+
+func storedOwnership(identities Identities, addr resource.Address) (resource.Ownership, bool, error) {
+	if identities == nil {
+		return "", false, nil
+	}
+	type ownershipSource interface {
+		Ownership(addr resource.Address) (resource.Ownership, bool, error)
+	}
+	if src, ok := identities.(ownershipSource); ok {
+		return src.Ownership(addr)
+	}
+	_, bound, err := identities.Identity(addr)
+	if err != nil || !bound {
+		return resource.OwnershipManaged, bound, err
+	}
+	return resource.OwnershipManaged, true, nil
 }
 
 func missingResourceOperation(reader provider.Reader, res resource.Resource) (string, error) {

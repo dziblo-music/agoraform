@@ -13,11 +13,12 @@ import (
 
 // Result counts confirmed teardowns and provider finalizations.
 type Result struct {
-	Destroyed     int
-	AlreadyAbsent int
-	Removed       int
-	Finalized     int
-	Remaining     int
+	Destroyed        int
+	AlreadyAbsent    int
+	Removed          int
+	ExternalReleased int
+	Finalized        int
+	Remaining        int
 }
 
 // ProviderSet exposes registry operations required to plan and execute
@@ -74,6 +75,13 @@ func Run(ctx context.Context, desired []resource.Resource, lookup Lookup, st Sto
 
 	if !planned.HasMutations() {
 		result := Result{Remaining: planned.RemainingCount()}
+		if planned.ExternalCount() > 0 {
+			released, err := Execute(ctx, planned, desired, resourceLookup, st, out)
+			if err != nil {
+				return released, err
+			}
+			result.ExternalReleased = released.ExternalReleased
+		}
 		fmt.Fprint(out, FormatResult(result))
 		if result.Remaining > 0 {
 			return result, remainingError(planned)
@@ -148,6 +156,11 @@ func Execute(ctx context.Context, p *Plan, desired []resource.Resource, lookup L
 		switch change.Kind {
 		case KindNotManaged, KindUnsupported, KindProviderOwned:
 			continue
+		case KindExternal:
+			if err := releaseExternal(change, st, out); err != nil {
+				return result, err
+			}
+			result.ExternalReleased++
 		case KindDestroy, KindRemove:
 			desiredRes, err := resolveDesired(change.Resource, runtime)
 			if err != nil {
@@ -269,7 +282,7 @@ func preflight(changes []Change, lookup Lookup) error {
 	mutating := 0
 	for _, change := range changes {
 		switch change.Kind {
-		case KindNotManaged, KindUnsupported, KindProviderOwned, "":
+		case KindNotManaged, KindUnsupported, KindProviderOwned, KindExternal, "":
 			continue
 		case KindDestroy, KindRemove:
 			if change.Identity.IsZero() {
@@ -282,6 +295,14 @@ func preflight(changes []Change, lookup Lookup) error {
 	}
 	if mutating > 0 && lookup == nil {
 		return fmt.Errorf("destroy: provider lookup is required")
+	}
+	return nil
+}
+
+func releaseExternal(change Change, st Store, out io.Writer) error {
+	fmt.Fprintf(out, "%s: releasing local external binding (remote object unchanged)...\n", change.Address)
+	if err := st.Remove(change.Address); err != nil {
+		return destroyError(change.Address, string(KindExternal), err)
 	}
 	return nil
 }

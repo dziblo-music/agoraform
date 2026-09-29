@@ -29,6 +29,10 @@ const (
 
 	// KindNotManaged means the manifest resource has no local state binding.
 	KindNotManaged Kind = "not-managed"
+
+	// KindExternal means the resource is reference-only. Destroy removes the
+	// local binding only and must not call the provider.
+	KindExternal Kind = "external"
 )
 
 // Change is one planned destroy outcome.
@@ -114,6 +118,22 @@ func planChange(res resource.Resource, lookup Lookup, ids Identities) (Change, e
 	if err != nil {
 		return Change{}, fmt.Errorf("destroy %s: %w", res.Address, err)
 	}
+	stored, storedBound, err := storedOwnership(ids, res.Address)
+	if err != nil {
+		return Change{}, fmt.Errorf("destroy %s: %w", res.Address, err)
+	}
+	if err := resource.OwnershipConflict(res.Address, res.Ownership, stored, storedBound); err != nil {
+		return Change{}, fmt.Errorf("destroy %s: %w", res.Address, err)
+	}
+	if res.IsExternal() || stored.IsExternal() {
+		change.Kind = KindExternal
+		change.Identity = id
+		if ok {
+			res.Identity = id
+			change.Resource = res
+		}
+		return change, nil
+	}
 	if !ok {
 		change.Kind = KindNotManaged
 		return change, nil
@@ -167,6 +187,23 @@ func preservedAddresses(desired []resource.Resource, ids Identities) ([]resource
 	return preserved, nil
 }
 
+func storedOwnership(ids Identities, addr resource.Address) (resource.Ownership, bool, error) {
+	if ids == nil {
+		return "", false, nil
+	}
+	type ownershipSource interface {
+		Ownership(addr resource.Address) (resource.Ownership, bool, error)
+	}
+	if src, ok := ids.(ownershipSource); ok {
+		return src.Ownership(addr)
+	}
+	_, bound, err := ids.Identity(addr)
+	if err != nil || !bound {
+		return resource.OwnershipManaged, bound, err
+	}
+	return resource.OwnershipManaged, true, nil
+}
+
 func desiredByAddress(desired []resource.Resource) (map[string]resource.Resource, error) {
 	out := make(map[string]resource.Resource, len(desired))
 	for _, res := range desired {
@@ -200,6 +237,21 @@ func (p *Plan) MutationCount() int {
 	n := 0
 	for _, c := range p.Changes {
 		if c.Kind == KindDestroy || c.Kind == KindRemove {
+			n++
+		}
+	}
+	return n
+}
+
+// ExternalCount is the number of reference-only resources whose remote
+// objects will not be mutated.
+func (p *Plan) ExternalCount() int {
+	if p == nil {
+		return 0
+	}
+	n := 0
+	for _, c := range p.Changes {
+		if c.Kind == KindExternal {
 			n++
 		}
 	}

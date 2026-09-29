@@ -25,7 +25,13 @@ func (a Attributes) Clone() Attributes {
 //
 // Identity is not configuration. Core code may attach a persisted
 // provider-native identity from local state before calling a provider.
-// Manifests must not declare identity fields.
+// Manifests must not declare identity fields for managed resources.
+// External resources may declare lifecycle.id, which is stored on ExternalID
+// and used only as a lookup key.
+//
+// Ownership is the declared lifecycle contract. The zero value means managed.
+// ExternalID is the provider-native lookup key from lifecycle.id. Both are
+// configuration for the ownership contract, not provider attribute schema.
 //
 // LocalAsset is a resolved local file source attached by core. It is not
 // configuration, is never serialized into YAML or state, and must not carry
@@ -35,6 +41,8 @@ type Resource struct {
 	Identity   Identity
 	Attributes Attributes
 	LocalAsset *LocalAsset
+	Ownership  Ownership
+	ExternalID string
 }
 
 // RemoteResource is a provider-reported live resource.

@@ -68,6 +68,11 @@ Local state supplies provider-native identities.
 - Identities present in `agoraform.state.json` but absent from the manifest
   are preserved. Destroy does not prune them.
 - Invalid graphs produce zero remote mutations.
+- A resource whose state ownership is `external` is reference-only. Destroy
+  removes the local binding when the resource is still declared, and it does
+  not call the provider. Dropping `lifecycle.ownership: external` from the
+  manifest does not make that object deletable. See
+  [External resources](external-resources.md).
 
 ## Lifecycle capabilities
 

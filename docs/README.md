@@ -10,6 +10,7 @@ guides lives here.
 - [Apply execution (0.1.0)](apply.md)
 - [Destroy lifecycle](destroy.md)
 - [Import (0.1.0)](import.md)
+- [External resources](external-resources.md)
 - [Local provider configuration](local-configuration.md)
 - [Matomo Tag Manager publication (v0.2.0)](matomo-publishing.md)
 - [Matomo SPA pageviews](matomo-spa-pageviews.md)

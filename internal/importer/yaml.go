@@ -11,6 +11,27 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func externalManifestYAML(addr resource.Address, remoteID string) (string, error) {
+	lifecycle := mapping(
+		scalarString("ownership"), scalarString(string(resource.OwnershipExternal)),
+		scalarString("id"), scalarString(remoteID),
+	)
+	item := mapping(
+		scalarString("address"), scalarString(addr.String()),
+		scalarString("lifecycle"), lifecycle,
+	)
+	resources := &yaml.Node{
+		Kind:    yaml.SequenceNode,
+		Tag:     "!!seq",
+		Content: []*yaml.Node{item},
+	}
+	root := mapping(
+		scalarString("apiVersion"), scalarString(manifest.APIVersion),
+		scalarString("resources"), resources,
+	)
+	return encodeYAML(root)
+}
+
 func manifestYAML(addr resource.Address, attrs resource.Attributes) (string, error) {
 	attrNode, err := valueNode(attrs)
 	if err != nil {
@@ -31,6 +52,10 @@ func manifestYAML(addr resource.Address, attrs resource.Attributes) (string, err
 		scalarString("resources"), resources,
 	)
 
+	return encodeYAML(root)
+}
+
+func encodeYAML(root *yaml.Node) (string, error) {
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)

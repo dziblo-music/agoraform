@@ -106,6 +106,26 @@ func (s *Store) Identity(addr resource.Address) (resource.Identity, bool, error)
 	return resource.Identity{ID: rec.RemoteID, Fingerprint: rec.Fingerprint}, true, nil
 }
 
+// Ownership returns the persisted lifecycle contract. A record without an
+// ownership marker is managed. The boolean is false when addr is unbound.
+func (s *Store) Ownership(addr resource.Address) (resource.Ownership, bool, error) {
+	if s == nil {
+		return "", false, nil
+	}
+	rec, ok := s.records[addr.String()]
+	if !ok {
+		return "", false, nil
+	}
+	if err := validateRecord(addr, rec); err != nil {
+		return "", true, fmt.Errorf("state: %w", err)
+	}
+	ownership, err := resource.ParseOwnership(rec.Ownership)
+	if err != nil {
+		return "", true, fmt.Errorf("state: resource %s: %w", addr, err)
+	}
+	return ownership, true, nil
+}
+
 // Binding is a logical address together with its provider-native identity.
 type Binding struct {
 	Address  resource.Address
@@ -186,7 +206,50 @@ func (s *Store) Lookup(addr resource.Address) (Record, bool) {
 }
 
 // Bind records an identity in memory without writing the file.
+//
+// An existing ownership marker is preserved. New bindings stay unmarked,
+// which means managed, so legacy state files do not gain an ownership field
+// until an explicit external binding or adoption writes one.
 func (s *Store) Bind(addr resource.Address, id resource.Identity) error {
+	ownership := ""
+	if s != nil {
+		if prev, ok := s.records[addr.String()]; ok {
+			ownership = prev.Ownership
+		}
+	}
+	return s.bind(addr, id, ownership)
+}
+
+// SetOwnership persists identity and an explicit lifecycle contract.
+//
+// Managed and external are both written so a later load can tell an adopted
+// resource from a legacy record, and so destroy keeps protecting external
+// resources after the manifest changes.
+func (s *Store) SetOwnership(addr resource.Address, id resource.Identity, ownership resource.Ownership) error {
+	if s == nil {
+		return fmt.Errorf("state: store is nil")
+	}
+	if ownership != resource.OwnershipManaged && ownership != resource.OwnershipExternal {
+		return fmt.Errorf("state: ownership %q is invalid", ownership)
+	}
+	prev := cloneRecords(s.records)
+	if err := s.bind(addr, id, string(ownership)); err != nil {
+		return err
+	}
+	if err := s.Save(); err != nil {
+		s.records = prev
+		return err
+	}
+	return nil
+}
+
+// RecordExternal persists a reference-only binding. It does not mutate a
+// remote resource.
+func (s *Store) RecordExternal(addr resource.Address, id resource.Identity) error {
+	return s.SetOwnership(addr, id, resource.OwnershipExternal)
+}
+
+func (s *Store) bind(addr resource.Address, id resource.Identity, ownership string) error {
 	if s == nil {
 		return fmt.Errorf("state: store is nil")
 	}
@@ -197,6 +260,7 @@ func (s *Store) Bind(addr resource.Address, id resource.Identity) error {
 		Provider:    addr.Provider,
 		RemoteID:    strings.TrimSpace(id.ID),
 		Fingerprint: strings.TrimSpace(id.Fingerprint),
+		Ownership:   strings.TrimSpace(ownership),
 	}
 	if err := validateRecord(addr, rec); err != nil {
 		return fmt.Errorf("state: %w", err)

@@ -2,8 +2,10 @@ package manifest
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/dziblo-music/agoraform/internal/asset"
@@ -81,6 +83,7 @@ type rawManifest struct {
 
 type rawResource struct {
 	Address    string         `yaml:"address"`
+	Lifecycle  map[string]any `yaml:"lifecycle"`
 	Attributes map[string]any `yaml:"attributes"`
 }
 
@@ -148,10 +151,22 @@ func parseDocument(data []byte, origin string) (*Manifest, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%s: %s: attributes: %w", origin, path, err)
 		}
+		ownership, externalID, err := parseLifecycle(origin, path, item.Lifecycle)
+		if err != nil {
+			return nil, err
+		}
+		if ownership == resource.OwnershipExternal && len(attrs) > 0 {
+			return nil, fmt.Errorf("%s: %s: external resources are reference-only and cannot declare attributes; set lifecycle.id to the provider-native identity", origin, path)
+		}
+		if ownership != resource.OwnershipExternal && externalID != "" {
+			return nil, fmt.Errorf("%s: %s: lifecycle.id is only valid when lifecycle.ownership is %s", origin, path, resource.OwnershipExternal)
+		}
 
 		resources = append(resources, resource.Resource{
 			Address:    addr,
 			Attributes: attrs,
+			Ownership:  ownership,
+			ExternalID: externalID,
 		})
 	}
 
@@ -271,6 +286,68 @@ func isEmptyYAML(data []byte) bool {
 		}
 	}
 	return true
+}
+
+func parseLifecycle(origin, path string, raw map[string]any) (resource.Ownership, string, error) {
+	if len(raw) == 0 {
+		return resource.OwnershipManaged, "", nil
+	}
+	for key := range raw {
+		switch key {
+		case "ownership", "id":
+		default:
+			return "", "", fmt.Errorf("%s: %s: unknown lifecycle field %q", origin, path, key)
+		}
+	}
+	ownership := resource.OwnershipManaged
+	if rawValue, ok := raw["ownership"]; ok {
+		text, ok := rawValue.(string)
+		if !ok {
+			return "", "", fmt.Errorf("%s: %s: lifecycle.ownership must be a string", origin, path)
+		}
+		parsed, err := resource.ParseOwnership(text)
+		if err != nil {
+			return "", "", fmt.Errorf("%s: %s: lifecycle.%w", origin, path, err)
+		}
+		if strings.TrimSpace(text) == "" {
+			return "", "", fmt.Errorf("%s: %s: lifecycle.ownership is required when lifecycle is set", origin, path)
+		}
+		ownership = parsed
+	} else {
+		return "", "", fmt.Errorf("%s: %s: lifecycle.ownership is required", origin, path)
+	}
+	externalID := ""
+	if rawID, ok := raw["id"]; ok {
+		id, err := lifecycleID(rawID)
+		if err != nil {
+			return "", "", fmt.Errorf("%s: %s: lifecycle.id %w", origin, path, err)
+		}
+		if id == "" {
+			return "", "", fmt.Errorf("%s: %s: lifecycle.id must be a non-empty provider-native identity", origin, path)
+		}
+		externalID = id
+	}
+	return ownership, externalID, nil
+}
+
+func lifecycleID(v any) (string, error) {
+	switch x := v.(type) {
+	case string:
+		return strings.TrimSpace(x), nil
+	case int:
+		return strconv.Itoa(x), nil
+	case int64:
+		return strconv.FormatInt(x, 10), nil
+	case uint64:
+		return strconv.FormatUint(x, 10), nil
+	case float64:
+		if math.IsNaN(x) || math.IsInf(x, 0) || x != math.Trunc(x) {
+			return "", fmt.Errorf("must be a string or integer")
+		}
+		return strconv.FormatInt(int64(x), 10), nil
+	default:
+		return "", fmt.Errorf("must be a string or integer")
+	}
 }
 
 func normalizeAttributes(in map[string]any) (resource.Attributes, error) {
