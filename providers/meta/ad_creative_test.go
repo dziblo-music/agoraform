@@ -129,7 +129,7 @@ func TestCreateVideoAdCreativeRoundTripsExternalVideo(t *testing.T) {
 		t.Fatalf("video creative unexpectedly contains imageHash: %#v", created.Attributes)
 	}
 	srv.mu.Lock()
-	story := srv.creatives[testCreativeID]["object_story_spec"].(map[string]any)
+	story := srv.creatives[testCreativeID]["object_story_spec"].(graphObject)
 	videoData := story["video_data"].(map[string]any)
 	gotThumbnail := videoData["image_url"]
 	srv.mu.Unlock()
