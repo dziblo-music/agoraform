@@ -32,9 +32,10 @@ type Provider struct {
 	currencyMu sync.Mutex
 	currency   string
 
-	videoReadyTimeout time.Duration
-	videoPollInterval time.Duration
-	sleep             func(context.Context, time.Duration) error
+	videoReadyTimeout    time.Duration
+	videoPollInterval    time.Duration
+	destroyConfirmDelays []time.Duration
+	sleep                func(context.Context, time.Duration) error
 }
 
 var (

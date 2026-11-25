@@ -18,6 +18,7 @@ func attachFinalizations(ctx context.Context, providers ProviderSet, lookup Look
 		ctx = context.Background()
 	}
 
+	bindIdentities(p, lookup)
 	pending := pendingChanges(p)
 	seen := make(map[string]struct{})
 	var list []provider.Provider
@@ -59,6 +60,26 @@ func attachFinalizations(ctx context.Context, providers ProviderSet, lookup Look
 	return nil
 }
 
+// bindIdentities tells providers the identities destroy will use, since
+// destroy does not read resources the way plan does.
+func bindIdentities(p *Plan, lookup Lookup) {
+	if lookup == nil {
+		return
+	}
+	for _, change := range p.Changes {
+		if change.Identity.IsZero() {
+			continue
+		}
+		prov, err := lookup(change.Address)
+		if err != nil || prov == nil {
+			continue
+		}
+		if binder, ok := prov.(provider.IdentityBinder); ok {
+			binder.BindIdentity(change.Address, change.Identity)
+		}
+	}
+}
+
 func pendingChanges(p *Plan) []provider.PendingChange {
 	pending := make([]provider.PendingChange, 0, len(p.Changes))
 	for _, change := range p.Changes {
@@ -73,9 +94,33 @@ func pendingChanges(p *Plan) []provider.PendingChange {
 	return pending
 }
 
-func executeFinalizations(ctx context.Context, providers ProviderSet, lookup Lookup, plans []provider.FinalizationPlan, out io.Writer, resourceChanges bool) (int, error) {
+type finalizationOutcome struct {
+	completed int
+	// succeeded holds provider names whose every planned finalization
+	// completed. A provider with one failed, skipped, or unattempted
+	// finalization is absent, so its deferred bindings stay in state.
+	succeeded map[string]struct{}
+	// skipped holds finalizations not attempted because a change of the
+	// same provider failed or was skipped.
+	skipped []provider.FinalizationPlan
+}
+
+func executeFinalizations(ctx context.Context, providers ProviderSet, lookup Lookup, plans []provider.FinalizationPlan, out io.Writer, run *execution) (outcome finalizationOutcome, err error) {
+	outcome.succeeded = map[string]struct{}{}
+	want := map[string]int{}
+	done := map[string]int{}
+	for _, f := range plans {
+		want[f.Address.Provider]++
+	}
+	defer func() {
+		for name, n := range want {
+			if done[name] == n {
+				outcome.succeeded[name] = struct{}{}
+			}
+		}
+	}()
 	if len(plans) == 0 {
-		return 0, nil
+		return outcome, nil
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -84,7 +129,7 @@ func executeFinalizations(ctx context.Context, providers ProviderSet, lookup Loo
 		out = io.Discard
 	}
 
-	completed := 0
+	resourceChanges := len(run.completed) > 0
 	remoteChanged := resourceChanges
 	for _, planned := range plans {
 		action := planned.Action
@@ -92,20 +137,26 @@ func executeFinalizations(ctx context.Context, providers ProviderSet, lookup Loo
 			action = "finalize"
 		}
 
+		if !run.providerComplete(planned.Address.Provider) {
+			fmt.Fprintf(out, "%s: %s skipped; not every planned %s resource was destroyed\n", planned.Address, action, planned.Address.Provider)
+			outcome.skipped = append(outcome.skipped, planned)
+			continue
+		}
+
 		registered, err := lookupFinalizer(providers, lookup, planned.Address)
 		if err != nil {
 			if remoteChanged {
-				return completed, finalizeError(planned.Address, action, nil, resourceChanges, err)
+				return outcome, finalizeError(planned.Address, action, nil, resourceChanges, err)
 			}
-			return completed, fmt.Errorf("destroy %s: %s: %w", planned.Address, action, err)
+			return outcome, fmt.Errorf("destroy %s: %s: %w", planned.Address, action, err)
 		}
 		finalizer, ok := registered.(provider.Finalizer)
 		if !ok {
 			err := fmt.Errorf("provider %q does not support finalization", registered.Name())
 			if remoteChanged {
-				return completed, finalizeError(planned.Address, action, nil, resourceChanges, err)
+				return outcome, finalizeError(planned.Address, action, nil, resourceChanges, err)
 			}
-			return completed, fmt.Errorf("destroy %s: %s: %w", planned.Address, action, err)
+			return outcome, fmt.Errorf("destroy %s: %s: %w", planned.Address, action, err)
 		}
 
 		result, err := finalizer.Finalize(ctx, planned)
@@ -121,13 +172,14 @@ func executeFinalizations(ctx context.Context, providers ProviderSet, lookup Loo
 		}
 		if err != nil {
 			if remoteChanged {
-				return completed, finalizeError(planned.Address, action, result.Details, resourceChanges, err)
+				return outcome, finalizeError(planned.Address, action, result.Details, resourceChanges, err)
 			}
-			return completed, fmt.Errorf("destroy %s: %s: %w", planned.Address, action, err)
+			return outcome, fmt.Errorf("destroy %s: %s: %w", planned.Address, action, err)
 		}
-		completed++
+		outcome.completed++
+		done[planned.Address.Provider]++
 	}
-	return completed, nil
+	return outcome, nil
 }
 
 func lookupFinalizer(providers ProviderSet, lookup Lookup, addr resource.Address) (provider.Provider, error) {

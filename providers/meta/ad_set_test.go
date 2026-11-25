@@ -342,6 +342,29 @@ func TestImportAdSetIgnoresDerivedAgeRange(t *testing.T) {
 	}
 }
 
+func TestImportAdSetIgnoresUserAgeUnknown(t *testing.T) {
+	t.Parallel()
+	srv := newGraphServer(t)
+	targeting := instagramTargetingAPI()
+	targeting["user_age_unknown"] = true
+	srv.seedAdSet(testAdSetID, graphObject{"status": "ACTIVE", "configured_status": "ACTIVE", "effective_status": "ACTIVE", "lifetime_budget": "50000", "start_time": "2026-09-01T00:00:00-0500", "end_time": "2026-10-01T00:00:00-0500", "targeting": targeting})
+	httpSrv := srv.start()
+	defer httpSrv.Close()
+	p := testProvider(t, httpSrv)
+	p.SetIdentityCatalog(adSetCatalog(t))
+	st, err := state.Load(filepath.Join(t.TempDir(), "agoraform.state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := importer.Run(context.Background(), adSetAddress(t, "instagram"), testAdSetID, func(resource.Address) (provider.Provider, error) { return p, nil }, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(result.YAML, "user_age_unknown") {
+		t.Fatalf("YAML must not expose Meta-derived user_age_unknown:\n%s", result.YAML)
+	}
+}
+
 func TestImportAdSetIgnoresEmptyTargetingAutomation(t *testing.T) {
 	t.Parallel()
 	srv := newGraphServer(t)
@@ -369,7 +392,7 @@ func TestImportAdSetRejectsNonEmptyTargetingAutomation(t *testing.T) {
 	t.Parallel()
 	srv := newGraphServer(t)
 	targeting := instagramTargetingAPI()
-	targeting["targeting_automation"] = graphObject{"advantage_audience": 0}
+	targeting["targeting_automation"] = graphObject{"advantage_audience": 2}
 	srv.seedAdSet(testAdSetID, graphObject{"lifetime_budget": "50000", "start_time": "2026-09-01T00:00:00Z", "end_time": "2026-10-01T00:00:00Z", "targeting": targeting})
 	httpSrv := srv.start()
 	defer httpSrv.Close()
@@ -531,6 +554,10 @@ func TestCreateAdSetAudienceAndInterestTargeting(t *testing.T) {
 	if !strings.Contains(string(flexible), testInterestID) {
 		t.Fatalf("flexible_spec = %s", flexible)
 	}
+	automation, _ := json.Marshal(got["targeting_automation"])
+	if string(automation) != `{"advantage_audience":0}` {
+		t.Fatalf("targeting_automation = %s", automation)
+	}
 	targeting := created.Attributes[meta.AttrTargeting].(map[string]any)
 	if got := targeting["customAudiences"].([]any)[0].(map[string]any)["id"]; got != testAudienceIncludeID {
 		t.Fatalf("custom audience id = %v", got)
@@ -549,6 +576,45 @@ func TestCreateAdSetAudienceAndInterestTargeting(t *testing.T) {
 	posts, _ := srv.mutationCounts()
 	if posts != 1 {
 		t.Fatalf("name-only no-op posts=%d", posts)
+	}
+}
+
+func TestUpdateAdSetTargetingPreservesAdvantageAudience(t *testing.T) {
+	t.Parallel()
+	srv := newGraphServer(t)
+	srv.seedCampaign(testCampaignID, graphObject{"name": "Acquisition", "objective": "OUTCOME_SALES"})
+	srv.seedPixel(testPixelID, "Website")
+	srv.seedConversion(testConvID, graphObject{"name": "Trial Started", "custom_event_type": "START_TRIAL", "rule": `{"and":[{"event":{"eq":"StartTrial"}}]}`, "pixel": graphObject{"id": testPixelID}, "event_source_type": "pixel"})
+	srv.seedAudience(testAudienceIncludeID, graphObject{"name": "Lookalike prospects", "subtype": "LOOKALIKE"})
+	srv.seedAudience(testAudienceExcludeID, graphObject{"name": "Existing customers", "subtype": "WEBSITE"})
+	srv.seedInterest(testInterestID, "Music production", true)
+	httpSrv := srv.start()
+	defer httpSrv.Close()
+	p := testProvider(t, httpSrv)
+	p.SetIdentityCatalog(adSetCatalog(t))
+	rememberAdSetDependencies(t, p)
+	created, err := p.Create(context.Background(), adSetResource(t, "instagram", audienceAdSetAttrs(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Advantage audience was turned on outside Agoraform. It is
+	// provider-owned, so a targeting update must leave it as it is.
+	srv.setAdSetTargetingField(testAdSetID, "targeting_automation", graphObject{"advantage_audience": 1})
+
+	attrs := audienceAdSetAttrs(t)
+	delete(attrs[meta.AttrTargeting].(map[string]any), "excludedCustomAudiences")
+	desired := adSetResource(t, "instagram", attrs)
+	desired.Identity = created.Identity
+	if _, err := p.Update(context.Background(), desired, created); err != nil {
+		t.Fatal(err)
+	}
+	got := srv.adSetField(testAdSetID, "targeting").(graphObject)
+	if _, ok := got["excluded_custom_audiences"]; ok {
+		t.Fatalf("targeting update was not sent: %v", got)
+	}
+	automation, _ := json.Marshal(got["targeting_automation"])
+	if string(automation) != `{"advantage_audience":1}` {
+		t.Fatalf("targeting_automation = %s, want the live value preserved", automation)
 	}
 }
 

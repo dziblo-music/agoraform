@@ -202,17 +202,26 @@ func Parse(data []byte, origin string) (*Manifest, error) {
 // manifest. A directory is loaded as one logical configuration merged from
 // every *.agoraform.yaml and *.agoraform.yml file in that directory.
 func Load(path string) (*Manifest, error) {
+	return load(path, true)
+}
+
+// LoadWithoutLocalAssets loads configuration for callers that only need its declarations.
+func LoadWithoutLocalAssets(path string) (*Manifest, error) {
+	return load(path, false)
+}
+
+func load(path string, bindAssets bool) (*Manifest, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		if looksLikeManifestFile(path) {
-			return LoadFile(path)
+			return loadFile(path, bindAssets)
 		}
 		return nil, fmt.Errorf("read configuration %s: %w", path, err)
 	}
 	if info.IsDir() {
-		return loadDir(path)
+		return loadDir(path, bindAssets)
 	}
-	return LoadFile(path)
+	return loadFile(path, bindAssets)
 }
 
 // LoadFile reads and parses a manifest from disk.
@@ -222,6 +231,10 @@ func Load(path string) (*Manifest, error) {
 // location. This mirrors how users run agoraform: from the directory
 // containing agoraform.yaml, making relative paths resolve naturally.
 func LoadFile(path string) (*Manifest, error) {
+	return loadFile(path, true)
+}
+
+func loadFile(path string, bindAssets bool) (*Manifest, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read manifest %s: %w", path, err)
@@ -235,6 +248,9 @@ func LoadFile(path string) (*Manifest, error) {
 		return m, fmt.Errorf("resolve manifest directory %s: %w", path, err)
 	}
 	m.BaseDir = abs
+	if !bindAssets {
+		return m, nil
+	}
 	if err := BindLocalAssets(m); err != nil {
 		return m, err
 	}

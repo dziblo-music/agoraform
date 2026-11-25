@@ -936,7 +936,7 @@ identities converge as already-absent. Paused, hidden, and enabled objects
 are still removed.
 
 Customer and campaign conversion goals are provider-owned. Destroy does not
-call remove/delete on them, keeps their state bindings, and exits non-zero
+call remove/delete on them, keeps their state bindings, and exits successfully
 after supported resources are removed. Apply remains the way to reconcile
 `biddable`. Budgets are refused while `referenceCount > 0`. Campaign
 assets are detached normally; underlying `googleads.asset` resources are

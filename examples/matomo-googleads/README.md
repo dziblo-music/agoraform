@@ -209,12 +209,12 @@ Destroy: 6 to destroy, 1 unsupported.
 the Google Ads mutate remove. `(provider-owned)` is a preserved binding,
 not a teardown.
 
-Supported teardown still runs. The command then exits non-zero while the
-provider-owned goal remains:
+Supported teardown still runs. The command then exits successfully and names
+the provider-owned goal that remains:
 
 ```text
 Destroy complete! 5 destroyed, 1 removed, 1 unsupported remaining.
-destroy left 1 resource in state because destroy is unsupported: googleads.customer_conversion_goal.signup
+1 resource remains in state because Agoraform cannot destroy it: googleads.customer_conversion_goal.signup
 ```
 
 Closing the Google Ads customer and removing the website snippet are out of
@@ -337,7 +337,6 @@ The following resources cannot be destroyed and will remain in state:
 Destroy: 5 to destroy, 1 unsupported, 1 provider action.
 ```
 
-The customer conversion goal still causes a non-zero destroy result after
-supported teardown. Import the children without a container resource, or
+The customer conversion goal remains in state after successful teardown. Import the children without a container resource, or
 import `matomo.container.main` and switch to the primary manifest if you
 want Agoraform to own the container.

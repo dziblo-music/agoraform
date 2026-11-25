@@ -86,7 +86,7 @@ A manifest edit cannot move a resource between managed and external.
 
 | Current state | Desired contract | Command |
 | --- | --- | --- |
-| unbound | external | `agoraform import --external ADDRESS REMOTE-ID` or set `lifecycle` and apply |
+| unbound | external | `agoraform import --external ADDRESS REMOTE-ID`, set `lifecycle` and apply, or run any import when no state file exists yet |
 | unbound | managed | `agoraform import ADDRESS REMOTE-ID` |
 | managed | external | `agoraform import --external --release ADDRESS REMOTE-ID` |
 | external | managed | `agoraform import --adopt ADDRESS` |

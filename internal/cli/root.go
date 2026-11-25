@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/dziblo-music/agoraform/internal/config"
+	"github.com/dziblo-music/agoraform/internal/destroy"
 	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/spf13/cobra"
 )
@@ -98,6 +99,11 @@ func ExecuteWithRegistry(streams IOStreams, args []string, reg *provider.Registr
 			return ExitChanges
 		}
 		if errors.Is(err, errDestroyCancelled) {
+			return ExitOK
+		}
+		var remaining *destroy.RemainingError
+		if errors.As(err, &remaining) {
+			fmt.Fprintln(streams.Out, remaining.Error())
 			return ExitOK
 		}
 		fmt.Fprintln(streams.ErrOut, "Error:", err)

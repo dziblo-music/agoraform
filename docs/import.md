@@ -12,6 +12,10 @@ logical address + remote id
 resolve provider
    │
    ▼
+when agoraform.state.json is missing, bind this provider's
+external references declared in the manifest into a new state file
+   │
+   ▼
 read remote resource
    │
    ▼
@@ -48,7 +52,18 @@ a Matomo goal id or Tag Manager draft object id.
 `--file` / `-f` locates local state the same way `plan` and `apply` do: next
 to the named manifest, or inside a configuration directory. The default
 path is `agoraform.yaml`, so identity is written to `agoraform.state.json`
-in the current directory. Import does not read or rewrite the manifest.
+in the current directory. Import does not rewrite the manifest. When
+`agoraform.state.json` does not exist yet, import reads the manifest and
+binds every `lifecycle.ownership: external` resource of the requested
+address's provider into that new state file before it imports the requested
+address. Binding verifies each reference with the provider, so only that
+provider is contacted; external references of other providers are bound by
+their own first import or by `import --external`. If the requested import
+then fails, the new state file is removed so the next import seeds again
+from the manifest. An existing state file is not
+scanned for missing external references. A missing manifest, and a
+configuration directory that contains no manifest files, are ignored, so
+import still works before any configuration file exists.
 
 ## What import does
 
@@ -82,6 +97,12 @@ resources:
       ownership: external
       id: Aa000001
 ```
+
+When `agoraform.state.json` does not exist yet, import binds the requested
+provider's external resources from the manifest before the requested address. A Tag Manager child
+can then be imported against an external `matomo.container` that is already
+declared, without a separate `import --external` and without
+`MATOMO_CONTAINER_ID`.
 
 `--external` refuses to convert a managed binding. Confirm that migration
 with `--release`. The remote id must be the one already stored, and the remote

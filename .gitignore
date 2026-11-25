@@ -18,6 +18,7 @@ go.work.sum
 # Agoraform local state and secrets
 agoraform.state.json
 .agoraform.env
+credentials.json
 
 # IDE / editor
 .idea/

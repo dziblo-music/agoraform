@@ -355,41 +355,6 @@ func validateAdTransition(addr resource.Address, want, got normalizedAd) error {
 	return nil
 }
 
-func (p *Provider) destroyAd(ctx context.Context, res resource.Resource) (provider.DestroyResult, error) {
-	id, bound, err := boundIdentity(res)
-	if err != nil {
-		return provider.DestroyResult{}, err
-	}
-	if !bound {
-		return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: missing persisted identity", res.Address)
-	}
-	if _, err := p.readAdByID(ctx, res, id); errors.Is(err, provider.ErrNotFound) {
-		return provider.DestroyResult{Status: provider.DestroyStatusAlreadyAbsent}, nil
-	} else if err != nil {
-		return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: %w", res.Address, err)
-	}
-	c, err := p.Client()
-	if err != nil {
-		return provider.DestroyResult{}, err
-	}
-	var result map[string]any
-	if err := c.Delete(ctx, id, nil, &result); err != nil {
-		if client.IsNotFound(err) {
-			return provider.DestroyResult{Status: provider.DestroyStatusAlreadyAbsent}, nil
-		}
-		return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: %w", res.Address, err)
-	}
-	if success, ok := result["success"].(bool); ok && !success {
-		return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: API did not report success", res.Address)
-	}
-	if _, err := p.readAdByID(ctx, res, id); errors.Is(err, provider.ErrNotFound) {
-		return provider.DestroyResult{Status: provider.DestroyStatusRemoved}, nil
-	} else if err != nil {
-		return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: DELETE succeeded but confirming terminal state failed: %w", res.Address, err)
-	}
-	return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: ad %s is still active after DELETE", res.Address, id)
-}
-
 func (p *Provider) ensureAdAccount(accountID string) error {
 	got := strings.TrimPrefix(strings.TrimSpace(accountID), "act_")
 	want := strings.TrimPrefix(strings.TrimSpace(p.cfg.AdAccountID), "act_")

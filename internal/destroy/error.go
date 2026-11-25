@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dziblo-music/agoraform/internal/provider"
 	"github.com/dziblo-music/agoraform/internal/resource"
 )
 
@@ -122,6 +123,81 @@ func finalizeError(addr resource.Address, operation string, details []string, re
 	}
 }
 
+// Failure is a planned destroy/remove that the provider did not complete.
+// Its state binding is kept.
+type Failure struct {
+	Address resource.Address
+	Err     error
+}
+
+// Skipped is a planned change that was not attempted because Cause, a
+// resource that depends on it, failed or was itself skipped. Its state
+// binding is kept.
+type Skipped struct {
+	Address resource.Address
+	Cause   resource.Address
+}
+
+// IncompleteError reports that destroy continued past one or more failures.
+// Every resource that was not torn down keeps its state binding, so a rerun
+// retries only those resources. It unwraps to each failure's error.
+type IncompleteError struct {
+	Failures             []Failure
+	Skipped              []Skipped
+	SkippedFinalizations []provider.FinalizationPlan
+}
+
+func (e *IncompleteError) Error() string {
+	if e == nil {
+		return "destroy incomplete"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "destroy incomplete: %s failed", countNoun(len(e.Failures), "resource"))
+	if n := len(e.Skipped); n > 0 {
+		fmt.Fprintf(&b, ", %d skipped", n)
+	}
+	b.WriteString("; their state bindings were kept")
+	for _, f := range e.Failures {
+		fmt.Fprintf(&b, "\n  - %s: %v", f.Address, f.Err)
+	}
+	if len(e.Skipped) > 0 {
+		b.WriteString("\nSkipped because a resource that depends on them was not destroyed:")
+		for _, s := range e.Skipped {
+			fmt.Fprintf(&b, "\n  - %s (blocked by %s)", s.Address, s.Cause)
+		}
+	}
+	if len(e.SkippedFinalizations) > 0 {
+		b.WriteString("\nProvider actions skipped because that provider's teardown is incomplete:")
+		for _, f := range e.SkippedFinalizations {
+			action := strings.TrimSpace(f.Action)
+			if action == "" {
+				action = "finalize"
+			}
+			fmt.Fprintf(&b, "\n  - %s: %s", f.Address, action)
+		}
+	}
+	b.WriteString("\nFix the failures above, then rerun agoraform destroy; only resources still in state are retried.")
+	return b.String()
+}
+
+func (e *IncompleteError) Unwrap() []error {
+	if e == nil {
+		return nil
+	}
+	out := make([]error, 0, len(e.Failures))
+	for _, f := range e.Failures {
+		out = append(out, f.Err)
+	}
+	return out
+}
+
+func countNoun(n int, noun string) string {
+	if n == 1 {
+		return fmt.Sprintf("1 %s", noun)
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
+}
+
 // RemainingError reports that supported teardown finished but one or more
 // requested resources remain in state because destroy is unsupported or
 // provider-owned.
@@ -131,17 +207,17 @@ type RemainingError struct {
 
 func (e *RemainingError) Error() string {
 	if e == nil || len(e.Addresses) == 0 {
-		return "destroy left resources in state because destroy is unsupported"
+		return "Some resources remain in state because Agoraform cannot destroy them."
 	}
 	names := make([]string, 0, len(e.Addresses))
 	for _, addr := range e.Addresses {
 		names = append(names, addr.String())
 	}
-	noun := "resource"
+	noun, pronoun := "resource remains", "it"
 	if len(names) != 1 {
-		noun = "resources"
+		noun, pronoun = "resources remain", "them"
 	}
-	return fmt.Sprintf("destroy left %d %s in state because destroy is unsupported: %s", len(names), noun, strings.Join(names, ", "))
+	return fmt.Sprintf("%d %s in state because Agoraform cannot destroy %s: %s", len(names), noun, pronoun, strings.Join(names, ", "))
 }
 
 func remainingError(p *Plan) error {

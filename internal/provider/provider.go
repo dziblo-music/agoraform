@@ -118,6 +118,16 @@ type FinalizationResult struct {
 	Changed bool
 }
 
+// IdentityBinder is an optional hook for commands that act on persisted
+// identities without reading every resource, such as destroy. Core calls
+// BindIdentity for each planned resource whose provider-native identity is
+// known from local state or an external lifecycle.id, before provider
+// finalization is planned. Implementations must not contact the remote
+// service.
+type IdentityBinder interface {
+	BindIdentity(addr resource.Address, id resource.Identity)
+}
+
 // Finalizer is an optional provider hook for declarative post-resource
 // convergence such as publishing an already-applied container draft.
 // PlanFinalization must be non-mutating. Finalize is called only after every

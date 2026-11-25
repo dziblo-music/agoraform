@@ -148,6 +148,9 @@ func TestRunUnsupportedDoesNotBlockSupported(t *testing.T) {
 	if !errors.As(err, &remaining) {
 		t.Fatalf("error = %v, want RemainingError", err)
 	}
+	if strings.Contains(err.Error(), "Error:") || !strings.Contains(err.Error(), "Agoraform cannot destroy") {
+		t.Fatalf("remaining notice = %q", err.Error())
+	}
 	if result.Destroyed != 1 || result.Remaining != 1 {
 		t.Fatalf("result = %+v, want 1 destroyed and 1 remaining", result)
 	}

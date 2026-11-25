@@ -262,7 +262,14 @@ func (p *Provider) updateAdSet(ctx context.Context, desired resource.Resource, a
 		if err := p.ensureTargetingReferences(ctx, desired.Address, want.Targeting); err != nil {
 			return resource.RemoteResource{}, fmt.Errorf("meta: update %s: %w", desired.Address, err)
 		}
-		raw, _ := json.Marshal(targetingAPIObject(want.Targeting))
+		// Replacing targeting must carry the flag Meta requires. Re-send the
+		// live value so an update never changes Advantage audience, which
+		// is provider-owned and not visible in the plan.
+		advantage, err := p.liveAdvantageAudience(ctx, actual.Identity.ID)
+		if err != nil {
+			return resource.RemoteResource{}, fmt.Errorf("meta: update %s: %w", desired.Address, err)
+		}
+		raw, _ := json.Marshal(targetingAPIObject(want.Targeting, advantage))
 		form.Set("targeting", string(raw))
 	}
 	if len(form) == 0 {
@@ -695,7 +702,10 @@ func isDefaultTargetingAutomation(v any) bool {
 		return false
 	}
 	n, err := coerceFloat(value)
-	return err == nil && n == 1
+	// Meta requires this flag on create. 0 is the value Agoraform sends
+	// (Advantage audience off). 1 is the expansion Meta used to return when
+	// the flag was omitted; both are provider-owned and stay out of YAML.
+	return err == nil && (n == 0 || n == 1)
 }
 
 func isDefaultLocationTypes(v any) bool {
@@ -717,7 +727,8 @@ func normalizeRemoteTargeting(addr resource.Address, raw json.RawMessage) (norma
 	if err != nil {
 		return normalizedTargeting{}, err
 	}
-	allowed := map[string]struct{}{"geo_locations": {}, "age_min": {}, "age_max": {}, "age_range": {}, "targeting_automation": {}, "genders": {}, "locales": {}, "publisher_platforms": {}, "instagram_positions": {}, "device_platforms": {}, "custom_audiences": {}, "excluded_custom_audiences": {}, "flexible_spec": {}, "interests": {}, "exclusions": {}}
+	// age_range and user_age_unknown are derived by Meta and are not manifest fields.
+	allowed := map[string]struct{}{"geo_locations": {}, "age_min": {}, "age_max": {}, "age_range": {}, "user_age_unknown": {}, "targeting_automation": {}, "genders": {}, "locales": {}, "publisher_platforms": {}, "instagram_positions": {}, "device_platforms": {}, "custom_audiences": {}, "excluded_custom_audiences": {}, "flexible_spec": {}, "interests": {}, "exclusions": {}}
 	for key := range m {
 		if _, ok := allowed[key]; !ok {
 			return normalizedTargeting{}, fmt.Errorf("unsupported provider field %q", key)
@@ -905,7 +916,48 @@ func targetingAttributeMap(t normalizedTargeting, includeNames bool) map[string]
 	return out
 }
 
-func targetingAPIObject(t normalizedTargeting) map[string]any {
+// advantageAudienceOff is the targeting_automation.advantage_audience value
+// Agoraform sends when it creates an ad set. Meta rejects ad set creation
+// unless the flag is 0 or 1.
+const advantageAudienceOff = 0
+
+// liveAdvantageAudience reads the ad set's current
+// targeting_automation.advantage_audience flag. A missing flag reads as
+// advantageAudienceOff.
+func (p *Provider) liveAdvantageAudience(ctx context.Context, id string) (int, error) {
+	c, err := p.Client()
+	if err != nil {
+		return 0, err
+	}
+	var item struct {
+		Targeting json.RawMessage `json:"targeting"`
+	}
+	if err := c.Get(ctx, id, url.Values{"fields": {"targeting"}}, &item); err != nil {
+		return 0, fmt.Errorf("read current Advantage audience setting: %w", err)
+	}
+	if len(item.Targeting) == 0 {
+		return advantageAudienceOff, nil
+	}
+	m, err := decodeJSONObject(item.Targeting)
+	if err != nil {
+		return 0, fmt.Errorf("read current Advantage audience setting: %w", err)
+	}
+	automation, ok := stringMap(m["targeting_automation"])
+	if !ok {
+		return advantageAudienceOff, nil
+	}
+	value, ok := automation["advantage_audience"]
+	if !ok {
+		return advantageAudienceOff, nil
+	}
+	n, err := coerceFloat(value)
+	if err != nil || (n != 0 && n != 1) {
+		return 0, fmt.Errorf("unexpected targeting_automation.advantage_audience %v", value)
+	}
+	return int(n), nil
+}
+
+func targetingAPIObject(t normalizedTargeting, advantageAudience int) map[string]any {
 	geo := map[string]any{}
 	if len(t.Countries) > 0 {
 		geo["countries"] = t.Countries
@@ -917,7 +969,12 @@ func targetingAPIObject(t normalizedTargeting) map[string]any {
 		}
 		geo["regions"] = rows
 	}
-	out := map[string]any{"geo_locations": geo, "age_min": t.AgeMin, "age_max": t.AgeMax}
+	out := map[string]any{
+		"geo_locations":        geo,
+		"age_min":              t.AgeMin,
+		"age_max":              t.AgeMax,
+		"targeting_automation": map[string]any{"advantage_audience": advantageAudience},
+	}
 	if len(t.Genders) > 0 {
 		values := make([]int64, len(t.Genders))
 		for i, v := range t.Genders {
@@ -992,7 +1049,7 @@ func (p *Provider) adSetForm(ctx context.Context, a normalizedAdSet) (url.Values
 			return nil, err
 		}
 	}
-	raw, _ := json.Marshal(targetingAPIObject(a.Targeting))
+	raw, _ := json.Marshal(targetingAPIObject(a.Targeting, advantageAudienceOff))
 	form.Set("targeting", string(raw))
 	if a.OptimizationGoal == "OFFSITE_CONVERSIONS" {
 		conversionID, e := p.refID(a.CustomConversion, OutputCustomConversionID)
@@ -1068,45 +1125,6 @@ func validateAdSetTransition(addr resource.Address, want, got normalizedAdSet) e
 		return fmt.Errorf("resource %s: bidAmount cannot be added or cleared after create", addr)
 	}
 	return nil
-}
-
-func (p *Provider) destroyAdSet(ctx context.Context, res resource.Resource) (provider.DestroyResult, error) {
-	id, bound, err := boundIdentity(res)
-	if err != nil {
-		return provider.DestroyResult{}, err
-	}
-	if !bound {
-		return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: missing persisted identity", res.Address)
-	}
-	_, err = p.readAdSetByID(ctx, res, id)
-	if errors.Is(err, provider.ErrNotFound) {
-		return provider.DestroyResult{Status: provider.DestroyStatusAlreadyAbsent}, nil
-	}
-	if err != nil {
-		return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: %w", res.Address, err)
-	}
-	c, err := p.Client()
-	if err != nil {
-		return provider.DestroyResult{}, err
-	}
-	var result map[string]any
-	if err := c.Delete(ctx, id, nil, &result); err != nil {
-		if client.IsNotFound(err) {
-			return provider.DestroyResult{Status: provider.DestroyStatusAlreadyAbsent}, nil
-		}
-		return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: %w", res.Address, err)
-	}
-	if success, ok := result["success"].(bool); ok && !success {
-		return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: API did not report success", res.Address)
-	}
-	_, err = p.readAdSetByID(ctx, res, id)
-	if errors.Is(err, provider.ErrNotFound) {
-		return provider.DestroyResult{Status: provider.DestroyStatusRemoved}, nil
-	}
-	if err != nil {
-		return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: DELETE succeeded but confirming terminal state failed: %w", res.Address, err)
-	}
-	return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: ad set %s is still active after DELETE", res.Address, id)
 }
 
 func (p *Provider) ensureAdSetAccount(accountID string) error {
