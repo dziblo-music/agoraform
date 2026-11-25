@@ -127,7 +127,7 @@ func normalizedFinalizations(p *Plan) []providerFinalization {
 	return out
 }
 
-// FormatResult renders a successful destroy result as deterministic terminal text.
+// FormatResult renders a destroy result as deterministic terminal text.
 func FormatResult(r Result) string {
 	parts := make([]string, 0, 4)
 	parts = append(parts, fmt.Sprintf("%d destroyed", r.Destroyed))
@@ -154,6 +154,13 @@ func FormatResult(r Result) string {
 	}
 	if r.Remaining > 0 {
 		parts = append(parts, fmt.Sprintf("%d unsupported remaining", r.Remaining))
+	}
+	if r.Failed > 0 || r.Skipped > 0 {
+		parts = append(parts, fmt.Sprintf("%d failed", r.Failed))
+		if r.Skipped > 0 {
+			parts = append(parts, fmt.Sprintf("%d skipped", r.Skipped))
+		}
+		return fmt.Sprintf("Destroy incomplete! %s.\n", strings.Join(parts, ", "))
 	}
 	return fmt.Sprintf("Destroy complete! %s.\n", strings.Join(parts, ", "))
 }

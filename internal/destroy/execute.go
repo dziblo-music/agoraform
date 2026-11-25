@@ -2,6 +2,7 @@ package destroy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -11,7 +12,8 @@ import (
 	"github.com/dziblo-music/agoraform/internal/resource"
 )
 
-// Result counts confirmed teardowns and provider finalizations.
+// Result counts confirmed teardowns, provider finalizations, and resources
+// that stayed in state because they failed or were blocked by a failure.
 type Result struct {
 	Destroyed        int
 	AlreadyAbsent    int
@@ -19,6 +21,8 @@ type Result struct {
 	ExternalReleased int
 	Finalized        int
 	Remaining        int
+	Failed           int
+	Skipped          int
 }
 
 // ProviderSet exposes registry operations required to plan and execute
@@ -37,6 +41,11 @@ type Approve func(*Plan) error
 // Run builds the destroy plan, attaches provider finalizations, optionally
 // confirms, executes supported teardowns in reverse dependency order, then
 // runs finalizations. out receives the reviewable plan, progress, and summary.
+//
+// A provider failure does not stop the run. The failed resource and every
+// resource it depends on keep their state bindings, and teardown continues
+// for unrelated resources. A provider's finalization runs only when all of
+// that provider's planned changes completed.
 func Run(ctx context.Context, desired []resource.Resource, lookup Lookup, st Store, out io.Writer, approve Approve, providerSets ...ProviderSet) (Result, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -95,24 +104,29 @@ func Run(ctx context.Context, desired []resource.Resource, lookup Lookup, st Sto
 		}
 	}
 
-	result, err := Execute(ctx, planned, desired, resourceLookup, st, out)
+	run, err := execute(ctx, planned, desired, resourceLookup, st, out)
+	result := run.result
 	if err != nil {
 		return result, err
 	}
-	result.Finalized, err = executeFinalizations(ctx, providers, resourceLookup, planned.Finalizations, out, result.Destroyed+result.AlreadyAbsent+result.Removed > 0)
+
+	finalized, err := executeFinalizations(ctx, providers, resourceLookup, planned.Finalizations, out, run)
+	result.Finalized = finalized.completed
+	if persistErr := persistCompletedChanges(run, finalized.succeeded, st); persistErr != nil {
+		return result, errors.Join(err, persistErr)
+	}
 	if err != nil {
-		return result, err
+		return result, errors.Join(run.incompleteError(finalized.skipped), err)
 	}
-	if len(planned.Finalizations) > 0 {
-		if err := persistCompletedChanges(planned, st); err != nil {
-			return result, err
-		}
-	}
+
 	result.Remaining = planned.RemainingCount()
-	if result.Destroyed+result.AlreadyAbsent+result.Removed > 0 || len(planned.Finalizations) > 0 || result.Remaining > 0 {
+	if result.Destroyed+result.AlreadyAbsent+result.Removed+result.Failed+result.Skipped > 0 || len(planned.Finalizations) > 0 || result.Remaining > 0 {
 		fmt.Fprintln(out)
 	}
 	fmt.Fprint(out, FormatResult(result))
+	if incomplete := run.incompleteError(finalized.skipped); incomplete != nil {
+		return result, incomplete
+	}
 	if result.Remaining > 0 {
 		return result, remainingError(planned)
 	}
@@ -121,10 +135,54 @@ func Run(ctx context.Context, desired []resource.Resource, lookup Lookup, st Sto
 
 // Execute carries out planned destroy/remove operations in reverse dependency
 // order. Provider finalizations are not executed here; callers that need the
-// complete lifecycle should use Run. When the reviewed plan contains provider
-// finalizations, state removal is deferred until Run confirms those
-// finalizations succeeded.
+// complete lifecycle should use Run. When the reviewed plan contains a
+// provider finalization, state removal for that provider's resources is
+// deferred until Run confirms the finalization succeeded.
+//
+// A provider failure is recorded and execution continues with resources that
+// do not depend on the failed one. The returned error is an *IncompleteError
+// when any resource failed or was skipped. A local state write failure stops
+// execution immediately.
 func Execute(ctx context.Context, p *Plan, desired []resource.Resource, lookup Lookup, st Store, out io.Writer) (Result, error) {
+	run, err := execute(ctx, p, desired, lookup, st, out)
+	if err != nil {
+		return run.result, err
+	}
+	if incomplete := run.incompleteError(nil); incomplete != nil {
+		return run.result, incomplete
+	}
+	return run.result, nil
+}
+
+// execution records per-resource outcomes so Run can decide which provider
+// finalizations may run and which deferred bindings may be removed.
+type execution struct {
+	result    Result
+	completed []Change
+	failures  []Failure
+	skipped   []Skipped
+	// incomplete holds provider names with a failed or skipped change.
+	incomplete map[string]struct{}
+}
+
+func (e *execution) providerComplete(name string) bool {
+	_, bad := e.incomplete[name]
+	return !bad
+}
+
+func (e *execution) incompleteError(skippedFinalizations []provider.FinalizationPlan) error {
+	if len(e.failures) == 0 && len(e.skipped) == 0 && len(skippedFinalizations) == 0 {
+		return nil
+	}
+	return &IncompleteError{
+		Failures:             append([]Failure(nil), e.failures...),
+		Skipped:              append([]Skipped(nil), e.skipped...),
+		SkippedFinalizations: append([]provider.FinalizationPlan(nil), skippedFinalizations...),
+	}
+}
+
+func execute(ctx context.Context, p *Plan, desired []resource.Resource, lookup Lookup, st Store, out io.Writer) (*execution, error) {
+	run := &execution{incomplete: map[string]struct{}{}}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -132,7 +190,7 @@ func Execute(ctx context.Context, p *Plan, desired []resource.Resource, lookup L
 		out = io.Discard
 	}
 	if st == nil {
-		return Result{}, fmt.Errorf("destroy: state store is required")
+		return run, fmt.Errorf("destroy: state store is required")
 	}
 	if p == nil {
 		p = &Plan{}
@@ -140,52 +198,97 @@ func Execute(ctx context.Context, p *Plan, desired []resource.Resource, lookup L
 
 	g, err := graph.Build(desired)
 	if err != nil {
-		return Result{}, fmt.Errorf("destroy: %w", err)
+		return run, fmt.Errorf("destroy: %w", err)
 	}
 
 	changes := orderChanges(p.Changes, g)
 	if err := preflight(changes, lookup); err != nil {
-		return Result{}, err
+		return run, err
 	}
 
 	runtime := seedRuntime(changes)
-	persistImmediately := len(p.Finalizations) == 0
+	deferred := finalizingProviders(p.Finalizations)
 
-	var result Result
+	// blockedBy maps a prerequisite to the dependent whose failure keeps it
+	// in place. Reverse dependency order guarantees every dependent is
+	// visited before its prerequisites, so the map is final on arrival.
+	blockedBy := map[string]resource.Address{}
+	block := func(failed resource.Address) {
+		var walk func(resource.Address)
+		walk = func(addr resource.Address) {
+			for _, dep := range g.Dependencies(addr) {
+				key := dep.String()
+				if _, seen := blockedBy[key]; seen {
+					continue
+				}
+				blockedBy[key] = failed
+				walk(dep)
+			}
+		}
+		walk(failed)
+	}
+
 	for _, change := range changes {
+		if err := ctx.Err(); err != nil {
+			return run, err
+		}
 		switch change.Kind {
 		case KindNotManaged, KindUnsupported, KindProviderOwned:
 			continue
-		case KindExternal:
-			if err := releaseExternal(change, st, out); err != nil {
-				return result, err
-			}
-			result.ExternalReleased++
-		case KindDestroy, KindRemove:
-			desiredRes, err := resolveDesired(change.Resource, runtime)
-			if err != nil {
-				return result, destroyError(change.Address, string(change.Kind), err)
-			}
-			desiredRes.Identity = change.Identity
-			status, err := executeDestroy(ctx, change, desiredRes, lookup, st, out, persistImmediately)
-			if err != nil {
-				return result, err
-			}
-			switch status {
-			case provider.DestroyStatusAlreadyAbsent:
-				result.AlreadyAbsent++
-			case provider.DestroyStatusRemoved:
-				result.Removed++
-			case provider.DestroyStatusDestroyed:
-				result.Destroyed++
-			default:
-				return result, invalidDestroyStatusError(change, status)
-			}
+		case KindExternal, KindDestroy, KindRemove:
 		default:
-			return result, fmt.Errorf("destroy %s: unsupported kind %q", change.Address, change.Kind)
+			return run, fmt.Errorf("destroy %s: unsupported kind %q", change.Address, change.Kind)
+		}
+
+		if cause, ok := blockedBy[change.Address.String()]; ok {
+			fmt.Fprintf(out, "%s: skipped; %s depends on it and was not destroyed\n", change.Address, cause)
+			run.skipped = append(run.skipped, Skipped{Address: change.Address, Cause: cause})
+			run.incomplete[change.Address.Provider] = struct{}{}
+			run.result.Skipped++
+			continue
+		}
+
+		if change.Kind == KindExternal {
+			if err := releaseExternal(change, st, out); err != nil {
+				return run, err
+			}
+			run.result.ExternalReleased++
+			continue
+		}
+
+		status, err := destroyOne(ctx, change, runtime, lookup, out)
+		if err != nil {
+			fmt.Fprintf(out, "%s: failed: %v\n", change.Address, err)
+			run.failures = append(run.failures, Failure{Address: change.Address, Err: err})
+			run.incomplete[change.Address.Provider] = struct{}{}
+			run.result.Failed++
+			block(change.Address)
+			continue
+		}
+		if _, isDeferred := deferred[change.Address.Provider]; !isDeferred {
+			if err := st.Remove(change.Address); err != nil {
+				return run, persistDestroyError(change.Address, change.Identity, err)
+			}
+		}
+		run.completed = append(run.completed, change)
+		switch status {
+		case provider.DestroyStatusAlreadyAbsent:
+			run.result.AlreadyAbsent++
+		case provider.DestroyStatusRemoved:
+			run.result.Removed++
+		case provider.DestroyStatusDestroyed:
+			run.result.Destroyed++
 		}
 	}
-	return result, nil
+	return run, nil
+}
+
+func finalizingProviders(plans []provider.FinalizationPlan) map[string]struct{} {
+	out := make(map[string]struct{}, len(plans))
+	for _, f := range plans {
+		out[f.Address.Provider] = struct{}{}
+	}
+	return out
 }
 
 func orderChanges(changes []Change, g *graph.Graph) []Change {
@@ -307,7 +410,10 @@ func releaseExternal(change Change, st Store, out io.Writer) error {
 	return nil
 }
 
-func executeDestroy(ctx context.Context, change Change, desired resource.Resource, lookup Lookup, st Store, out io.Writer, persist bool) (provider.DestroyStatus, error) {
+// destroyOne asks the provider to tear down one resource. It never touches
+// local state; the caller decides whether the binding is removed now or
+// after provider finalization.
+func destroyOne(ctx context.Context, change Change, runtime map[string]resource.Resolved, lookup Lookup, out io.Writer) (provider.DestroyStatus, error) {
 	addr := change.Address
 	op := string(change.Kind)
 	progress := "destroying"
@@ -315,6 +421,12 @@ func executeDestroy(ctx context.Context, change Change, desired resource.Resourc
 		progress = "removing"
 	}
 	fmt.Fprintf(out, "%s: %s...\n", addr, progress)
+
+	desired, err := resolveDesired(change.Resource, runtime)
+	if err != nil {
+		return "", destroyError(addr, op, err)
+	}
+	desired.Identity = change.Identity
 
 	p, err := lookup(addr)
 	if err != nil {
@@ -343,25 +455,20 @@ func executeDestroy(ctx context.Context, change Change, desired resource.Resourc
 	default:
 		return "", invalidDestroyStatusError(change, status)
 	}
-
-	if persist {
-		if err := st.Remove(addr); err != nil {
-			return "", persistDestroyError(addr, change.Identity, err)
-		}
-	}
 	return status, nil
 }
 
-func persistCompletedChanges(p *Plan, st Store) error {
-	if p == nil {
-		return nil
-	}
-	for _, change := range p.Changes {
-		switch change.Kind {
-		case KindDestroy, KindRemove:
-			if err := st.Remove(change.Address); err != nil {
-				return persistDestroyError(change.Address, change.Identity, err)
-			}
+// persistCompletedChanges removes deferred bindings for providers whose
+// finalization succeeded. Bindings for providers whose finalization was
+// skipped or failed stay in state so retry can confirm them as already absent
+// and plan the provider action again.
+func persistCompletedChanges(run *execution, finalized map[string]struct{}, st Store) error {
+	for _, change := range run.completed {
+		if _, ok := finalized[change.Address.Provider]; !ok {
+			continue
+		}
+		if err := st.Remove(change.Address); err != nil {
+			return persistDestroyError(change.Address, change.Identity, err)
 		}
 	}
 	return nil

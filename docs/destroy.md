@@ -28,7 +28,8 @@ destroy/remove supported resources
         │
         ▼
 provider finalization actions
-(if the reviewed plan requires them)
+(per provider, if the reviewed plan requires them
+and that provider's teardown completed)
         │
         ▼
 remove confirmed identities
@@ -87,8 +88,8 @@ mutation. Core never assumes a generic HTTP DELETE.
 | provider-owned | listed, not mutated | none | kept |
 
 Unsupported and provider-owned remnants do not block supported teardown. After
-supported operations complete, destroy exits non-zero when any requested
-state-bound resource remains unsupported or provider-owned.
+supported operations complete, destroy exits 0 and names any requested
+state-bound resource that remains because it is unsupported or provider-owned.
 
 A provider must return one of the documented terminal destroy statuses:
 `destroyed`, `removed`, or `already-absent`. Empty or unknown statuses are
@@ -111,24 +112,45 @@ Provider-confirmed already-absent resources are successful convergence.
 Authentication, permission, malformed response, and wrong-target errors are
 not treated as not-found.
 
-Execution stops at the first provider or state-write failure. Remaining and
-failed resources keep their state bindings so retry is deterministic. If a
+A provider failure does not stop the run. Destroy prints the failure, keeps
+that resource's state binding, and continues with every resource that does
+not depend on it. Resources the failed one depends on (its prerequisites, such
+as the campaign under a failed ad set or the container under a failed Matomo
+variable) are skipped and keep their bindings too, because removing them could
+cascade into or orphan the object that is still there. After the run, destroy
+prints `Destroy incomplete!`, lists each failure and each skipped resource with
+the resource that blocked it, and exits 1. Rerunning `agoraform destroy`
+retries only what is still in state; resources that already completed are not
+touched again.
+
+```text
+meta.ad_set.instagram: failed: ...
+meta.campaign.acquisition: skipped; meta.ad_set.instagram depends on it and was not destroyed
+...
+Destroy incomplete! 7 destroyed, 3 removed, 1 failed, 1 skipped.
+```
+
+A local state-write failure is different: it stops execution immediately. If a
 remote teardown succeeds but the state write fails, the identity is left in
 place so retry can confirm the object is gone.
 
-When the destroy plan contains provider finalization, successful resource
-teardowns keep their local state bindings until finalization also succeeds. If
-finalization fails, retry can use those bindings to confirm the resources are
-already terminal and retry the provider action safely. State is removed only
-after the full reviewed lifecycle for those resources completes.
+When the destroy plan contains a provider finalization, that provider's
+successful resource teardowns keep their local state bindings until its
+finalization also succeeds. Other providers' bindings are removed as soon as
+each teardown is confirmed. If finalization fails or is skipped, retry uses
+the kept bindings to confirm the resources are already terminal and plans the
+provider action again.
 
 ## Provider finalization
 
-Destroy finalization uses the same visibility and failure rules as apply.
-Planned actions such as Matomo publication appear in the destroy plan and run
-only after every destructive mutation succeeds. A failed draft deletion does
-not publish, and a failed publication keeps the affected destroy bindings so a
-subsequent destroy can safely retry finalization.
+Destroy finalization uses the same visibility rules as apply. Planned actions
+such as Matomo publication appear in the destroy plan and run after resource
+teardown, once per provider, only when every planned change for that provider
+completed. If any of that provider's resources failed or were skipped, the
+action is skipped and listed in the `Destroy incomplete!` error; other
+providers' actions still run. A failed draft deletion therefore does not
+publish, and a failed or skipped publication keeps the affected destroy
+bindings so a subsequent destroy can safely retry finalization.
 
 ## Matomo
 
@@ -152,6 +174,18 @@ publication follows `providers.matomo.publish`. When the same plan will
 delete the managed container, destroy does not create or publish an
 intermediate container version; it deletes children and then the container.
 
+A reference-only container (`lifecycle.ownership: external`) is never deleted,
+but it can still be published. Destroy publishes it using the container id
+bound in local state, or the manifest's `lifecycle.id` when the container has
+no state binding, and then releases the local binding.
+
+Matomo refuses to delete a variable while any tag in the container still uses
+it, including tags that are not in the manifest. Destroy reports that refusal
+as a failure for the variable, keeps its binding, and continues with the other
+tags, triggers, goals, and providers. Publication is skipped for that run;
+remove the remaining usage (or drop the variable from the manifest) and rerun
+destroy to delete it and publish.
+
 ## Google Ads
 
 Google Ads does not hard-delete serving objects. Removable types are planned
@@ -162,7 +196,7 @@ sends `status: ENABLED` or otherwise activates serving or spend.
 Customer and campaign conversion goals are created by Google Ads. Destroy
 reports them as provider-owned non-mutations: they stay in state, receive no
 remove request, and do not block teardown of supported resources. The command
-still exits non-zero while those bindings remain.
+still completes successfully and lists those bindings.
 
 | Type | Capability | Mutate | Terminal remote state | Already terminal | Serving/spend precondition |
 | --- | --- | --- | --- | --- | --- |
@@ -193,6 +227,17 @@ still exits non-zero while those bindings remain.
 | `meta.ad_creative` | delete | `DELETE /{id}` | `status=DELETED` or not found | terminal status or not found | Meta may reject deletion while an ad still uses the creative |
 | `meta.ad` | remove | `DELETE /{id}` | `status=DELETED`, `ARCHIVED`, or not found | terminal status or not found | removed before its ad set and creative dependencies |
 
+Before deleting a Meta object, destroy reads only its id, owning ad account,
+and status. It does not map the full object into the manifest schema, so
+fields Meta adds to an object (for example `targeting.user_age_unknown`)
+cannot block deletion. An object owned by a different ad account is refused.
+
+Meta can keep returning an object for a short time after accepting `DELETE`.
+Destroy re-reads it with backoff (about 7 seconds in total) before reporting a
+failure. If it is still readable after that, the failure says the delete was
+accepted but not yet visible; the binding is kept, and the next destroy run
+confirms it as already absent.
+
 Paused, hidden, and enabled resources are distinct from `REMOVED`. Destroy
 removes the former and treats the latter as already-absent convergence.
 Closing a Google Ads customer, tearing down billing, and pruning identities
@@ -200,15 +245,15 @@ that are not in the manifest remain out of scope.
 
 See the [Matomo + Google Ads lifecycle example](../examples/matomo-googleads/README.md)
 for exact destroy ordering, `destroy` versus `remove` versus
-`provider-owned` output, and the non-zero exit caused by a preserved
+`provider-owned` output, and the completion notice for a preserved
 customer conversion goal.
 
 ## Exit codes
 
 | Code | Meaning |
 | --- | --- |
-| `0` | Success, including a declined confirmation with no mutations |
-| `1` | Destroy failed, or supported teardown completed with unsupported or provider-owned remnants still in state |
+| `0` | Success, including a declined confirmation with no mutations, and a completed teardown that left unsupported or provider-owned resources in state |
+| `1` | Destroy failed, or finished with resources that failed or were skipped (`Destroy incomplete!`) |
 | `3` | Invalid invocation |
 
 ## Out of scope

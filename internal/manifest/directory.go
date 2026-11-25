@@ -19,7 +19,7 @@ const (
 
 // loadDir discovers *.agoraform.yaml and *.agoraform.yml files in dir,
 // parses each independently, and merges them into one logical configuration.
-func loadDir(dir string) (*Manifest, error) {
+func loadDir(dir string, bindAssets bool) (*Manifest, error) {
 	files, err := discoverManifestFiles(dir)
 	if err != nil {
 		return nil, err
@@ -52,6 +52,9 @@ func loadDir(dir string) (*Manifest, error) {
 		return nil, fmt.Errorf("resolve configuration directory %s: %w", dir, err)
 	}
 	merged.BaseDir = abs
+	if !bindAssets {
+		return merged, nil
+	}
 	if err := BindLocalAssets(merged); err != nil {
 		return nil, err
 	}

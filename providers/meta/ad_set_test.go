@@ -342,6 +342,29 @@ func TestImportAdSetIgnoresDerivedAgeRange(t *testing.T) {
 	}
 }
 
+func TestImportAdSetIgnoresUserAgeUnknown(t *testing.T) {
+	t.Parallel()
+	srv := newGraphServer(t)
+	targeting := instagramTargetingAPI()
+	targeting["user_age_unknown"] = true
+	srv.seedAdSet(testAdSetID, graphObject{"status": "ACTIVE", "configured_status": "ACTIVE", "effective_status": "ACTIVE", "lifetime_budget": "50000", "start_time": "2026-09-01T00:00:00-0500", "end_time": "2026-10-01T00:00:00-0500", "targeting": targeting})
+	httpSrv := srv.start()
+	defer httpSrv.Close()
+	p := testProvider(t, httpSrv)
+	p.SetIdentityCatalog(adSetCatalog(t))
+	st, err := state.Load(filepath.Join(t.TempDir(), "agoraform.state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := importer.Run(context.Background(), adSetAddress(t, "instagram"), testAdSetID, func(resource.Address) (provider.Provider, error) { return p, nil }, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(result.YAML, "user_age_unknown") {
+		t.Fatalf("YAML must not expose Meta-derived user_age_unknown:\n%s", result.YAML)
+	}
+}
+
 func TestImportAdSetIgnoresEmptyTargetingAutomation(t *testing.T) {
 	t.Parallel()
 	srv := newGraphServer(t)
@@ -369,7 +392,7 @@ func TestImportAdSetRejectsNonEmptyTargetingAutomation(t *testing.T) {
 	t.Parallel()
 	srv := newGraphServer(t)
 	targeting := instagramTargetingAPI()
-	targeting["targeting_automation"] = graphObject{"advantage_audience": 0}
+	targeting["targeting_automation"] = graphObject{"advantage_audience": 2}
 	srv.seedAdSet(testAdSetID, graphObject{"lifetime_budget": "50000", "start_time": "2026-09-01T00:00:00Z", "end_time": "2026-10-01T00:00:00Z", "targeting": targeting})
 	httpSrv := srv.start()
 	defer httpSrv.Close()
@@ -530,6 +553,10 @@ func TestCreateAdSetAudienceAndInterestTargeting(t *testing.T) {
 	}
 	if !strings.Contains(string(flexible), testInterestID) {
 		t.Fatalf("flexible_spec = %s", flexible)
+	}
+	automation, _ := json.Marshal(got["targeting_automation"])
+	if string(automation) != `{"advantage_audience":0}` {
+		t.Fatalf("targeting_automation = %s", automation)
 	}
 	targeting := created.Attributes[meta.AttrTargeting].(map[string]any)
 	if got := targeting["customAudiences"].([]any)[0].(map[string]any)["id"]; got != testAudienceIncludeID {

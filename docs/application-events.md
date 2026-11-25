@@ -119,7 +119,7 @@ from `applicationEvents`.
 
 ## Google Ads binding
 
-The Google Ads binding references the managed website conversion action:
+The Google Ads binding is an **application/integration contract**. It references the managed website conversion action so `agoraform integrations` can print the live conversion ID and conversion label. The block itself does **not** fire a Google Ads conversion.
 
 ```yaml
 googleAds:
@@ -127,13 +127,20 @@ googleAds:
     $ref: googleads.conversion_action.trial_started
 ```
 
-After the resource has an identity, `agoraform integrations` reads its live non-secret conversion ID and conversion label. Application instrumentation can then use them with `gtag.js`:
+After the resource has an identity, `agoraform integrations` reads its live non-secret conversion ID and conversion label.
+
+How those IDs are consumed depends on the rest of the manifest:
+
+- If a Matomo Tag Manager `googleAdsConversion` tag already fires the conversion (the campaign also declares `matomo.tag` with `type: googleAdsConversion`), the application should emit the data-layer event that triggers that tag. Do **not** also call `gtag('event', 'conversion', ...)` for the same event unless you have implemented explicit deduplication.
+- If no Matomo conversion tag is present, application or tag-manager instrumentation may use the printed IDs with `gtag.js`:
 
 ```javascript
 gtag('event', 'conversion', {
   'send_to': 'AW-123456789/AbCdEfGh',
 });
 ```
+
+Agoraform does not create or manage the base Google Tag (`gtag.js`) that Matomo's `googleAdsConversion` template depends on. See the [Matomo provider](../providers/matomo/README.md).
 
 When the resource has not yet been applied, `agoraform integrations` prints `(not yet applied)` and does **not** require Google Ads credentials merely to inspect the declared contract.
 

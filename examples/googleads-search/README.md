@@ -194,8 +194,8 @@ then the ad group, then the campaign, then the budget and conversion action.
 Google Ads `remove` sets `status` to `REMOVED`. Destroy never enables spend.
 
 Customer and campaign conversion goals stay in state as provider-owned
-remnants. Supported teardown still runs; the command exits non-zero while
-those bindings remain. Closing the Google Ads customer is out of scope.
+remnants. Supported teardown still runs; the command exits successfully and
+lists those bindings. Closing the Google Ads customer is out of scope.
 
 See [Destroy](../../docs/destroy.md).
 

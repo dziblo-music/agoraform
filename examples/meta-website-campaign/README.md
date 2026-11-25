@@ -230,8 +230,7 @@ removed before its pixel.
 Events Manager and Business Manager, so Agoraform reports it as
 provider-owned, leaves the remote object alone, and keeps the binding in
 state. Supported teardown still runs to completion, and the command then
-exits non-zero because that binding remains. That exit code means "teardown
-was deliberately incomplete", not "teardown failed".
+exits successfully and names that binding.
 
 Terminal states are idempotent: a `DELETED` or `ARCHIVED` object, an
 archived Custom Conversion, or a missing object all count as already

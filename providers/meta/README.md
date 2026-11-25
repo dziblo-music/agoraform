@@ -311,7 +311,11 @@ errors. Name-only inputs are rejected rather than fuzzy-matched. Equivalent
 ID sets, including omitted names and provider ordering, produce a no-op plan.
 Arbitrary targeting JSON, behaviors, lookalike generation, Advantage+
 audience models, and additional publishers are rejected rather than silently
-discarded. Destroying an ad set never deletes referenced Custom Audiences.
+discarded. Every ad set create and targeting update sends
+`targeting_automation.advantage_audience` as `0`. Meta requires that flag,
+and Agoraform keeps Advantage audience off so the declared targeting is what
+delivers. A read-back of `0` or Meta's older implicit `1` is not a manifest
+field and does not show up in plan. Destroying an ad set never deletes referenced Custom Audiences.
 Attribution settings are not managed by this initial schema and remain
 provider-owned. In the API payload, Agoraform maps the three documented
 position names to Meta's `stream`, `story`, and `reels` values, Custom

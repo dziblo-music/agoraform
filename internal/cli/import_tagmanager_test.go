@@ -67,6 +67,62 @@ func TestImportMatomoContainerPersistsIdentityThenPlanUnchanged(t *testing.T) {
 	}
 }
 
+func TestImportMatomoVariableSeedsExternalContainerWhenStateIsMissing(t *testing.T) {
+	t.Parallel()
+
+	p, srv := matomoManagedContainerServerProvider(t)
+	srv.seedVariable(cliTMVariable{ID: 2, Name: "userId", Type: "DataLayer", Key: "userId"})
+
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "agoraform.yaml")
+	if err := os.WriteFile(manifestPath, []byte(`
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: matomo.container.main
+    lifecycle:
+      ownership: external
+      id: 6OMh6taM
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "matomo.variable.user_id", "2"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("import exit = %d, want %d; stderr=%q stdout=%q", code, cli.ExitOK, stderr.String(), stdout.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "Bound matomo.container.main as an external reference") || !strings.Contains(out, "Imported matomo.variable.user_id") {
+		t.Fatalf("stdout = %s", out)
+	}
+	if strings.Contains(out, "cli-test-token") {
+		t.Fatalf("import leaked token:\n%s", out)
+	}
+
+	st, err := state.Load(state.PathForManifest(manifestPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	container := mustCLIAddress(t, "matomo.container.main")
+	ownership, ok, err := st.Ownership(container)
+	if err != nil || !ok || ownership != "external" {
+		t.Fatalf("container ownership = (%s, %v, %v)", ownership, ok, err)
+	}
+	id, ok, err := st.Identity(container)
+	if err != nil || !ok || id.ID != "6OMh6taM" {
+		t.Fatalf("container identity = (%v, %v, %v)", id, ok, err)
+	}
+	assertPersistedRemoteID(t, manifestPath, "matomo.variable.user_id", "2")
+	if srv.mutationCount() != 0 {
+		t.Fatalf("import mutated remote: %d", srv.mutationCount())
+	}
+}
+
 func TestImportMatomoVariablePersistsIdentityThenPlanUnchanged(t *testing.T) {
 	t.Parallel()
 

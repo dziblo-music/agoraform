@@ -66,6 +66,10 @@ type graphServer struct {
 	videoUploadFailure      bool
 	videoProcessingPolls    int
 	videoStatusError        bool
+	// staleCreativeReads is how many reads after a creative DELETE still
+	// return the pre-delete object, as Meta sometimes does.
+	staleCreativeReads int
+	pendingCreativeDel map[string]bool
 }
 
 func newGraphServer(t *testing.T) *graphServer {
@@ -508,6 +512,14 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, s.videos[path])
 	case r.Method == http.MethodGet && s.creatives[path] != nil:
+		if s.pendingCreativeDel[path] {
+			if s.staleCreativeReads > 0 {
+				s.staleCreativeReads--
+			} else {
+				s.creatives[path]["status"] = "DELETED"
+				delete(s.pendingCreativeDel, path)
+			}
+		}
 		writeJSON(w, s.creatives[path])
 	case r.Method == http.MethodGet && s.ads[path] != nil:
 		if s.adRefreshFailures > 0 {
@@ -660,6 +672,14 @@ func (s *graphServer) serve(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"success":true}`)
 	case r.Method == http.MethodDelete && s.creatives[path] != nil:
 		s.deletes++
+		if s.staleCreativeReads > 0 {
+			if s.pendingCreativeDel == nil {
+				s.pendingCreativeDel = map[string]bool{}
+			}
+			s.pendingCreativeDel[path] = true
+			_, _ = io.WriteString(w, `{"success":true}`)
+			return
+		}
 		item := s.creatives[path]
 		item["status"] = "DELETED"
 		s.creatives[path] = item

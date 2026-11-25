@@ -189,6 +189,163 @@ func TestImportExternalRejectsUnsupportedResourceTypeBeforeStateWrite(t *testing
 	}
 }
 
+func TestImportSeedsExternalReferencesWhenStateFileIsMissing(t *testing.T) {
+	t.Parallel()
+
+	p := fake.New()
+	home := mustCLIAddress(t, "fake.widget.homepage")
+	note := mustCLIAddress(t, "fake.widget.note")
+	if err := p.Seed(resource.RemoteResource{
+		Address:    home,
+		Identity:   resource.Identity{ID: "widget-1"},
+		Attributes: resource.Attributes{fake.AttrTitle: "Homepage"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Seed(resource.RemoteResource{
+		Address:    note,
+		Identity:   resource.Identity{ID: "note-1"},
+		Attributes: resource.Attributes{fake.AttrTitle: "Note"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(t.TempDir(), "agoraform.yaml")
+	if err := os.WriteFile(manifestPath, []byte(`
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.homepage
+    lifecycle:
+      ownership: external
+      id: widget-1
+  - address: fake.widget.asset
+    attributes:
+      source:
+        file: missing.png
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "fake.widget.note", "note-1"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "Bound fake.widget.homepage as an external reference") || !strings.Contains(out, "Imported fake.widget.note") {
+		t.Fatalf("stdout = %s", out)
+	}
+	st, err := state.Load(state.PathForManifest(manifestPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownership, ok, err := st.Ownership(home)
+	if err != nil || !ok || ownership != resource.OwnershipExternal {
+		t.Fatalf("homepage ownership = (%s, %v, %v)", ownership, ok, err)
+	}
+	id, ok, err := st.Identity(note)
+	if err != nil || !ok || id.ID != "note-1" {
+		t.Fatalf("note identity = (%v, %v, %v)", id, ok, err)
+	}
+	noteOwnership, ok, err := st.Ownership(note)
+	if err != nil || !ok || noteOwnership != resource.OwnershipManaged {
+		t.Fatalf("note ownership = (%s, %v, %v)", noteOwnership, ok, err)
+	}
+	_, creates, updates, _ := p.Calls()
+	if creates != 0 || updates != 0 || p.Destroys() != 0 {
+		t.Fatalf("seed mutated provider creates=%d updates=%d destroys=%d", creates, updates, p.Destroys())
+	}
+}
+
+func TestImportRollsBackStateWhenExternalSeedFails(t *testing.T) {
+	t.Parallel()
+
+	p := fake.New()
+	home := mustCLIAddress(t, "fake.widget.homepage")
+	if err := p.Seed(resource.RemoteResource{
+		Address:    home,
+		Identity:   resource.Identity{ID: "widget-1"},
+		Attributes: resource.Attributes{fake.AttrTitle: "Homepage"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(t.TempDir(), "agoraform.yaml")
+	if err := os.WriteFile(manifestPath, []byte(`
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.homepage
+    lifecycle:
+      ownership: external
+      id: widget-1
+  - address: fake.widget.other
+    lifecycle:
+      ownership: external
+      id: missing
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "fake.widget.note", "note-1"}, reg)
+	if code == cli.ExitOK || !strings.Contains(stderr.String(), "fake.widget.other") {
+		t.Fatalf("import exit = %d; stderr=%q", code, stderr.String())
+	}
+	if _, err := os.Stat(state.PathForManifest(manifestPath)); !os.IsNotExist(err) {
+		t.Fatalf("partial state file remained: %v", err)
+	}
+}
+
+func TestImportDoesNotSeedExternalReferencesWhenStateExists(t *testing.T) {
+	t.Parallel()
+
+	p := fake.New()
+	home := mustCLIAddress(t, "fake.widget.homepage")
+	if err := p.Seed(resource.RemoteResource{
+		Address:    home,
+		Identity:   resource.Identity{ID: "widget-1"},
+		Attributes: resource.Attributes{fake.AttrTitle: "Homepage"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(t.TempDir(), "agoraform.yaml")
+
+	streams, _, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "fake.widget.homepage", "widget-1"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("first import exit = %d; stderr=%q", code, stderr.String())
+	}
+	if err := os.WriteFile(manifestPath, []byte(`
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.other
+    lifecycle:
+      ownership: external
+      id: missing
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	streams, _, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "fake.widget.homepage", "widget-1"}, reg)
+	if code == cli.ExitOK || !strings.Contains(stderr.String(), "already bound") {
+		t.Fatalf("second import exit = %d; stderr=%q", code, stderr.String())
+	}
+	if strings.Contains(stderr.String(), "bind external reference") {
+		t.Fatalf("existing state re-seeded externals: %s", stderr.String())
+	}
+}
+
 type unsupportedExternalProvider struct {
 	*fake.Provider
 }

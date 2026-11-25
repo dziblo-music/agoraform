@@ -127,8 +127,13 @@ func planChange(res resource.Resource, lookup Lookup, ids Identities) (Change, e
 	}
 	if res.IsExternal() || stored.IsExternal() {
 		change.Kind = KindExternal
+		if !ok && res.ExternalID != "" {
+			// The manifest lifecycle.id still identifies the referenced
+			// object, so dependents and provider finalization can use it.
+			id = resource.Identity{ID: res.ExternalID}
+		}
 		change.Identity = id
-		if ok {
+		if !id.IsZero() {
 			res.Identity = id
 			change.Resource = res
 		}

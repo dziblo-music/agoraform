@@ -31,15 +31,21 @@ destroy loads and validates the manifest, including the resource
 dependency graph, provider lifecycle capability, and local identity
 state before any mutation. Supported resources are destroyed in reverse
 dependency order so dependents are removed before prerequisites.
-Provider finalization actions that were visible in the destroy plan run
-only after every destructive mutation succeeds.
+
+A provider failure does not stop the run. The failed resource and the
+resources it depends on keep their state bindings, and teardown continues
+for everything else. The run then reports each failure and skipped
+resource and exits 1; rerunning destroy retries only what is still in
+state. Provider finalization actions that were visible in the destroy plan
+run per provider, only when every planned change for that provider
+succeeded.
 
 Resources without a local state binding are reported as not managed and
 are not changed remotely. Identities present in agoraform.state.json but
 absent from the manifest are preserved; destroy does not prune them.
 Providers may report destroy as unsupported or provider-owned: those
-resources remain in state, do not block supported teardown, and cause a
-non-zero exit after supported operations complete.
+resources remain in state, do not block supported teardown, and are named
+after supported operations complete.
 
 A file path loads that document only. A directory path merges every
 *.agoraform.yaml and *.agoraform.yml file in that directory into one
@@ -50,8 +56,8 @@ Non-interactive sessions must pass --auto-approve. Declining confirmation
 exits successfully with no mutations.
 
 Exit codes:
-  0  destroy succeeded, or confirmation was declined
-  1  destroy failed, or supported teardown left unsupported resources
+  0  destroy succeeded, confirmation was declined, or supported teardown finished with resources Agoraform cannot destroy
+  1  destroy failed, or some resources failed or were skipped
   3  invalid invocation
 
 The default path is agoraform.yaml.`,

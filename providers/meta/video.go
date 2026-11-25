@@ -341,41 +341,6 @@ func (p *Provider) waitForVideoReady(ctx context.Context, id string) (adVideo, e
 	}
 }
 
-func (p *Provider) destroyVideo(ctx context.Context, res resource.Resource) (provider.DestroyResult, error) {
-	id, _, bound, err := boundVideoIdentity(res)
-	if err != nil {
-		return provider.DestroyResult{}, err
-	}
-	if !bound {
-		return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: missing persisted identity", res.Address)
-	}
-	if _, err := p.readAdVideo(ctx, id); errors.Is(err, provider.ErrNotFound) {
-		return provider.DestroyResult{Status: provider.DestroyStatusAlreadyAbsent}, nil
-	} else if err != nil {
-		return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: %w", res.Address, err)
-	}
-	c, err := p.Client()
-	if err != nil {
-		return provider.DestroyResult{}, err
-	}
-	var result map[string]any
-	if err := c.Delete(ctx, id, nil, &result); err != nil {
-		if client.IsNotFound(err) {
-			return provider.DestroyResult{Status: provider.DestroyStatusAlreadyAbsent}, nil
-		}
-		return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: %w", res.Address, err)
-	}
-	if success, ok := result["success"].(bool); ok && !success {
-		return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: API did not report success", res.Address)
-	}
-	if _, err := p.readAdVideo(ctx, id); errors.Is(err, provider.ErrNotFound) {
-		return provider.DestroyResult{Status: provider.DestroyStatusDestroyed}, nil
-	} else if err != nil {
-		return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: DELETE succeeded but confirming terminal state failed: %w", res.Address, err)
-	}
-	return provider.DestroyResult{}, fmt.Errorf("meta: destroy %s: video %s is still present after DELETE", res.Address, id)
-}
-
 func remoteVideo(addr resource.Address, item adVideo, digest string, ready bool) resource.RemoteResource {
 	computed := resource.Attributes{}
 	if ready {
