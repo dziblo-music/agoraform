@@ -187,3 +187,51 @@ func (p *bindingDestroyer) DestroyCapability(resource.Resource) (provider.Destro
 func (p *bindingDestroyer) Destroy(ctx context.Context, res resource.Resource) (provider.DestroyResult, error) {
 	return p.Provider.(provider.Destroyer).Destroy(ctx, res)
 }
+
+func TestRunCancellationKeepsRecordedFailures(t *testing.T) {
+	t.Parallel()
+
+	inner := fake.New()
+	st := mustStore(t)
+	var desired []resource.Resource
+	for _, name := range []string{"one", "two", "three"} {
+		res := widget(t, name, resource.Attributes{fake.AttrTitle: name})
+		seed(t, inner, res)
+		bind(t, st, res, "id-"+name)
+		desired = append(desired, res)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	p := &cancellingDestroyer{Provider: inner, cancel: cancel}
+	_, err := destroy.Run(ctx, desired, lookupProvider(p), st, nil, nil)
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+	var incomplete *destroy.IncompleteError
+	if !errors.As(err, &incomplete) || len(incomplete.Failures) != 1 {
+		t.Fatalf("error = %v, want the failure recorded before cancellation", err)
+	}
+	if p.calls != 1 {
+		t.Fatalf("Destroy calls = %d, want the run to stop after cancellation", p.calls)
+	}
+}
+
+// cancellingDestroyer fails its first destroy and cancels the run, as an
+// interrupt during a provider call would.
+type cancellingDestroyer struct {
+	provider.Provider
+	cancel context.CancelFunc
+	calls  int
+}
+
+func (p *cancellingDestroyer) DestroyCapability(resource.Resource) (provider.DestroyCapability, error) {
+	return provider.DestroyDelete, nil
+}
+
+func (p *cancellingDestroyer) Destroy(context.Context, resource.Resource) (provider.DestroyResult, error) {
+	p.calls++
+	p.cancel()
+	return provider.DestroyResult{}, errors.New("interrupted")
+}

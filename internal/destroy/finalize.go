@@ -96,15 +96,29 @@ func pendingChanges(p *Plan) []provider.PendingChange {
 
 type finalizationOutcome struct {
 	completed int
-	// succeeded holds provider names whose finalization completed.
+	// succeeded holds provider names whose every planned finalization
+	// completed. A provider with one failed, skipped, or unattempted
+	// finalization is absent, so its deferred bindings stay in state.
 	succeeded map[string]struct{}
 	// skipped holds finalizations not attempted because a change of the
 	// same provider failed or was skipped.
 	skipped []provider.FinalizationPlan
 }
 
-func executeFinalizations(ctx context.Context, providers ProviderSet, lookup Lookup, plans []provider.FinalizationPlan, out io.Writer, run *execution) (finalizationOutcome, error) {
-	outcome := finalizationOutcome{succeeded: map[string]struct{}{}}
+func executeFinalizations(ctx context.Context, providers ProviderSet, lookup Lookup, plans []provider.FinalizationPlan, out io.Writer, run *execution) (outcome finalizationOutcome, err error) {
+	outcome.succeeded = map[string]struct{}{}
+	want := map[string]int{}
+	done := map[string]int{}
+	for _, f := range plans {
+		want[f.Address.Provider]++
+	}
+	defer func() {
+		for name, n := range want {
+			if done[name] == n {
+				outcome.succeeded[name] = struct{}{}
+			}
+		}
+	}()
 	if len(plans) == 0 {
 		return outcome, nil
 	}
@@ -163,7 +177,7 @@ func executeFinalizations(ctx context.Context, providers ProviderSet, lookup Loo
 			return outcome, fmt.Errorf("destroy %s: %s: %w", planned.Address, action, err)
 		}
 		outcome.completed++
-		outcome.succeeded[planned.Address.Provider] = struct{}{}
+		done[planned.Address.Provider]++
 	}
 	return outcome, nil
 }

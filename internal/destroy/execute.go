@@ -107,7 +107,8 @@ func Run(ctx context.Context, desired []resource.Resource, lookup Lookup, st Sto
 	run, err := execute(ctx, planned, desired, resourceLookup, st, out)
 	result := run.result
 	if err != nil {
-		return result, err
+		// Keep the failures recorded before the run stopped.
+		return result, errors.Join(run.incompleteError(nil), err)
 	}
 
 	finalized, err := executeFinalizations(ctx, providers, resourceLookup, planned.Finalizations, out, run)
@@ -141,12 +142,13 @@ func Run(ctx context.Context, desired []resource.Resource, lookup Lookup, st Sto
 //
 // A provider failure is recorded and execution continues with resources that
 // do not depend on the failed one. The returned error is an *IncompleteError
-// when any resource failed or was skipped. A local state write failure stops
-// execution immediately.
+// when any resource failed or was skipped. A local state write failure or
+// context cancellation stops execution immediately; the returned error then
+// joins that cause with any failures already recorded.
 func Execute(ctx context.Context, p *Plan, desired []resource.Resource, lookup Lookup, st Store, out io.Writer) (Result, error) {
 	run, err := execute(ctx, p, desired, lookup, st, out)
 	if err != nil {
-		return run.result, err
+		return run.result, errors.Join(run.incompleteError(nil), err)
 	}
 	if incomplete := run.incompleteError(nil); incomplete != nil {
 		return run.result, incomplete

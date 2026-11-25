@@ -724,6 +724,14 @@ func (s *graphServer) campaignField(id, field string) any {
 	return s.campaigns[id][field]
 }
 
+// setAdSetTargetingField changes one targeting key of a seeded ad set, as if
+// it had been edited outside Agoraform.
+func (s *graphServer) setAdSetTargetingField(id, key string, value any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.adSets[id]["targeting"].(graphObject)[key] = value
+}
+
 func (s *graphServer) adSetField(id, field string) any {
 	s.mu.Lock()
 	defer s.mu.Unlock()

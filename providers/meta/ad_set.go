@@ -262,7 +262,14 @@ func (p *Provider) updateAdSet(ctx context.Context, desired resource.Resource, a
 		if err := p.ensureTargetingReferences(ctx, desired.Address, want.Targeting); err != nil {
 			return resource.RemoteResource{}, fmt.Errorf("meta: update %s: %w", desired.Address, err)
 		}
-		raw, _ := json.Marshal(targetingAPIObject(want.Targeting))
+		// Replacing targeting must carry the flag Meta requires. Re-send the
+		// live value so an update never changes Advantage audience, which
+		// is provider-owned and not visible in the plan.
+		advantage, err := p.liveAdvantageAudience(ctx, actual.Identity.ID)
+		if err != nil {
+			return resource.RemoteResource{}, fmt.Errorf("meta: update %s: %w", desired.Address, err)
+		}
+		raw, _ := json.Marshal(targetingAPIObject(want.Targeting, advantage))
 		form.Set("targeting", string(raw))
 	}
 	if len(form) == 0 {
@@ -909,7 +916,48 @@ func targetingAttributeMap(t normalizedTargeting, includeNames bool) map[string]
 	return out
 }
 
-func targetingAPIObject(t normalizedTargeting) map[string]any {
+// advantageAudienceOff is the targeting_automation.advantage_audience value
+// Agoraform sends when it creates an ad set. Meta rejects ad set creation
+// unless the flag is 0 or 1.
+const advantageAudienceOff = 0
+
+// liveAdvantageAudience reads the ad set's current
+// targeting_automation.advantage_audience flag. A missing flag reads as
+// advantageAudienceOff.
+func (p *Provider) liveAdvantageAudience(ctx context.Context, id string) (int, error) {
+	c, err := p.Client()
+	if err != nil {
+		return 0, err
+	}
+	var item struct {
+		Targeting json.RawMessage `json:"targeting"`
+	}
+	if err := c.Get(ctx, id, url.Values{"fields": {"targeting"}}, &item); err != nil {
+		return 0, fmt.Errorf("read current Advantage audience setting: %w", err)
+	}
+	if len(item.Targeting) == 0 {
+		return advantageAudienceOff, nil
+	}
+	m, err := decodeJSONObject(item.Targeting)
+	if err != nil {
+		return 0, fmt.Errorf("read current Advantage audience setting: %w", err)
+	}
+	automation, ok := stringMap(m["targeting_automation"])
+	if !ok {
+		return advantageAudienceOff, nil
+	}
+	value, ok := automation["advantage_audience"]
+	if !ok {
+		return advantageAudienceOff, nil
+	}
+	n, err := coerceFloat(value)
+	if err != nil || (n != 0 && n != 1) {
+		return 0, fmt.Errorf("unexpected targeting_automation.advantage_audience %v", value)
+	}
+	return int(n), nil
+}
+
+func targetingAPIObject(t normalizedTargeting, advantageAudience int) map[string]any {
 	geo := map[string]any{}
 	if len(t.Countries) > 0 {
 		geo["countries"] = t.Countries
@@ -922,12 +970,10 @@ func targetingAPIObject(t normalizedTargeting) map[string]any {
 		geo["regions"] = rows
 	}
 	out := map[string]any{
-		"geo_locations": geo,
-		"age_min":       t.AgeMin,
-		"age_max":       t.AgeMax,
-		// Meta rejects ad set creation unless this flag is 0 or 1.
-		// Agoraform does not enable Advantage audience.
-		"targeting_automation": map[string]any{"advantage_audience": 0},
+		"geo_locations":        geo,
+		"age_min":              t.AgeMin,
+		"age_max":              t.AgeMax,
+		"targeting_automation": map[string]any{"advantage_audience": advantageAudience},
 	}
 	if len(t.Genders) > 0 {
 		values := make([]int64, len(t.Genders))
@@ -1003,7 +1049,7 @@ func (p *Provider) adSetForm(ctx context.Context, a normalizedAdSet) (url.Values
 			return nil, err
 		}
 	}
-	raw, _ := json.Marshal(targetingAPIObject(a.Targeting))
+	raw, _ := json.Marshal(targetingAPIObject(a.Targeting, advantageAudienceOff))
 	form.Set("targeting", string(raw))
 	if a.OptimizationGoal == "OFFSITE_CONVERSIONS" {
 		conversionID, e := p.refID(a.CustomConversion, OutputCustomConversionID)

@@ -30,10 +30,16 @@ func (p *Provider) rememberBinding(addr resource.Address, id, name string) {
 // the container identity that publication needs without reading the
 // container, including a reference-only (external) container.
 func (p *Provider) BindIdentity(addr resource.Address, id resource.Identity) {
-	if addr.Provider != Name {
+	if p == nil || addr.Provider != Name {
 		return
 	}
-	p.rememberBinding(addr, strings.TrimSpace(id.ID), "")
+	// Keep a name learned from an earlier read when the identity is unchanged.
+	value := strings.TrimSpace(id.ID)
+	name := ""
+	if p.lookupID(addr) == value {
+		name = p.lookupName(addr)
+	}
+	p.rememberBinding(addr, value, name)
 }
 
 func (p *Provider) lookupID(addr resource.Address) string {

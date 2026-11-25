@@ -351,3 +351,66 @@ type unsupportedExternalProvider struct {
 }
 
 func (*unsupportedExternalProvider) SupportsExternal(string) bool { return false }
+
+func TestImportSeedsOnlyRequestedProviderAndRollsBackOnFailure(t *testing.T) {
+	t.Parallel()
+
+	p := fake.New()
+	home := mustCLIAddress(t, "fake.widget.homepage")
+	note := mustCLIAddress(t, "fake.widget.note")
+	for _, remote := range []resource.RemoteResource{
+		{Address: home, Identity: resource.Identity{ID: "widget-1"}, Attributes: resource.Attributes{fake.AttrTitle: "Homepage"}},
+		{Address: note, Identity: resource.Identity{ID: "note-1"}, Attributes: resource.Attributes{fake.AttrTitle: "Note"}},
+	} {
+		if err := p.Seed(remote); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Only fake is registered: seeding an alt reference would need a
+	// provider (and credentials) the requested import does not use.
+	reg := provider.NewRegistry()
+	if err := reg.Register(p); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(t.TempDir(), "agoraform.yaml")
+	if err := os.WriteFile(manifestPath, []byte(`
+apiVersion: agoraform.io/v1alpha1
+resources:
+  - address: fake.widget.homepage
+    lifecycle:
+      ownership: external
+      id: widget-1
+  - address: alt.note.welcome
+    lifecycle:
+      ownership: external
+      id: welcome-1
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	statePath := state.PathForManifest(manifestPath)
+
+	streams, stdout, stderr := testStreams()
+	code := cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "fake.widget.note", "missing-id"}, reg)
+	if code == cli.ExitOK {
+		t.Fatalf("import of a missing remote object succeeded; stdout=%q", stdout.String())
+	}
+	if _, err := os.Stat(statePath); !os.IsNotExist(err) {
+		t.Fatalf("seeded state file was kept after the requested import failed: %v; stderr=%q", err, stderr.String())
+	}
+
+	streams, stdout, stderr = testStreams()
+	code = cli.ExecuteWithRegistry(streams, []string{"import", "-f", manifestPath, "fake.widget.note", "note-1"}, reg)
+	if code != cli.ExitOK {
+		t.Fatalf("import exit = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+	st, err := state.Load(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := st.Identity(home); !ok {
+		t.Fatal("same-provider external reference was not seeded")
+	}
+	if _, ok, _ := st.Identity(mustCLIAddress(t, "alt.note.welcome")); ok {
+		t.Fatal("external reference of another provider was seeded")
+	}
+}

@@ -579,6 +579,45 @@ func TestCreateAdSetAudienceAndInterestTargeting(t *testing.T) {
 	}
 }
 
+func TestUpdateAdSetTargetingPreservesAdvantageAudience(t *testing.T) {
+	t.Parallel()
+	srv := newGraphServer(t)
+	srv.seedCampaign(testCampaignID, graphObject{"name": "Acquisition", "objective": "OUTCOME_SALES"})
+	srv.seedPixel(testPixelID, "Website")
+	srv.seedConversion(testConvID, graphObject{"name": "Trial Started", "custom_event_type": "START_TRIAL", "rule": `{"and":[{"event":{"eq":"StartTrial"}}]}`, "pixel": graphObject{"id": testPixelID}, "event_source_type": "pixel"})
+	srv.seedAudience(testAudienceIncludeID, graphObject{"name": "Lookalike prospects", "subtype": "LOOKALIKE"})
+	srv.seedAudience(testAudienceExcludeID, graphObject{"name": "Existing customers", "subtype": "WEBSITE"})
+	srv.seedInterest(testInterestID, "Music production", true)
+	httpSrv := srv.start()
+	defer httpSrv.Close()
+	p := testProvider(t, httpSrv)
+	p.SetIdentityCatalog(adSetCatalog(t))
+	rememberAdSetDependencies(t, p)
+	created, err := p.Create(context.Background(), adSetResource(t, "instagram", audienceAdSetAttrs(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Advantage audience was turned on outside Agoraform. It is
+	// provider-owned, so a targeting update must leave it as it is.
+	srv.setAdSetTargetingField(testAdSetID, "targeting_automation", graphObject{"advantage_audience": 1})
+
+	attrs := audienceAdSetAttrs(t)
+	delete(attrs[meta.AttrTargeting].(map[string]any), "excludedCustomAudiences")
+	desired := adSetResource(t, "instagram", attrs)
+	desired.Identity = created.Identity
+	if _, err := p.Update(context.Background(), desired, created); err != nil {
+		t.Fatal(err)
+	}
+	got := srv.adSetField(testAdSetID, "targeting").(graphObject)
+	if _, ok := got["excluded_custom_audiences"]; ok {
+		t.Fatalf("targeting update was not sent: %v", got)
+	}
+	automation, _ := json.Marshal(got["targeting_automation"])
+	if string(automation) != `{"advantage_audience":1}` {
+		t.Fatalf("targeting_automation = %s, want the live value preserved", automation)
+	}
+}
+
 func TestAdSetPlanShowsAudienceTargetingUpdate(t *testing.T) {
 	t.Parallel()
 	srv := newGraphServer(t)

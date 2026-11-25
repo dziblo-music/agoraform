@@ -61,9 +61,11 @@ uses one state file in that directory.
 
 Import does not rewrite the manifest. When agoraform.state.json does not
 exist yet and the manifest does, import first reads that manifest and binds
-every lifecycle.ownership: external resource into the new state file. It
-then imports the requested address. An existing state file is left unchanged
-aside from the requested import.
+every lifecycle.ownership: external resource of the requested address's
+provider into the new state file. Only that provider is contacted. It then
+imports the requested address. If that import fails, the new state file is
+removed so the next import seeds again. An existing state file is left
+unchanged aside from the requested import.
 
 Exit codes:
   0  import succeeded
@@ -119,7 +121,7 @@ Exit codes:
 			}
 			catalog = importer.NewOutputCatalog(stateBindings{st}, lookup)
 
-			seeded, err := bindManifestExternalReferences(cmd.Context(), cmd.OutOrStdout(), path, st, lookup)
+			seeded, err := bindManifestExternalReferences(cmd.Context(), cmd.OutOrStdout(), path, addr.Provider, st, lookup)
 			if err != nil {
 				return err
 			}
@@ -137,6 +139,13 @@ Exit codes:
 				result, err = importer.Run(cmd.Context(), addr, args[1], lookup, st)
 			}
 			if err != nil {
+				if len(seeded) > 0 {
+					// The state file exists only because of this run's seed.
+					// Remove it so the next import seeds again from the manifest.
+					if removeErr := removeSeededState(st); removeErr != nil {
+						return fmt.Errorf("%w (also failed to remove seeded %s: %v)", err, st.Path(), removeErr)
+					}
+				}
 				return err
 			}
 
@@ -152,15 +161,18 @@ Exit codes:
 	return cmd
 }
 
-// bindManifestExternalReferences writes every external resource declared in
-// the manifest into a new state file before the requested import runs.
+// bindManifestExternalReferences writes the external resources of
+// providerName declared in the manifest into a new state file before the
+// requested import runs. Binding verifies each reference with the provider,
+// so only the provider being imported is contacted; external references of
+// other providers are left for their own first import.
 //
 // Import does not rewrite the manifest. An existing state file is not
 // refreshed here; only a missing file is seeded, and a missing manifest is
 // left alone so import still works before any configuration exists. A failed
 // seed removes the state file it created so the next import retries every
 // external reference.
-func bindManifestExternalReferences(ctx context.Context, out io.Writer, manifestPath string, st *state.Store, lookup importer.Lookup) (map[string]importer.Result, error) {
+func bindManifestExternalReferences(ctx context.Context, out io.Writer, manifestPath, providerName string, st *state.Store, lookup importer.Lookup) (map[string]importer.Result, error) {
 	seeded := map[string]importer.Result{}
 	if st == nil {
 		return seeded, nil
@@ -184,13 +196,13 @@ func bindManifestExternalReferences(ctx context.Context, out io.Writer, manifest
 	}
 	wrote := false
 	for _, res := range m.Resources {
-		if !res.IsExternal() {
+		if !res.IsExternal() || res.Address.Provider != providerName {
 			continue
 		}
 		result, err := importer.RunExternal(ctx, res.Address, res.ExternalID, lookup, st, false)
 		if err != nil {
 			if wrote {
-				if removeErr := os.Remove(st.Path()); removeErr != nil && !os.IsNotExist(removeErr) {
+				if removeErr := removeSeededState(st); removeErr != nil {
 					return nil, fmt.Errorf("import: bind external reference %s declared in %s: %w (also failed to remove %s: %v)", res.Address, manifestPath, err, st.Path(), removeErr)
 				}
 			}
@@ -201,6 +213,14 @@ func bindManifestExternalReferences(ctx context.Context, out io.Writer, manifest
 		fmt.Fprint(out, importer.Format(result, st.Path()))
 	}
 	return seeded, nil
+}
+
+// removeSeededState deletes a state file created by this run's seed.
+func removeSeededState(st *state.Store) error {
+	if err := os.Remove(st.Path()); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 // manifestConfigurationPresent reports whether path is a manifest file or a
